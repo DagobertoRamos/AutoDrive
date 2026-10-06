@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Activity, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
 import PeriodFilter from '@/components/reports/PeriodFilter'
 
 interface MesRow { mes: string; entradas: number; saidas: number; saldo: number }
@@ -38,7 +39,7 @@ export default function FluxoDeCaixaReportPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Fluxo de Caixa</h1>
+          <h1 className="flex items-center gap-1.5 text-xl font-bold text-gray-900">Fluxo de Caixa<HelpHint term="FLUXO_CAIXA" size={15} /></h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${meses.length} meses`}</p>
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
@@ -55,7 +56,7 @@ export default function FluxoDeCaixaReportPage() {
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50"><tr>{['Mês', 'Entradas', 'Saídas', 'Saldo do mês', 'Acumulado'].map((h) => (<th key={h} className={cn('whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500', h === 'Mês' ? 'text-left' : 'text-right')}>{h}</th>))}</tr></thead>
+            <thead className="bg-gray-50"><tr>{['Mês', 'Entradas', 'Saídas', 'Saldo do mês', 'Acumulado'].map((h) => (<th key={h} className={cn('whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500', h === 'Mês' ? 'text-left' : 'text-right')}>{h === 'Acumulado' ? <WithHint text="Soma dos saldos mês a mês desde o início do período.">{h}</WithHint> : h}</th>))}</tr></thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (<tr key={i}>{Array.from({ length: 5 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))

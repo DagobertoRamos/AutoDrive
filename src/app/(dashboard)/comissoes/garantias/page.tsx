@@ -8,6 +8,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Plus, Edit2, Trash2, Shield, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import { RequiredMark } from '@/components/ui/field'
 
@@ -134,7 +136,7 @@ export default function GarantiasComissoesPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Regras de Garantia</h1>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900">Regras de Garantia<HelpHint {...DEAL_HINTS.GARANTIA_REGRAS} /></h1>
         </div>
         <div className="flex gap-2">
           <button onClick={fetchRules} disabled={loading} className="btn-secondary text-xs">
@@ -170,7 +172,7 @@ export default function GarantiasComissoesPage() {
             <thead className="bg-gray-50">
               <tr>
                 {['Nome','Valor padrão','Valor mín.','Comissão (%)','Desconto (%)','Status','Ações'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 whitespace-nowrap">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 whitespace-nowrap"><span className="inline-flex items-center gap-1">{h}{h === 'Valor mín.' && <HelpHint {...DEAL_HINTS.GARANTIA_VALOR_MINIMO} />}{h === 'Desconto (%)' && <HelpHint {...DEAL_HINTS.GARANTIA_DESCONTO_PCT} />}</span></th>
                 ))}
               </tr>
             </thead>
@@ -247,7 +249,7 @@ export default function GarantiasComissoesPage() {
                   />
                 </div>
                 <div>
-                  <label className="label">Valor mínimo</label>
+                  <label className="label inline-flex items-center gap-1">Valor mínimo<HelpHint {...DEAL_HINTS.GARANTIA_VALOR_MINIMO} size={12} /></label>
                   <input
                     className="input"
                     value={form.minValue}
@@ -268,7 +270,7 @@ export default function GarantiasComissoesPage() {
                   />
                 </div>
                 <div>
-                  <label className="label">Desconto (%)</label>
+                  <label className="label inline-flex items-center gap-1">Desconto (%)<HelpHint {...DEAL_HINTS.GARANTIA_DESCONTO_PCT} size={12} /></label>
                   <input
                     className="input"
                     value={form.commissionDiscount}

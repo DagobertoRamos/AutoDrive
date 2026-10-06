@@ -6,6 +6,7 @@
 // excluir, duplicar, testar, pré-visualizar, ver logs, ver métricas.
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Bell, Plus, Loader2, AlertCircle, CheckCircle2, X,
@@ -606,7 +607,7 @@ function NoticeModal({ initial, onClose, onSaved }: {
 
               {/* Público-alvo */}
               <div>
-                <label className={lbl}>Público-alvo</label>
+                <label className={lbl}>Público-alvo<HelpHint className="ml-1" title="Público-alvo" text="Quem vê o aviso: todos os usuários, lojas específicas, perfis de acesso ou usuários escolhidos." /></label>
                 <select className={inp} value={form.targetType} onChange={e => setField('targetType', e.target.value)}>
                   {Object.entries(TARGET_LABELS).map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
@@ -616,7 +617,7 @@ function NoticeModal({ initial, onClose, onSaved }: {
 
               {/* Canais de exibição */}
               <div>
-                <label className={lbl}>Canais de exibição</label>
+                <label className={lbl}>Canais de exibição<HelpHint className="ml-1" title="Canais de exibição" text="Onde o aviso aparece: BELL = sino de notificações; BALLOON = balão no canto da tela; BANNER = faixa no topo; MODAL = janela que abre sobre a tela; DASHBOARD = card no painel inicial." /></label>
                 <div className="flex gap-2 flex-wrap">
                   {['BELL', 'BALLOON', 'BANNER', 'MODAL', 'DASHBOARD'].map(ch => (
                     <button key={ch} type="button" onClick={() => toggleChannel(ch)}
@@ -657,17 +658,18 @@ function NoticeModal({ initial, onClose, onSaved }: {
                 <p className="text-xs font-semibold text-gray-700">Comportamento</p>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { k: 'required',       label: 'Leitura obrigatória'           },
+                    { k: 'required',       label: 'Leitura obrigatória',          hint: 'O usuário precisa confirmar que leu. A confirmação fica registrada no histórico do aviso.' },
                     { k: 'dismissible',    label: 'Pode ser descartado'            },
-                    { k: 'blockUntilRead', label: 'Bloquear sistema até ciência'   },
+                    { k: 'blockUntilRead', label: 'Bloquear sistema até ciência',  hint: 'O usuário não consegue usar o sistema até clicar em ciente no aviso. Use só para comunicados críticos.' },
                     { k: 'allowComments',  label: 'Permitir comentários'           },
-                  ].map(({ k, label }) => (
+                  ].map(({ k, label, hint }: { k: string; label: string; hint?: string }) => (
                     <label key={k} className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-brand-600"
                         checked={form[k as keyof NoticeForm] as boolean}
                         onChange={e => setField(k as keyof NoticeForm, e.target.checked as NoticeForm[keyof NoticeForm])}
                       />
                       <span className="text-xs text-gray-700">{label}</span>
+                      {hint && <HelpHint text={hint} />}
                     </label>
                   ))}
                 </div>

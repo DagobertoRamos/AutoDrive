@@ -6,6 +6,7 @@
 // Consome /api/warranties (POST) e /api/warranties/[id] (PATCH/DELETE).
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Shield, X, Save, CheckCircle, AlertCircle, Power } from 'lucide-react'
 import { cn, formatMoney } from '@/lib/utils'
@@ -73,10 +74,10 @@ function inputClass(extra?: string) {
   )
 }
 
-function MoneyField({ label, value, onChange, required }: { label: string; value: number; onChange: (v: number) => void; required?: boolean }) {
+function MoneyField({ label, value, onChange, required, help }: { label: string; value: number; onChange: (v: number) => void; required?: boolean; help?: string }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-medium text-gray-700">{label}{required && <RequiredMark className="ml-0.5" />}</label>
+      <label className="mb-1.5 block text-xs font-medium text-gray-700">{label}{help && <HelpHint className="ml-1" text={help} />}{required && <RequiredMark className="ml-0.5" />}</label>
       <input
         type="text" inputMode="numeric" className={inputClass()}
         value={maskBRL(value ? Math.round(value * 100).toString() : '')}
@@ -87,10 +88,10 @@ function MoneyField({ label, value, onChange, required }: { label: string; value
   )
 }
 
-function ToggleRow({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+function ToggleRow({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
   return (
     <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-      <span className="text-sm font-medium text-gray-700">{label}</span>
+      <span className="flex items-center gap-1 text-sm font-medium text-gray-700">{label}{hint && <HelpHint text={hint} />}</span>
       <button
         type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
         className={cn('relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2', checked ? 'bg-brand-600' : 'bg-gray-200')}
@@ -193,7 +194,7 @@ function Modal({
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Cobertura</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Cobertura<HelpHint className="ml-1" title="Cobertura" text="O que a garantia cobre (ex.: motor e câmbio). Aparece para o cliente e no contrato." /></label>
               <input className={inputClass()} value={form.coverageType} onChange={(e) => set('coverageType', e.target.value)} />
             </div>
             <div className="sm:col-span-2">
@@ -202,14 +203,14 @@ function Modal({
             </div>
 
             <MoneyField required label="Valor cheio (R$)" value={form.fullPrice} onChange={(v) => set('fullPrice', v)} />
-            <MoneyField required label="Valor com desconto (R$)" value={form.reducedPrice} onChange={(v) => set('reducedPrice', v)} />
-            <MoneyField label="Comissão valor cheio (R$)" value={form.fullSaleCommissionValue} onChange={(v) => set('fullSaleCommissionValue', v)} />
+            <MoneyField required label="Valor com desconto (R$)" help="Preço da garantia quando vendida com desconto. Nesse caso vale a comissão de valor com desconto." value={form.reducedPrice} onChange={(v) => set('reducedPrice', v)} />
+            <MoneyField label="Comissão valor cheio (R$)" help="Comissão do vendedor quando a garantia é vendida pelo valor cheio." value={form.fullSaleCommissionValue} onChange={(v) => set('fullSaleCommissionValue', v)} />
             <MoneyField label="Comissão valor com desconto (R$)" value={form.reducedSaleCommissionValue} onChange={(v) => set('reducedSaleCommissionValue', v)} />
           </div>
 
           {/* Adicional prêmio/luxo */}
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
-            <ToggleRow label="Possui adicional prêmio/luxo?" checked={form.hasPremiumAddon} onChange={(v) => set('hasPremiumAddon', v)} />
+            <ToggleRow label="Possui adicional prêmio/luxo?" hint="Cobertura extra opcional (ex.: para carros premium ou de luxo), cobrada à parte e com comissão própria." checked={form.hasPremiumAddon} onChange={(v) => set('hasPremiumAddon', v)} />
             {form.hasPremiumAddon && (
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>

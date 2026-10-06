@@ -11,6 +11,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { GitBranch, Save, RefreshCw, Plus, Trash2, AlertCircle, CheckCircle2, ChevronUp, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { ESCALATION_LIMITS } from '@/lib/seller-queue/escalation-config'
 
 interface Level { id: string; name: string; targetType: string; role: string | null; targetUserIds: string[]; timeoutSeconds: number; maxAttempts: number; notifyAll: boolean; active: boolean }
@@ -85,7 +87,7 @@ export default function EscalationConfigCard({ unitId }: { unitId?: string | nul
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
       <div className="flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><GitBranch size={17} className="text-brand-600" />Escalonamento da chamada</h2>
+        <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><GitBranch size={17} className="text-brand-600" />Escalonamento da chamada<HelpHint {...opsHint('ESCALONAMENTO')} /></h2>
         <button onClick={load} disabled={loading} className="rounded p-1.5 text-gray-400 hover:bg-gray-100"><RefreshCw size={14} className={cn(loading && 'animate-spin')} /></button>
       </div>
 
@@ -99,6 +101,7 @@ export default function EscalationConfigCard({ unitId }: { unitId?: string | nul
             <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
               <input type="checkbox" checked={cfg.firstAcceptWins} onChange={(e) => { dirty(); setCfg({ ...cfg, firstAcceptWins: e.target.checked }) }} className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
               <span className="text-sm font-medium text-gray-800">O primeiro que aceitar assume</span>
+              <HelpHint text="Quando um nível chama várias pessoas ao mesmo tempo, quem aceitar primeiro fica com o cliente e as demais chamadas são encerradas." />
             </label>
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-700">Ao esgotar sem resposta</label>
@@ -128,7 +131,7 @@ export default function EscalationConfigCard({ unitId }: { unitId?: string | nul
                     <select value={l.targetType} onChange={(e) => setLevel(i, { targetType: e.target.value })} className={inputCls}>{TARGETS.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}</select>
                   </div>
                   <div>
-                    <label className="mb-0.5 block text-[11px] text-gray-500">Tempo (s) <RequiredMark /></label>
+                    <label className="mb-0.5 flex items-center gap-1 text-[11px] text-gray-500">Tempo (s) <RequiredMark /> <HelpHint text="Quantos segundos cada tentativa deste nível espera o aceite antes de tentar de novo ou passar para o próximo nível." /></label>
                     <input inputMode="numeric" value={l.timeoutSeconds} onChange={(e) => setLevel(i, { timeoutSeconds: Number(e.target.value) || 0 })} className={cn(inputCls, 'text-right')} />
                   </div>
                   <div>
@@ -136,7 +139,7 @@ export default function EscalationConfigCard({ unitId }: { unitId?: string | nul
                     <input inputMode="numeric" value={l.maxAttempts} onChange={(e) => setLevel(i, { maxAttempts: Number(e.target.value) || 1 })} className={cn(inputCls, 'text-right')} />
                   </div>
                   <div className="flex items-end gap-3 pb-1">
-                    <label className="flex cursor-pointer items-center gap-1.5 text-xs text-gray-700"><input type="checkbox" checked={l.notifyAll} onChange={(e) => setLevel(i, { notifyAll: e.target.checked })} className="h-3.5 w-3.5 rounded border-gray-300 text-brand-600" />notificar todos</label>
+                    <label className="flex cursor-pointer items-center gap-1.5 text-xs text-gray-700"><input type="checkbox" checked={l.notifyAll} onChange={(e) => setLevel(i, { notifyAll: e.target.checked })} className="h-3.5 w-3.5 rounded border-gray-300 text-brand-600" />notificar todos <HelpHint text="Chama todas as pessoas do nível de uma vez, em vez de uma por vez." /></label>
                     <label className="flex cursor-pointer items-center gap-1.5 text-xs text-gray-700"><input type="checkbox" checked={l.active} onChange={(e) => setLevel(i, { active: e.target.checked })} className="h-3.5 w-3.5 rounded border-gray-300 text-brand-600" />ativo</label>
                   </div>
                 </div>

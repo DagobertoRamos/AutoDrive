@@ -6,6 +6,7 @@
 // Apenas MASTER pode configurar. Tenants são redirecionados para /master/communication.
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Mail, Save, Eye, EyeOff, Loader2, CheckCircle2, AlertCircle, Send, Lock } from 'lucide-react'
@@ -162,7 +163,7 @@ export default function EmailConfigPage() {
       <div className="card">
         <div className="section-header">
           <Mail size={15} className="text-brand-700" />
-          <h2 className="text-sm font-semibold text-gray-800">Servidor SMTP</h2>
+          <h2 className="text-sm font-semibold text-gray-800">Servidor SMTP</h2><HelpHint className="ml-1" title="SMTP" text="Servidor de saída de e-mails do seu provedor (Gmail, Outlook, hospedagem). O sistema envia os e-mails da loja por ele." />
         </div>
         <div className="p-4 space-y-4">
           <div className="grid gap-4 sm:grid-cols-3">
@@ -176,7 +177,7 @@ export default function EmailConfigPage() {
               />
             </div>
             <div>
-              <label className="label">Porta <RequiredMark /></label>
+              <label className="label">Porta<HelpHint className="ml-1" title="Porta SMTP" text="Normalmente 587 (STARTTLS) ou 465 (SSL). Use a porta indicada pelo seu provedor de e-mail." /> <RequiredMark /></label>
               <input
                 type="number"
                 value={config.port}
@@ -199,7 +200,7 @@ export default function EmailConfigPage() {
               />
             </div>
             <div>
-              <label className="label">Senha / App Password {!hasPassword && <RequiredMark />}</label>
+              <label className="label">Senha / App Password<HelpHint className="ml-1" title="Senha de app" text="No Gmail e Outlook com verificação em duas etapas, gere uma senha de app nas configurações da conta e use aqui no lugar da senha normal." /> {!hasPassword && <RequiredMark />}</label>
               <div className="relative">
                 <input
                   value={config.password}
@@ -230,6 +231,7 @@ export default function EmailConfigPage() {
             <label htmlFor="secure" className="text-sm text-gray-700">
               Usar TLS/SSL (porta 465)
             </label>
+            <HelpHint className="ml-1" title="TLS/SSL" text="Marque só para a porta 465 (conexão já criptografada). Na porta 587 deixe desmarcado: a criptografia é negociada depois (STARTTLS)." />
           </div>
         </div>
       </div>
@@ -251,7 +253,7 @@ export default function EmailConfigPage() {
             />
           </div>
           <div>
-            <label className="label">E-mail do remetente</label>
+            <label className="label">E-mail do remetente<HelpHint className="ml-1" title="Remetente" text="Endereço que aparece no campo De: do e-mail. Muitos provedores exigem que seja o mesmo usuário autenticado acima, senão o e-mail cai no spam ou é recusado." /></label>
             <input
               value={config.fromEmail}
               onChange={(e) => set('fromEmail', e.target.value)}

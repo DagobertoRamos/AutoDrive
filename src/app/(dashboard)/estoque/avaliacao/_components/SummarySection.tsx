@@ -19,6 +19,8 @@ import {
   type EvaluationRuleContext, type PendingRequirement,
 } from '@/lib/evaluation/rules'
 import { FieldLabel, FieldError } from '@/components/ui/field'
+import { WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
 import { PhotoLightbox } from './PhotoLightbox'
 
 interface Seller {
@@ -207,7 +209,7 @@ export function SummarySection({ evaluationId, opcionais = [], onBack, onFinaliz
           <Fact label="Cor"       value={eval_?.color ?? '—'} />
           <Fact label="KM"        value={eval_?.km ? eval_.km.toLocaleString('pt-BR') : '—'} />
           <Fact label="Chassi"    value={eval_?.chassi ?? '—'} mono />
-          <Fact label="Renavam"   value={eval_?.renavam ?? '—'} mono />
+          <Fact label={<WithHint text={opsText('RENAVAM')}>Renavam</WithHint>}   value={eval_?.renavam ?? '—'} mono />
         </div>
       </div>
 
@@ -326,7 +328,7 @@ export function SummarySection({ evaluationId, opcionais = [], onBack, onFinaliz
           </ul>
         )}
         <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-          <span className="text-sm font-medium text-gray-800">Total estimado</span>
+          <span className="text-sm font-medium text-gray-800"><WithHint text="Soma dos valores estimados dos serviços marcados. É o custo previsto para preparar o carro antes da venda.">Total estimado</WithHint></span>
           <span className="text-lg font-bold text-brand-700">R$ {numberToBRLMask(totalServicesCost)}</span>
         </div>
       </div>
@@ -337,7 +339,7 @@ export function SummarySection({ evaluationId, opcionais = [], onBack, onFinaliz
           <User className="h-4 w-4 text-brand-600" />
           <h4 className="text-sm font-semibold text-gray-800">Atribuir ao vendedor</h4>
         </div>
-        <FieldLabel required htmlFor="assigned-seller">Vendedor responsável</FieldLabel>
+        <FieldLabel required htmlFor="assigned-seller" helpText="Vendedor que vai levar a proposta ao cliente e acompanhar a negociação desta avaliação.">Vendedor responsável</FieldLabel>
         <select
           id="assigned-seller"
           aria-invalid={!sellerId && !!error ? true : undefined}
@@ -385,7 +387,7 @@ export function SummarySection({ evaluationId, opcionais = [], onBack, onFinaliz
   )
 }
 
-function Fact({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Fact({ label, value, mono }: { label: React.ReactNode; value: string; mono?: boolean }) {
   return (
     <div>
       <p className="text-[10px] uppercase text-gray-500 font-medium tracking-wide">{label}</p>

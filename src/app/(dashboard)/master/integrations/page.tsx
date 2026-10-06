@@ -4,6 +4,7 @@
 // /master/integrations — Credenciais de integrações globais (MASTER only)
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSession }                        from 'next-auth/react'
 import { useRouter }                         from 'next/navigation'
@@ -347,7 +348,7 @@ function CredentialModal({
             />
             <span className="text-sm text-gray-700 flex items-center gap-1">
               <Star size={12} className="text-amber-500" />
-              Credencial padrão para este serviço
+              Credencial padrão para este serviço<HelpHint className="ml-1" title="Credencial padrão" text="Quando houver mais de uma credencial do mesmo serviço, o sistema usa esta por padrão." />
             </span>
           </label>
 
@@ -515,7 +516,7 @@ export default function IntegrationsPage() {
             <Plug size={18} className="text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Integrações Globais</h1>
+            <h1 className="text-xl font-bold text-gray-900">Integrações Globais<HelpHint className="ml-1" title="Integrações globais" text="Credenciais da plataforma, usadas pelo próprio sistema (ex.: IA, e-mail e serviços gerais). As credenciais de bancos e integrações de cada loja ficam na própria loja e o MASTER não as vê." /></h1>
             <p className="text-xs text-gray-400">{creds.length} credenciais cadastradas</p>
           </div>
         </div>

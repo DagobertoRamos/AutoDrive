@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2, Wrench, ChevronLeft, ChevronRight, CheckCircle2, Trash2 } from 'lucide-react'
 import { maskBRL, parseBRL, numberToBRLMask } from '@/lib/masks'
+import { HelpHint } from '@/components/ui/help-hint'
 
 interface ServiceCatalogItem {
   key:            string
@@ -167,6 +168,7 @@ export function ServicesSection({ evaluationId, readOnly, onBack, onComplete }: 
       <div className="flex items-center gap-2">
         <Wrench className="h-5 w-5 text-brand-600" />
         <h3 className="text-lg font-semibold text-gray-900">Serviços a executar</h3>
+        <HelpHint title="Serviços a executar" text="Serviços que o carro precisa para ser revendido (mecânica, funilaria, estética…). O custo estimado é considerado no valor oferecido ao cliente e vira a preparação do carro no estoque." />
       </div>
 
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}

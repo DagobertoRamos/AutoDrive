@@ -5,6 +5,7 @@
 import { Fragment, useEffect } from 'react'
 import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { cn } from '@/lib/utils'
+import { WithHint } from '@/components/ui/help-hint'
 import { COLORS, Kpi, Panel, StateBox, fmt, fmtDate, fmtPct, fmtShort, monthLabel, td, tdR, th, thR, useFinanceData } from './shared'
 import type { ReportViewProps } from './types'
 
@@ -37,7 +38,7 @@ export function MonthlyComparisonReport({ url, onData, registerCsv }: ReportView
         <Kpi label="Receitas (12 meses)" value={loading ? '—' : fmt(t?.receitas ?? 0)} tone="green" />
         <Kpi label="Despesas (12 meses)" value={loading ? '—' : fmt(t?.despesas ?? 0)} tone="red" />
         <Kpi label="Resultado" value={loading ? '—' : fmt(t?.resultado ?? 0)} tone={(t?.resultado ?? 0) < 0 ? 'red' : 'blue'} />
-        <Kpi label="Margem" value={loading ? '—' : fmtPct(t?.margem)} />
+        <Kpi label="Margem" helpTerm="MARGEM" value={loading ? '—' : fmtPct(t?.margem)} />
       </div>
       <Panel title="Receitas, despesas e resultado">
         <StateBox loading={loading} error={error} empty={!data?.rows.length} />
@@ -65,7 +66,7 @@ export function MonthlyComparisonReport({ url, onData, registerCsv }: ReportView
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50"><tr>
                 <th className={th}>Mês</th><th className={thR}>Receitas</th><th className={thR}>Despesas</th><th className={thR}>Resultado</th><th className={thR}>Margem</th>
-                {data.hasPrior && <><th className={thR}>Resultado ano anterior</th><th className={thR}>Var. receitas</th><th className={thR}>Var. resultado</th></>}
+                {data.hasPrior && <><th className={thR}>Resultado ano anterior</th><th className={thR}><WithHint text="Variação em % em relação ao mesmo mês do ano anterior.">Var. receitas</WithHint></th><th className={thR}>Var. resultado</th></>}
               </tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {data.rows.map((r) => (
@@ -120,7 +121,7 @@ export function BudgetReport({ url, onData, registerCsv }: ReportViewProps) {
         <Kpi label="Receitas realizadas" value={loading ? '—' : fmt(rcv?.actual ?? 0)} hint={rcv?.deviationPct != null ? `${signed(rcv.deviationPct)} do orçado` : undefined} tone={rcv && rcv.deviation < 0 ? 'red' : 'green'} />
       </div>
       {!loading && !error && data && data.monthly.length > 1 && data.hasBudget && (
-        <Panel title="Despesas: orçado × realizado por mês">
+        <Panel title="Despesas: orçado × realizado por mês" helpTerm="ORCADO_REALIZADO">
           <div className="h-64 p-2">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data.monthly.map((m) => ({ ...m, label: monthLabel(m.period) }))} margin={{ left: 8, right: 8 }}>
@@ -141,7 +142,7 @@ export function BudgetReport({ url, onData, registerCsv }: ReportViewProps) {
         {!loading && !error && !!data?.rows.length && (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50"><tr><th className={th}>Categoria</th><th className={thR}>Orçado</th><th className={thR}>Realizado</th><th className={thR}>Desvio</th><th className={thR}>Desvio %</th><th className={th}>Execução</th></tr></thead>
+              <thead className="bg-gray-50"><tr><th className={th}>Categoria</th><th className={thR}>Orçado</th><th className={thR}>Realizado</th><th className={thR}><WithHint text="Diferença entre o realizado e o orçado. Em vermelho quando é desfavorável: despesa acima do orçado ou receita abaixo.">Desvio</WithHint></th><th className={thR}>Desvio %</th><th className={th}>Execução</th></tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {data.rows.map((r, i) => {
                   const showHeader = i === 0 || data.rows[i - 1].kind !== r.kind
@@ -201,12 +202,12 @@ export function AgingReport({ url, onData, registerCsv }: ReportViewProps) {
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="A pagar em aberto" value={loading ? '—' : fmt(data?.totals.pagar.total ?? 0)} hint={data ? `${data.totals.pagar.count} lançamento(s)` : undefined} />
-        <Kpi label="A pagar vencido" value={loading ? '—' : fmt(data?.totals.pagar.vencido ?? 0)} tone="red" />
+        <Kpi label="A pagar vencido" helpTerm="VENCIDO" value={loading ? '—' : fmt(data?.totals.pagar.vencido ?? 0)} tone="red" />
         <Kpi label="A receber em aberto" value={loading ? '—' : fmt(data?.totals.receber.total ?? 0)} hint={data ? `${data.totals.receber.count} lançamento(s)` : undefined} />
         <Kpi label="A receber vencido" value={loading ? '—' : fmt(data?.totals.receber.vencido ?? 0)} tone="amber" />
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Panel title="Por faixa de vencimento">
+        <Panel title="Por faixa de vencimento" helpTerm="AGING">
           <StateBox loading={loading} error={error} empty={!data} />
           {!loading && !error && data && (
             <div className="h-64 p-2">

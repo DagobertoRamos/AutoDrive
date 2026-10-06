@@ -12,6 +12,8 @@
 //   • Observações e zona de perigo (exclusão)
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useCallback, useEffect, useState } from 'react'
 import { useSession }                        from 'next-auth/react'
 import { useRouter, useParams }              from 'next/navigation'
@@ -510,7 +512,7 @@ export default function TenantDetailPage() {
                 <UserRound size={18} className="text-amber-700" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-gray-900">Iniciar Impersonation</h3>
+                <h3 className="flex items-center gap-1 text-base font-bold text-gray-900">Iniciar Impersonation<HelpHint className="ml-1" title="Impersonation" text="Entrar no sistema como um usuário desta loja, para dar suporte vendo exatamente a tela dele. Tudo o que for feito fica registrado na auditoria." /></h3>
                 <p className="text-xs text-gray-400">{tenant?.name}</p>
               </div>
             </div>
@@ -614,7 +616,7 @@ export default function TenantDetailPage() {
 
       {/* ── Ações de status ──────────────────────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Ações de Status</p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Ações de Status<HelpHint className="ml-1" title="Status da loja" text="Suspender, Desativar e Cancelar bloqueiam o login de todos os usuários da loja. Desativar também inicia o prazo de guarda: os dados ficam guardados por 5 anos e depois são apagados (o MASTER é avisado antes). Reativar libera o acesso de novo." /></p>
         <div className="flex flex-wrap gap-2">
           {currentStatus !== 'ATIVO' && currentStatus !== 'TESTE' && (
             <button
@@ -733,7 +735,7 @@ export default function TenantDetailPage() {
               <Package size={15} className="text-brand-600" /> Plano
             </h2>
             <div>
-              <label className="text-xs font-medium text-gray-600 block mb-1">Plano contratado</label>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Plano contratado<HelpHint className="ml-1" {...opsHint('PLANO')} /></label>
               <select className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={form.plan} onChange={f('plan')}>
                 {PLAN_OPTIONS.map(p => <option key={p} value={p}>{PLAN_LABELS[p]}</option>)}
               </select>
@@ -744,7 +746,7 @@ export default function TenantDetailPage() {
                 <input type="number" min={1} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={form.maxUsers} onChange={fNum('maxUsers')} />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">Máx. veículos</label>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Máx. veículos<HelpHint className="ml-1" title="Limites" text="Limites desta loja: quantos usuários, veículos em estoque e unidades ela pode cadastrar. Podem ser diferentes do padrão do plano." /></label>
                 <input type="number" min={1} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={form.maxVehicles} onChange={fNum('maxVehicles')} />
               </div>
               <div>

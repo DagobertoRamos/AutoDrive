@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 import type { PendencyAutoArchiveUnit, PendencySettings } from '@/lib/pendencies/settings'
 
 type AutoArchive = PendencySettings['autoArchive']
@@ -196,6 +197,7 @@ export function PendencyGeneralSettings() {
           <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900">
             <Archive size={18} className="text-brand-600" />
             Arquivamento automático
+            <HelpHint text="Pendências finalizadas saem sozinhas da lista principal depois do tempo definido. Continuam guardadas no histórico." />
           </h2>
         </div>
 
@@ -260,6 +262,7 @@ export function PendencyGeneralSettings() {
                   className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 disabled:cursor-not-allowed"
                 />
                 <span className="text-sm text-gray-700">Somente após aprovação da gerência</span>
+                <HelpHint text="Só arquiva pendências cuja conclusão já foi aprovada pela gerência." />
               </label>
 
               <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
@@ -271,6 +274,7 @@ export function PendencyGeneralSettings() {
                   className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 disabled:cursor-not-allowed"
                 />
                 <span className="text-sm text-gray-700">Ignorar pendências reabertas</span>
+                <HelpHint text="Pendências que já foram reabertas alguma vez não são arquivadas automaticamente." />
               </label>
             </div>
 
@@ -280,18 +284,19 @@ export function PendencyGeneralSettings() {
                 <label className="flex items-center gap-3">
                   <input type="checkbox" checked={slaEngine.enabled} onChange={(e) => setSlaEngine('enabled', e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
                   <span className="text-sm font-semibold text-gray-800">Pop-up de prazo para Alta/Urgente (motor de SLA)</span>
+                  <HelpHint text="Em pendências Alta e Urgente, o responsável vê um aviso na tela e precisa se comprometer com um prazo. Se o prazo estourar, o sistema volta a cobrar automaticamente." title="Motor de SLA" />
                 </label>
                 <div className={cn('grid grid-cols-1 gap-4 sm:grid-cols-3', !slaEngine.enabled && 'opacity-55')}>
                   <div>
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Máx. de adiamentos</label>
+                    <label className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Máx. de adiamentos <HelpHint text="Quantas vezes o responsável pode adiar o pop-up de compromisso de prazo antes de ser obrigado a responder." /></label>
                     <input type="number" min={0} max={20} disabled={!slaEngine.enabled} className={inputClass} value={slaEngine.maxDefer} onChange={(e) => setSlaEngine('maxDefer', Math.max(0, Number(e.target.value) || 0))} />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Intervalo de cobrança (h)</label>
+                    <label className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Intervalo de cobrança (h) <HelpHint text="Tempo mínimo, em horas, entre uma cobrança e a próxima depois que o prazo combinado já passou." /></label>
                     <input type="number" min={1} max={168} disabled={!slaEngine.enabled} className={inputClass} value={slaEngine.chargeIntervalHours} onChange={(e) => setSlaEngine('chargeIntervalHours', Math.max(1, Number(e.target.value) || 1))} />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Reaparecer após (h ocioso)</label>
+                    <label className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Reaparecer após (h ocioso) <HelpHint text="Pendência urgente sem nenhuma atividade por esse número de horas faz o pop-up de prazo aparecer de novo." /></label>
                     <input type="number" min={1} max={168} disabled={!slaEngine.enabled} className={inputClass} value={slaEngine.staleHours} onChange={(e) => setSlaEngine('staleHours', Math.max(1, Number(e.target.value) || 1))} />
                   </div>
                 </div>

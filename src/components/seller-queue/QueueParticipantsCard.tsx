@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
+import { WithHint } from '@/components/ui/help-hint'
 import { Users, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -111,7 +112,7 @@ export default function QueueParticipantsCard() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="sticky left-0 z-10 bg-gray-50 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">Colaborador</th>
-                {COLS.map((c) => <th key={c.key} title={c.title} className="px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500">{c.label}</th>)}
+                {COLS.map((c) => <th key={c.key} className="px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500"><WithHint text={c.title}>{c.label}</WithHint></th>)}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">

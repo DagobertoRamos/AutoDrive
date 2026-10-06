@@ -12,6 +12,8 @@ import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
 import { CRM_REQUIRABLE_FIELDS, CRM_STAGE_OPTIONS } from '@/lib/crm/shared'
 import type { Pipeline, PipelineStage } from '@/lib/crm/pipelines-core'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const NEW_ID = '__new__'
@@ -132,7 +134,7 @@ export default function PipelinesTab({ canManage }: { canManage: boolean }) {
       {/* Lista de funis */}
       <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-card">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900">Funis</h2>
+          <h2 className="text-sm font-semibold text-gray-900"><WithHint text={opsText('FUNIL')}>Funis</WithHint></h2>
           <button onClick={() => void load(draft?.id)} className="text-gray-400 hover:text-gray-700" title="Atualizar"><RefreshCw size={13} className={cn(loading && 'animate-spin')} /></button>
         </div>
         {loading && !pipelines.length ? (
@@ -183,7 +185,7 @@ export default function PipelinesTab({ canManage }: { canManage: boolean }) {
             )}
           </div>
 
-          <h3 className="mt-5 text-sm font-semibold text-gray-900">Etapas</h3>
+          <h3 className="mt-5 flex items-center gap-1 text-sm font-semibold text-gray-900">Etapas<HelpHint title="Etapas e status" text="Cada etapa é uma coluna do Kanban. O status liga a etapa à situação do lead (em andamento, convertido, perdido…), usada em relatórios e automações. 'Exigir p/ entrar' obriga preencher os campos marcados antes de mover o lead para a etapa." /></h3>
 
           <ul className="mt-3 space-y-2">
             {draft.stages.map((s, i) => (

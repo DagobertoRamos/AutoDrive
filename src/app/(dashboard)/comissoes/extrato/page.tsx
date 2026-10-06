@@ -8,6 +8,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { DollarSign, RefreshCw, Download, TrendingUp, TrendingDown } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import ExtratoDetalheModal, { type ExtratoEntry } from '@/components/comissoes/ExtratoDetalheModal'
 
 interface CommissionEntry {
@@ -105,7 +107,7 @@ export default function ExtratoComisoesPage() {
           { label: 'Total Final',     value: totalValue,icon: DollarSign, color: 'text-brand-700 bg-brand-50 border-brand-200' },
         ].map((c) => (
           <div key={c.label} className={cn('rounded-xl border p-4', c.color)}>
-            <p className="text-xs font-medium uppercase tracking-wide opacity-70">{c.label}</p>
+            <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide opacity-70">{c.label}{c.label === 'Total Base' && <HelpHint {...DEAL_HINTS.VALOR_BASE} />}{c.label === 'Ajustes' && <HelpHint {...DEAL_HINTS.AJUSTES} />}</p>
             <p className="mt-1 text-2xl font-bold tabular-nums">{loading ? '—' : fmt(c.value)}</p>
           </div>
         ))}
@@ -143,7 +145,7 @@ export default function ExtratoComisoesPage() {
             <thead className="bg-gray-50">
               <tr>
                 {['Vendedor','Período','Base','Ajustes','Total Final','Status','Pago em'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 whitespace-nowrap">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 whitespace-nowrap"><span className="inline-flex items-center gap-1">{h}{h === 'Status' && <HelpHint {...DEAL_HINTS.COMISSAO_STATUS} />}</span></th>
                 ))}
               </tr>
             </thead>

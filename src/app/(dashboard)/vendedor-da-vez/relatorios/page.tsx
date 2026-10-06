@@ -10,6 +10,15 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { BarChart3, RefreshCw, AlertTriangle, Filter, Download, Building2, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
+
+const REPORT_HINTS: Record<string, string> = {
+  Recorrentes: 'Clientes que já tinham sido atendidos antes e voltaram à loja no período.',
+  Timeouts: 'Chamadas que expiraram sem o vendedor aceitar no tempo de aceite. A vez passou para o próximo.',
+  'Tempo médio aceite': 'Tempo médio entre a chamada e o aceite do vendedor.',
+  Conformidade: 'Pontos descontados no ranking por chamadas perdidas por tempo (timeout) e por fraudes confirmadas (ou em revisão, conforme a configuração).',
+}
 import AtendimentosPanel from '@/components/seller-queue/AtendimentosPanel'
 
 interface Seller { sellerId: string; sellerName: string; finished: number; timeouts: number; rejected: number; called: number; avgAcceptSeconds: number | null; compliancePoints?: number; complianceTimeouts?: number; complianceConfirmedFrauds?: number; compliancePendingFrauds?: number }
@@ -164,7 +173,7 @@ export default function RelatoriosPage() {
           {/* Totais */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             {[['Clientes', t?.arrivals], ['Recorrentes', t?.recurring], ['Atendimentos', t?.attendances], ['Finalizados', t?.finished], ['Timeouts', t?.timeouts]].map(([l, v]) => (
-              <div key={l as string} className="rounded-xl border border-gray-200 bg-white p-3 shadow-card"><p className="text-xs uppercase tracking-wide text-gray-400">{l}</p><p className="mt-1 text-xl font-bold tabular-nums text-gray-900">{loading ? '—' : (v ?? 0)}</p></div>
+              <div key={l as string} className="rounded-xl border border-gray-200 bg-white p-3 shadow-card"><p className="text-xs uppercase tracking-wide text-gray-400">{REPORT_HINTS[l as string] ? <WithHint text={REPORT_HINTS[l as string]}>{l}</WithHint> : l}</p><p className="mt-1 text-xl font-bold tabular-nums text-gray-900">{loading ? '—' : (v ?? 0)}</p></div>
             ))}
           </div>
 
@@ -174,6 +183,7 @@ export default function RelatoriosPage() {
                 <p className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                   <AlertTriangle size={15} className="text-amber-500" />
                   Conformidade da fila
+                  <HelpHint {...opsHint('CONFORMIDADE')} />
                 </p>
               </div>
               <div className="grid gap-3 p-4 md:grid-cols-3">
@@ -253,7 +263,7 @@ export default function RelatoriosPage() {
                 </div>
               </div>
               <div className="border-t border-amber-100 px-4 py-4">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Prioridade de atuação</p>
+                <p className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">Prioridade de atuação <HelpHint text="Vendedores ordenados por risco, calculado pela quantidade de casos, confirmações, gravidade alta e pontos de conformidade. Crítico a partir de 30, Alto 20, Moderado 10." /></p>
                 {(compliance.riskBySeller ?? []).length === 0 ? (
                   <p className="mt-3 text-sm text-gray-500">Sem vendedores com risco relevante no período.</p>
                 ) : (
@@ -322,7 +332,7 @@ export default function RelatoriosPage() {
             <div className="border-b border-gray-100 px-4 py-2.5"><p className="flex items-center gap-2 text-sm font-semibold text-gray-700"><Users size={15} className="text-brand-600" />Por vendedor</p></div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50"><tr>{['Vendedor', 'Chamados', 'Finalizados', 'Timeouts', 'Recusas', 'Tempo médio aceite', 'Conformidade'].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+                <thead className="bg-gray-50"><tr>{['Vendedor', 'Chamados', 'Finalizados', 'Timeouts', 'Recusas', 'Tempo médio aceite', 'Conformidade'].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h === 'Tempo médio aceite' || h === 'Conformidade' ? <WithHint text={REPORT_HINTS[h]}>{h}</WithHint> : h}</th>))}</tr></thead>
                 <tbody className="divide-y divide-gray-100">
                   {(data?.bySeller ?? []).length === 0 ? (<tr><td colSpan={7} className="py-10 text-center text-sm text-gray-400">Sem dados no período.</td></tr>)
                   : data!.bySeller.map((s) => (

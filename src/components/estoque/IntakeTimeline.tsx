@@ -8,6 +8,8 @@
 
 import { Check, Clock } from 'lucide-react'
 import { daysBetween, intakeState, intakeTimeline, type IntakePendency } from '@/lib/stock/intake-core'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
+import { opsHint, opsText } from '@/lib/glossary-ops'
 
 export function IntakeTimeline({ entryDate, pendencies, photosAt, stockStatus, onGoToPendencies }: {
   entryDate:   string | null
@@ -26,10 +28,10 @@ export function IntakeTimeline({ entryDate, pendencies, photosAt, stockStatus, o
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-gray-900">Esteira de entrada</p>
+          <p className="inline-flex items-center gap-1 text-sm font-semibold text-gray-900">Esteira de entrada <HelpHint {...opsHint('ESTEIRA')} /></p>
           <p className="text-xs text-gray-500">
             {state.missingGates.length
-              ? `Falta: ${state.missingGates.join(', ')}.`
+              ? <WithHint text={opsText('PORTAO')}>{`Falta: ${state.missingGates.join(', ')}.`}</WithHint>
               : state.servicesOpen
                 ? 'Em serviço (site: “Em breve”).'
                 : 'Entrada concluída.'}
@@ -38,7 +40,7 @@ export function IntakeTimeline({ entryDate, pendencies, photosAt, stockStatus, o
         <div className="flex items-center gap-2">
           {inStock != null && (
             <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
-              <Clock size={12} /> {inStock} dia(s) desde a entrada
+              <Clock size={12} /> {inStock} dia(s) desde a entrada <HelpHint {...opsHint('DIAS_PARADO')} size={12} />
             </span>
           )}
           {onGoToPendencies && state.missingGates.length > 0 && (

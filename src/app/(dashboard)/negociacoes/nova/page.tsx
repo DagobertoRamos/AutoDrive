@@ -15,6 +15,8 @@ import { formatPhone, normalizePhone, isValidPhone } from '@/lib/br-docs/phone'
 import { formatCEP, normalizeCEP, isCEPComplete } from '@/lib/br-docs/cep'
 import { BankCombo } from '@/components/forms/BankCombo'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { isValidPlate, normalizePlate, formatPlate } from '@/lib/vehicles/plate'
 import { draftTitle } from '@/lib/negotiation-drafts'
 import {
@@ -484,15 +486,18 @@ function Field({
   label,
   required,
   children,
+  help,
 }: {
   label: string
   required?: boolean
   children: React.ReactNode
+  /** "?" com a explicação do termo (HelpHint). */
+  help?: React.ReactNode
 }) {
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-gray-700">
-        {label} {required && <RequiredMark />}
+      <label className="mb-1 flex items-center gap-1 text-sm font-medium text-gray-700">
+        {label} {required && <RequiredMark />}{help}
       </label>
       {children}
     </div>
@@ -1931,7 +1936,7 @@ function VehicleFormBlock({
       {showValuation ? (
         <>
           <div className="grid grid-cols-3 gap-4">
-            <Field label="Valor Avaliado (R$)">
+            <Field label="Valor Avaliado (R$)" help={<HelpHint {...DEAL_HINTS.VALOR_AVALIADO} size={12} />}>
               <input
                 className={inputCls}
                 placeholder="0,00"
@@ -1939,7 +1944,7 @@ function VehicleFormBlock({
                 onChange={(e) => onChange('evaluatedValue', maskBRLInput(e.target.value))}
               />
             </Field>
-            <Field label="Tabela FIPE (R$)">
+            <Field label="Tabela FIPE (R$)" help={<HelpHint term="FIPE" size={12} />}>
               <input
                 className={inputCls}
                 placeholder="0,00"
@@ -1947,7 +1952,7 @@ function VehicleFormBlock({
                 onChange={(e) => onChange('fipeValue', maskBRLInput(e.target.value))}
               />
             </Field>
-            <Field label="Valor Aceito (R$)">
+            <Field label="Valor Aceito (R$)" help={<HelpHint {...DEAL_HINTS.VALOR_ACORDADO} size={12} />}>
               <input
                 className={inputCls}
                 placeholder="0,00"
@@ -1977,7 +1982,7 @@ function VehicleFormBlock({
                   placeholder="Buscar banco..."
                 />
               </Field>
-              <Field label="Valor de Quitação (R$)">
+              <Field label="Valor de Quitação (R$)" help={<HelpHint {...DEAL_HINTS.QUITACAO} size={12} />}>
                 <input
                   className={inputCls}
                   placeholder="0,00"
@@ -2500,7 +2505,7 @@ function StepVeiculos({
                   </label>
                   {form.tradeVehicle.hasFinancing && (
                     <div className="grid grid-cols-2 gap-3">
-                      <Field label="Valor da quitação">
+                      <Field label="Valor da quitação" help={<HelpHint {...DEAL_HINTS.QUITACAO} size={12} />}>
                         <input
                           className={inputCls}
                           inputMode="numeric"
@@ -2573,7 +2578,7 @@ function StepVeiculos({
                   </label>
                   {x.hasFinancing && (
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      <Field label="Valor da quitação">
+                      <Field label="Valor da quitação" help={<HelpHint {...DEAL_HINTS.QUITACAO} size={12} />}>
                         <input className={inputCls} inputMode="numeric" placeholder="0,00" value={x.payoffValue} onChange={(e) => updTrade(x.key, { payoffValue: maskBRLInput(e.target.value) })} />
                       </Field>
                       <Field label="Banco">
@@ -2708,7 +2713,7 @@ function StepVeiculos({
                       placeholder="Buscar banco..."
                     />
                   </Field>
-                  <Field label="Valor de Quitação (R$)">
+                  <Field label="Valor de Quitação (R$)" help={<HelpHint {...DEAL_HINTS.QUITACAO} size={12} />}>
                     <input
                       className={inputCls}
                       placeholder="0,00"
@@ -2801,9 +2806,9 @@ function StepVeiculos({
             <VehicleFormBlock data={form.vehicle} onChange={setVehicleField} showValuation={false} lockValue={lockVehicleValue} />
           </div>
           <div className="border-t border-gray-200 pt-6 space-y-4">
-            <h3 className="font-semibold text-gray-900">Parâmetros da Consignação</h3>
+            <h3 className="flex items-center gap-1.5 font-semibold text-gray-900">Parâmetros da Consignação<HelpHint {...DEAL_HINTS.CONSIGNACAO} /></h3>
             <div className="grid grid-cols-3 gap-4">
-              <Field label="Valor Mínimo ao Proprietário (R$)" required>
+              <Field label="Valor Mínimo ao Proprietário (R$)" required help={<HelpHint {...DEAL_HINTS.CONSIG_MINIMO} size={12} />}>
                 <input
                   className={inputCls}
                   placeholder="0,00"
@@ -2811,7 +2816,7 @@ function StepVeiculos({
                   onChange={(e) => setField('consignMinValue', maskBRLInput(e.target.value))}
                 />
               </Field>
-              <Field label="Comissão da Loja (%)">
+              <Field label="Comissão da Loja (%)" help={<HelpHint {...DEAL_HINTS.CONSIG_COMISSAO} size={12} />}>
                 <input className={inputCls} placeholder="10" type="number" min="0" max="100" value={form.consignCommPct} onChange={fi('consignCommPct')} />
               </Field>
               <Field label="Prazo (dias)">
@@ -2963,7 +2968,7 @@ function StepDebitos({
 
   return (
     <div>
-      <h2 className="mb-5 text-lg font-semibold text-gray-900">Débitos</h2>
+      <h2 className="mb-5 flex items-center gap-1.5 text-lg font-semibold text-gray-900">Débitos<HelpHint {...DEAL_HINTS.DEBITOS} /></h2>
 
       {form.debts.length === 0 && !adding && (
         <div className="flex items-center gap-2 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-400 justify-center mb-4">
@@ -3022,7 +3027,7 @@ function StepDebitos({
                 {DEBT_TYPES.map((dt) => <option key={dt.value} value={dt.value}>{dt.label}</option>)}
               </select>
             </Field>
-            <Field label="Responsável">
+            <Field label="Responsável" help={<HelpHint {...DEAL_HINTS.RESPONSAVEL_DEBITO} size={12} />}>
               <select className={inputCls} value={draft.responsavel} onChange={(e) => setDraftField('responsavel', e.target.value)}>
                 {DEBT_RESPONSAVEL.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
@@ -3292,7 +3297,7 @@ function PaymentModal({
               </select>
             </Field>
             {isSignal && (
-              <Field label="Forma do sinal / entrada" required>
+              <Field label="Forma do sinal / entrada" required help={<HelpHint {...DEAL_HINTS.SINAL} size={12} />}>
                 <select className={inputCls} value={entry.signalMethod ?? ''} onChange={(e) => update('signalMethod', e.target.value)}>
                   <option value="">Selecione</option>
                   {SIGNAL_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
@@ -3433,7 +3438,7 @@ function PaymentModal({
 
           {/* Retorno (%) da financeira — só F&I/gerente/financeiro/master */}
           {needsBank && canEditFichaFields && (
-            <Field label="Retorno da financeira (%)">
+            <Field label="Retorno da financeira (%)" help={<HelpHint {...DEAL_HINTS.PERCENTUAL_RETORNO} size={12} />}>
               <input
                 className={inputCls}
                 inputMode="decimal"
@@ -3533,7 +3538,7 @@ function ChangeModal({
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
             Valor excedente: <strong>{fmtBRL(excedente)}</strong>
           </div>
-          <Field label="Valor do Troco (R$)" required>
+          <Field label="Valor do Troco (R$)" required help={<HelpHint {...DEAL_HINTS.TROCO} size={12} />}>
             <input
               className={inputCls}
               inputMode="numeric"

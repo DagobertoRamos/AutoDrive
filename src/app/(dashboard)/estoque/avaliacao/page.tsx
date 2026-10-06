@@ -23,6 +23,8 @@ import { parseBRL, maskKM, parseKM, numberToBRLMask } from '@/lib/masks'
 import { StepCliente, type CustomerLite } from './_components/StepCliente'
 import { EvaluationSections } from './_components/EvaluationSections'
 import { FieldLabel, FieldError } from '@/components/ui/field'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
 import { isEmptyValue } from '@/lib/evaluation/rules'
 import { StepDocumentoVeiculo, type ExtractionSource } from './_components/StepDocumentoVeiculo'
 import type { ExtractedVehicle, ExtractionConfidence } from '@/lib/crlv/parser'
@@ -289,14 +291,16 @@ const selectCls = inputCls
  * renderiza "Nome *" + etiqueta "Obrigatório" no token semântico de erro,
  * conforme o padrão único definido em @/components/ui/field.
  */
-function Field({ label, required, hint, badge, error, htmlFor, children }: {
+function Field({ label, required, hint, helpText, badge, error, htmlFor, children }: {
   label: string; required?: boolean; hint?: string; badge?: React.ReactNode
+  /** Texto do "?" ao lado do rótulo (termos técnicos). */
+  helpText?: string
   error?: string; htmlFor?: string; children: React.ReactNode
 }) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-start justify-between gap-2">
-        <FieldLabel required={required} htmlFor={htmlFor}>{label}</FieldLabel>
+        <FieldLabel required={required} htmlFor={htmlFor} helpText={helpText}>{label}</FieldLabel>
         {badge}
       </div>
       {children}
@@ -311,14 +315,18 @@ function Grid({ cols = 3, children }: { cols?: 2 | 3 | 4; children: React.ReactN
   return <div className={`grid grid-cols-1 gap-4 ${colMap[cols]}`}>{children}</div>
 }
 
-function Section({ title, icon, children }: {
-  title: string; icon?: React.ReactNode; children: React.ReactNode
+function Section({ title, icon, help, children }: {
+  title: string; icon?: React.ReactNode
+  /** Texto do "?" ao lado do título da seção. */
+  help?: { text: string; title?: string }
+  children: React.ReactNode
 }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
         {icon && <span className="text-brand-600">{icon}</span>}
         <h3 className="font-semibold text-gray-800">{title}</h3>
+        {help && <HelpHint text={help.text} title={help.title ?? title} />}
       </div>
       {children}
     </div>
@@ -1502,7 +1510,7 @@ function AvaliacaoForm() {
           ────────────────────────────────────────────────────────────────── */}
           <Section title="Identificação">
             <Grid cols={2}>
-              <Field label="Renavam" badge={getFieldBadge('renavam', renavam)}>
+              <Field label="Renavam" helpText={opsText('RENAVAM')} badge={getFieldBadge('renavam', renavam)}>
                 <input
                   value={renavam}
                   onChange={(e) => setRenavam(e.target.value.replace(/\D/g, '').slice(0, 11))}
@@ -1511,7 +1519,7 @@ function AvaliacaoForm() {
                   inputMode="numeric"
                 />
               </Field>
-              <Field label="Chassi" badge={getFieldBadge('chassis', chassi)}>
+              <Field label="Chassi" helpText="Número de identificação do veículo, com 17 caracteres, gravado na estrutura do carro e impresso no CRLV." badge={getFieldBadge('chassis', chassi)}>
                 <input
                   value={chassi}
                   onChange={(e) => setChassi(e.target.value.toUpperCase().slice(0, 17))}
@@ -1592,7 +1600,7 @@ function AvaliacaoForm() {
                   placeholder="45.000"
                 />
               </Field>
-              <Field label="Condição" required>
+              <Field label="Condição" required helpText="0 km: carro novo, nunca emplacado. Seminovo: usado recente e com pouca rodagem. Usado: demais carros.">
                 <select className={selectCls} value={conditionType} onChange={(e) => setConditionType(e.target.value)}>
                   <option value="">Selecione</option>
                   <option value="ZERO_KM">0 km</option>
@@ -1629,18 +1637,18 @@ function AvaliacaoForm() {
               ver o valor.
           ────────────────────────────────────────────────────────────────── */}
           {(fipeCode || fipeValue) && (
-            <Section title="FIPE detectada" icon={<DollarSign className="h-5 w-5" />}>
+            <Section title="FIPE detectada" icon={<DollarSign className="h-5 w-5" />} help={{ title: 'FIPE', text: 'Preço médio de mercado do veículo, pela tabela FIPE do mês. Encontrada automaticamente pela placa ou pela marca/modelo/ano escolhidos.' }}>
               <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 px-4 py-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div>
                   <p className="text-[10px] uppercase tracking-wide text-emerald-700">Valor FIPE</p>
                   <p className="text-base font-bold text-emerald-800">{fipeValue ? `R$ ${fipeValue}` : '—'}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide text-emerald-700">Código FIPE</p>
+                  <p className="text-[10px] uppercase tracking-wide text-emerald-700"><WithHint text="Código do modelo/versão na tabela FIPE. Usado para buscar o preço e o histórico.">Código FIPE</WithHint></p>
                   <p className="font-mono text-sm text-emerald-900">{fipeCode || '—'}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide text-emerald-700">Mês ref.</p>
+                  <p className="text-[10px] uppercase tracking-wide text-emerald-700"><WithHint text="Mês da tabela FIPE de onde veio o valor. A FIPE é atualizada todo mês.">Mês ref.</WithHint></p>
                   <p className="text-sm text-emerald-900">{fipeMonth || '—'}</p>
                 </div>
                 <div>
@@ -1846,7 +1854,7 @@ function AvaliacaoForm() {
                 <div><span className="text-xs text-gray-400">Marca/Modelo</span><p className="font-medium">{(combo.brandName || manualBrand || lookupData?.brand || '—')} {(combo.modelName || manualModel || lookupData?.model || '')}</p></div>
                 <div><span className="text-xs text-gray-400">Ano</span><p className="font-medium">{year || '—'}</p></div>
                 <div><span className="text-xs text-gray-400">KM</span><p className="font-medium">{km ? Number(km).toLocaleString('pt-BR') + ' km' : '—'}</p></div>
-                <div><span className="text-xs text-gray-400">FIPE</span><p className="font-medium">{fipeValue ? `R$ ${Number(fipeValue).toLocaleString('pt-BR')}` : '—'}</p></div>
+                <div><span className="text-xs text-gray-400"><WithHint term="FIPE">FIPE</WithHint></span><p className="font-medium">{fipeValue ? `R$ ${Number(fipeValue).toLocaleString('pt-BR')}` : '—'}</p></div>
                 <div><span className="text-xs text-gray-400">Cliente</span><p className="font-medium">{customer?.name ?? ownerName ?? '—'}</p></div>
               </div>
             </div>

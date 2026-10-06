@@ -11,6 +11,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Trophy, Save, RefreshCw, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { RequiredMark } from '@/components/ui/field'
 
@@ -92,7 +94,7 @@ export default function BonusPeriodoCard() {
     <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Trophy size={17} className="text-brand-600" />Bônus de período</h2>
+          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Trophy size={17} className="text-brand-600" />Bônus de período<HelpHint {...DEAL_HINTS.BONUS_PERIODO} /></h2>
         </div>
         <button onClick={load} disabled={loading} className="rounded p-1.5 text-gray-400 hover:bg-gray-100"><RefreshCw size={14} className={cn(loading && 'animate-spin')} /></button>
       </div>

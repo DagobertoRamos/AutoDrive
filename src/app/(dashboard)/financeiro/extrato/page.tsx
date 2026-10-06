@@ -141,7 +141,7 @@ function StatementPage() {
       <div className="space-y-4">
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <KpiCard label="Saldo anterior" loading={loading && !data} value={brl(data?.openingBalance)} />
+          <KpiCard label="Saldo anterior" helpText="Saldo da conta no fim do dia anterior ao período escolhido. O extrato parte desse valor." loading={loading && !data} value={brl(data?.openingBalance)} />
           <KpiCard label="Entradas" loading={loading && !data} value={brl(data?.totalIn)} tone="in" />
           <KpiCard label="Saídas" loading={loading && !data} value={brl(data?.totalOut)} tone="out" />
           <KpiCard label="Saldo final" loading={loading && !data} value={brl(data?.closingBalance)} tone={(data?.closingBalance ?? 0) < 0 ? 'alert' : 'default'} />

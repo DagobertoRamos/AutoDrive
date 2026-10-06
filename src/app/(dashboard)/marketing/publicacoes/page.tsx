@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, CalendarClock, CheckCircle2, Clapperboard, Download, Eye, FileText, ImagePlus, Info, Loader2, Play, Plus, RefreshCw, RotateCcw, Send, Trash2, TrendingUp, Wand2, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, CalendarClock, CheckCircle2, Clapperboard, Download, Eye, FileText, ImagePlus, Loader2, Play, Plus, RefreshCw, RotateCcw, Send, Trash2, TrendingUp, Wand2, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, ChannelMark, DOT, Drawer, ErrorNote, PubTabs, STATUS_LABEL, STATUS_TONE } from '@/components/publications/ui'
 import { PublicationDetail } from '@/components/publications/PublicationDetail'
@@ -24,6 +24,7 @@ import type { PreviewFormat } from '@/components/publications/PostPreview'
 import { BOARD_COLUMNS, COLUMN_INFO, type BoardColumn } from '@/lib/publications/board-core'
 import type { BoardCard, BoardChannel } from '@/app/api/publications/board/route'
 import { isSocialChannel } from '@/lib/publications/channels'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const COL_STYLE: Record<BoardColumn, { bar: string; badge: string; icon: LucideIcon }> = {
@@ -187,8 +188,8 @@ export default function PainelPage() {
             <Kpi icon={CheckCircle2} tone="text-green-700 bg-green-50" label="Publicados" sub={`últimos ${data.keepDays ?? 5} dias (depois, só no Histórico)`} value={k.publicados7} />
             <Kpi icon={CalendarClock} tone="text-sky-700 bg-sky-50" label="Agendados" sub={k.proximo ? `Próximo: ${whenLabel(k.proximo.when, tz)} · ${k.proximo.title}` : 'próximos 7 dias'} value={k.agendados7} />
             <Kpi icon={Send} tone="text-indigo-700 bg-indigo-50" label="Publicando agora" sub="na fila ou processando" value={k.publicando} />
-            <Kpi icon={AlertTriangle} tone={k.atencao ? 'text-red-700 bg-red-50' : 'text-gray-500 bg-gray-50'} label="Precisam de atenção" sub={k.atencao ? 'erro ou ação da loja' : 'tudo certo'} value={k.atencao} onClick={k.atencao ? () => document.getElementById('col-atencao')?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }) : undefined} />
-            <Kpi icon={TrendingUp} tone="text-brand-700 bg-brand-50" label="Taxa de sucesso" sub={`${k.conectados} canal(is) conectado(s)${k.pausados ? ` · ${k.pausados} pausado(s)` : ''}`} value={k.sucesso == null ? '—' : `${k.sucesso}%`} className="col-span-2 lg:col-span-1" />
+            <Kpi icon={AlertTriangle} tone={k.atencao ? 'text-red-700 bg-red-50' : 'text-gray-500 bg-gray-50'} label="Precisam de atenção" help="Publicações com erro no canal ou que esperam uma ação da loja (reconectar conta, completar dados, trocar fotos)." sub={k.atencao ? 'erro ou ação da loja' : 'tudo certo'} value={k.atencao} onClick={k.atencao ? () => document.getElementById('col-atencao')?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }) : undefined} />
+            <Kpi icon={TrendingUp} tone="text-brand-700 bg-brand-50" label="Taxa de sucesso" help="Dos envios dos últimos 7 dias, quantos foram publicados sem erro (publicados ÷ publicados + falhas)." sub={`${k.conectados} canal(is) conectado(s)${k.pausados ? ` · ${k.pausados} pausado(s)` : ''}`} value={k.sucesso == null ? '—' : `${k.sucesso}%`} className="col-span-2 lg:col-span-1" />
           </div>
 
           {/* Quadro */}
@@ -204,7 +205,7 @@ export default function PainelPage() {
                     <st.icon size={14} className="text-gray-500" />
                     <h2 className="flex-1 text-xs font-semibold uppercase tracking-wide text-gray-700">{COLUMN_INFO[col].label}</h2>
                     <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', st.badge)}>{total}</span>
-                    <span title={COLUMN_INFO[col].hint} className="text-gray-400"><Info size={13} /></span>
+                    <HelpHint title={COLUMN_INFO[col].label} text={COLUMN_INFO[col].hint} />
                   </header>
                   <div className="flex max-h-[68vh] min-h-[120px] flex-col gap-2 overflow-y-auto px-2 pb-2">
                     {!cards.length && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{col === 'atencao' ? 'Nenhum problema. 👍' : col === 'rascunhos' ? 'Nenhum rascunho.' : col === 'publicando' ? 'Nada saindo agora.' : 'Nada por aqui.'}</p>}
@@ -226,14 +227,14 @@ export default function PainelPage() {
   )
 }
 
-function Kpi({ icon: Icon, tone, label, sub, value, onClick, className }: { icon: LucideIcon; tone: string; label: string; sub: string; value: number | string; onClick?: () => void; className?: string }) {
+function Kpi({ icon: Icon, tone, label, sub, value, onClick, className, help }: { icon: LucideIcon; tone: string; label: string; sub: string; value: number | string; onClick?: () => void; className?: string; help?: string }) {
   const Tag = onClick ? 'button' : 'div'
   return (
     <Tag onClick={onClick} className={cn('flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-3 text-left', onClick && 'hover:border-red-300', className)}>
       <span className={cn('rounded-lg p-2', tone)}><Icon size={16} /></span>
       <span className="min-w-0">
         <span className="block text-2xl font-bold leading-tight text-gray-900">{value}</span>
-        <span className="block text-xs font-medium text-gray-700">{label}</span>
+        <span className="block text-xs font-medium text-gray-700">{help ? <WithHint text={help}>{label}</WithHint> : label}</span>
         <span className="block truncate text-[11px] text-gray-500" title={sub}>{sub}</span>
       </span>
     </Tag>

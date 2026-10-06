@@ -15,6 +15,8 @@ import {
 } from 'lucide-react'
 import { maskBRL, parseBRL, numberToBRLMask, formatBRL } from '@/lib/masks'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
 
 interface PricingState {
   salePrice:          number | null
@@ -215,7 +217,7 @@ export function VehicleSalePricingPanel({ vehicleId, canManage }: Props) {
 
       {/* Status atual */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <SummaryCard label="Compra (avaliado)" value={formatBRL(data.purchasePrice)} />
+        <SummaryCard label={<WithHint text={opsText('VALOR_AVALIACAO')}>Compra (avaliado)</WithHint>} value={formatBRL(data.purchasePrice)} />
         <SummaryCard label="FIPE atual"        value={formatBRL(data.fipeValue)} />
         <SummaryCard
           label="Última atualização"
@@ -282,6 +284,7 @@ export function VehicleSalePricingPanel({ vehicleId, canManage }: Props) {
 
           <ToggleField
             label="Disponível para venda"
+            hint="Ligado, o carro fica liberado para venda e pode aparecer na vitrine e no site. Desligado, não é oferecido, mesmo com preço definido."
             icon={<CheckCircle2 className="h-4 w-4 text-emerald-500" />}
             checked={isAvailableForSale}
             onChange={setIsAvailableForSale}
@@ -328,7 +331,7 @@ export function VehicleSalePricingPanel({ vehicleId, canManage }: Props) {
 
 // ── Subcomponentes ───────────────────────────────────────────────────────────
 
-function SummaryCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function SummaryCard({ label, value, accent }: { label: React.ReactNode; value: string; accent?: boolean }) {
   return (
     <div className={[
       'rounded-xl p-4 text-center',
@@ -373,14 +376,16 @@ function FieldMoney({
 }
 
 function ToggleField({
-  label, checked, onChange, icon,
+  label, checked, onChange, icon, hint,
 }: {
   label: string
   checked: boolean
   onChange: (v: boolean) => void
   icon?: React.ReactNode
+  /** Texto do "?" ao lado do botão (fica fora do botão para não aninhar). */
+  hint?: string
 }) {
-  return (
+  const toggle = (
     <button
       type="button"
       onClick={() => onChange(!checked)}
@@ -399,6 +404,13 @@ function ToggleField({
         ? <ToggleRight className="h-5 w-5 text-brand-600" />
         : <ToggleLeft  className="h-5 w-5 text-gray-400" />}
     </button>
+  )
+  if (!hint) return toggle
+  return (
+    <div className="flex items-center gap-1.5 [&>button]:flex-1">
+      {toggle}
+      <HelpHint title={label} text={hint} />
+    </div>
   )
 }
 

@@ -10,6 +10,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Landmark, BarChart3, Users, Send, FileWarning, Filter, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import PeriodFilter from '@/components/reports/PeriodFilter'
 import SummarizeReportButton from '@/components/ai/SummarizeReportButton'
 
@@ -83,7 +85,7 @@ export default function FinancingReportsPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         {cards.map((c) => (
           <div key={c.label} className={cn('rounded-xl border p-4', c.cls)}>
-            <p className="text-xs font-medium uppercase tracking-wide opacity-80">{c.label}</p>
+            <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide opacity-80">{c.label}{c.label === 'Taxa de aprovação' && <HelpHint {...DEAL_HINTS.TAXA_APROVACAO} />}</p>
             <p className="mt-1 text-xl font-bold tabular-nums">{loading ? '—' : c.value}</p>
           </div>
         ))}
@@ -92,7 +94,7 @@ export default function FinancingReportsPage() {
       {/* Funil + Retorno estimado */}
       <div className={cn('grid grid-cols-1 gap-4', margin && 'lg:grid-cols-3')}>
         <div className={cn('overflow-hidden rounded-xl border border-gray-200 bg-white p-4 shadow-card', margin && 'lg:col-span-2')}>
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-800"><Filter size={15} className="text-brand-600" />Funil simulação → aprovação</div>
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-800"><Filter size={15} className="text-brand-600" />Funil simulação → aprovação<HelpHint {...DEAL_HINTS.FUNIL_FI} /></div>
           {funnel ? (
             <div className="space-y-2">
               {FUNNEL_STAGES.map((st) => {
@@ -114,7 +116,7 @@ export default function FinancingReportsPage() {
         {margin && (
           <div className="overflow-hidden rounded-xl border border-green-200 bg-green-50/40 p-4 shadow-card">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-800"><TrendingUp size={15} className="text-green-600" />Retorno (margem)</div>
-            <p className="text-xs text-gray-500">Retorno estimado (simulações)</p>
+            <p className="flex items-center gap-1 text-xs text-gray-500">Retorno estimado (simulações)<HelpHint {...DEAL_HINTS.RETORNO_ESTIMADO} /></p>
             <p className="mb-2 text-xl font-bold tabular-nums text-green-700">{fmt(margin.retornoEstimado)}</p>
             <p className="text-xs text-gray-500">Valor aprovado (fichas)</p>
             <p className="text-lg font-semibold tabular-nums text-gray-800">{fmt(margin.valorAprovado)}</p>

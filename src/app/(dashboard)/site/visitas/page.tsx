@@ -12,6 +12,7 @@ import Link from 'next/link'
 import { BarChart3, Car, Eye, MessageCircle, MousePointerClick, RefreshCw, Target, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DEVICE_LABELS, SECTION_LABELS, SOURCE_LABELS } from '@/lib/site/analytics-core'
+import { WithHint } from '@/components/ui/help-hint'
 
 type Count = { key: string | null; n: number }
 interface Data {
@@ -82,14 +83,14 @@ export default function SiteVisitsPage() {
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
             {[
-              { l: 'Visualizações', v: fmt(t!.views), n: `${fmt(t!.sessions)} visita(s)`, icon: Eye },
-              { l: 'Visitantes', v: fmt(t!.visitors), n: `${fmt(t!.newVisitors)} novo(s)`, icon: Users },
+              { l: 'Visualizações', h: 'Total de páginas abertas no site. Uma pessoa que vê 5 carros conta 5 visualizações.', v: fmt(t!.views), n: `${fmt(t!.sessions)} visita(s)`, icon: Eye },
+              { l: 'Visitantes', h: 'Pessoas diferentes (aparelhos) que entraram no site no período.', v: fmt(t!.visitors), n: `${fmt(t!.newVisitors)} novo(s)`, icon: Users },
               { l: 'Páginas por visita', v: t!.sessions ? (t!.views / t!.sessions).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) : '0', n: 'média', icon: MousePointerClick },
               { l: 'Cliques no WhatsApp', v: fmt(t!.whatsapp), n: pct(t!.whatsapp, t!.visitors) + ' dos visitantes', icon: MessageCircle },
               { l: 'Leads do site', v: fmt(t!.leads), n: 'formulários enviados', icon: Target, href: '/crm/leads' },
-              { l: 'Conversão', v: pct(Math.min(t!.leads + t!.whatsapp, t!.sessions), t!.sessions), n: 'leads + WhatsApp ÷ visitas', icon: Target },
+              { l: 'Conversão', h: 'Percentual das visitas que viraram contato: formulários enviados + cliques no WhatsApp, divididos pelo número de visitas.', v: pct(Math.min(t!.leads + t!.whatsapp, t!.sessions), t!.sessions), n: 'leads + WhatsApp ÷ visitas', icon: Target },
             ].map((c) => {
-              const body = <><p className="flex items-center gap-1.5 text-xs text-gray-500"><c.icon size={13} />{c.l}</p><p className="text-2xl font-bold tabular-nums text-gray-900">{c.v}</p><p className="text-[11px] text-gray-400">{c.n}</p></>
+              const body = <><p className="flex items-center gap-1.5 text-xs text-gray-500"><c.icon size={13} />{'h' in c && c.h ? <WithHint text={c.h}>{c.l}</WithHint> : c.l}</p><p className="text-2xl font-bold tabular-nums text-gray-900">{c.v}</p><p className="text-[11px] text-gray-400">{c.n}</p></>
               const cls = 'rounded-xl border border-gray-200 bg-white p-4 shadow-card'
               return c.href ? <Link key={c.l} href={c.href} className={cn(cls, 'hover:border-brand-300')}>{body}</Link> : <div key={c.l} className={cls}>{body}</div>
             })}

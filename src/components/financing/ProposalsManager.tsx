@@ -13,6 +13,8 @@ import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL, maskCPF } from '@/lib/masks'
 import SearchBox from '@/components/reports/SearchBox'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { useFiPermissions } from '@/components/financing/useFiPermissions'
 
 type Status = 'SIMULACAO' | 'ENVIADA' | 'APROVADA' | 'RECUSADA' | 'CANCELADA'
@@ -138,7 +140,7 @@ export default function ProposalsManager({
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50"><tr>{['Proponente', 'Banco', 'Veículo', 'Valor', 'Parcelas', 'Status', 'Data', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+            <thead className="bg-gray-50"><tr>{['Proponente', 'Banco', 'Veículo', 'Valor', 'Parcelas', 'Status', 'Data', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500"><span className="inline-flex items-center gap-1">{h}{h === 'Status' && <HelpHint {...DEAL_HINTS.FICHA_STATUS} />}{h === 'Proponente' && <HelpHint {...DEAL_HINTS.PROPONENTE} />}</span></th>))}</tr></thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (<tr key={i}>{Array.from({ length: 8 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))

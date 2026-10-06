@@ -7,6 +7,7 @@
 // configurado, usa MockAI (com aviso).
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useState, useRef } from 'react'
 import { Bot, Upload, X, Loader2, AlertCircle, CheckCircle2, AlertTriangle } from 'lucide-react'
 
@@ -44,7 +45,7 @@ export default function AnalisarDocumentoPage() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Bot size={20} className="text-brand-600" />Analisar documento com IA</h1>
+      <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Bot size={20} className="text-brand-600" />Analisar documento com IA<HelpHint className="ml-1" title="Análise com IA" text="Envie um documento (CRLV, contrato, comprovante...) e a IA identifica o tipo e extrai os dados principais. Confira sempre o resultado antes de usar." /></h1>
 
       <div className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500">
         <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-500" />

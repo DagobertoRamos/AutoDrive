@@ -8,6 +8,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Trophy, Save, RefreshCw, CheckCircle, AlertCircle, RotateCcw, Users, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { RequiredMark } from '@/components/ui/field'
 
 interface RuleWeights {
@@ -250,6 +252,7 @@ export default function RankingConfigPage() {
         <div className="section-header">
           <Trophy size={16} className="text-amber-500" />
           <h2 className="text-sm font-semibold text-gray-800">Pesos (pontos)</h2>
+          <HelpHint {...DEAL_HINTS.RANKING_PESO} />
         </div>
         <div className="p-5 space-y-1">
           <div className="mb-4">
@@ -272,7 +275,7 @@ export default function RankingConfigPage() {
 
           {tiebreakers.length > 0 && (
             <div className="pt-4 text-xs text-gray-500">
-              <span className="font-medium text-gray-600">Critérios de desempate:</span> {tiebreakers.join(' › ')}
+              <span className="inline-flex items-center gap-1 font-medium text-gray-600">Critérios de desempate<HelpHint {...DEAL_HINTS.RANKING_DESEMPATE} />:</span> {tiebreakers.join(' › ')}
             </div>
           )}
         </div>

@@ -10,6 +10,7 @@
 //   • Logs      — Histórico de todos os testes de conexão
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useState, useEffect, useCallback } from 'react'
 import { useSession }   from 'next-auth/react'
 import { useRouter }    from 'next/navigation'
@@ -394,7 +395,7 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
           <input className={inputCls} value={form.name ?? ''} onChange={e => up('name', e.target.value)} placeholder="Ex.: Servidor principal" required />
         </div>
         <div>
-          <label className={labelCls}>Propósito <RequiredMark /></label>
+          <label className={labelCls}>Propósito<HelpHint className="ml-1" title="Propósito" text="Para que tipo de e-mail este servidor é usado (sistema, marketing, notificações...). Cada propósito pode ter um servidor padrão." /> <RequiredMark /></label>
           <select className={inputCls} value={form.purpose ?? 'SYSTEM'} onChange={e => up('purpose', e.target.value as EmailPurpose)}>
             {EMAIL_PURPOSES.map(p => <option key={p.value} value={p.value}>{p.label} — {p.desc}</option>)}
           </select>
@@ -428,7 +429,7 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
             <input className={inputCls} value={form.smtpUser ?? ''} onChange={e => up('smtpUser', e.target.value)} placeholder="user@dominio.com" required />
           </div>
           <div>
-            <label className={labelCls}>TLS/SSL</label>
+            <label className={labelCls}>TLS/SSL<HelpHint className="ml-1" title="TLS/SSL" text="Ligue para a porta 465 (conexão criptografada desde o início). Na porta 587 a criptografia é negociada depois (STARTTLS)." /></label>
             <select className={inputCls} value={form.smtpSecure ? 'true' : 'false'} onChange={e => {
               const secure = e.target.value === 'true'
               up('smtpSecure', secure)
@@ -553,7 +554,7 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
           <input type="email" className={inputCls} value={form.fromEmail ?? ''} onChange={e => up('fromEmail', e.target.value)} placeholder="noreply@autodrive.com.br" required />
         </div>
         <div>
-          <label className={labelCls}>Reply-To</label>
+          <label className={labelCls}>Reply-To<HelpHint className="ml-1" title="Reply-To" text="Endereço que recebe as respostas quando o destinatário clica em Responder. Vazio = responde para o remetente." /></label>
           <input type="email" className={inputCls} value={form.replyTo ?? ''} onChange={e => up('replyTo', e.target.value)} placeholder="suporte@..." />
         </div>
       </div>
@@ -683,7 +684,7 @@ function EmailTemplateForm({ initial, onSubmit, onCancel, submitting }: {
               </select>
             </div>
             <div>
-              <label className={labelCls}>Key (identificador) <RequiredMark /></label>
+              <label className={labelCls}>Key (identificador)<HelpHint className="ml-1" title="Key" text="Código técnico que o sistema usa para achar o modelo (ex.: password_reset). Só letras, números e _." /> <RequiredMark /></label>
               <input className={`${inputCls} font-mono`} value={form.key ?? ''} onChange={e => up('key', e.target.value)} placeholder="password_reset" required pattern="[a-zA-Z0-9_]+" />
             </div>
           </div>
@@ -711,7 +712,7 @@ function EmailTemplateForm({ initial, onSubmit, onCancel, submitting }: {
             />
           </div>
           <div>
-            <label className={labelCls}>Corpo texto (fallback)</label>
+            <label className={labelCls}>Corpo texto (fallback)<HelpHint className="ml-1" title="Fallback" text="Versão só texto do e-mail, mostrada por leitores que não exibem HTML. Também ajuda a não cair no spam." /></label>
             <textarea className={`${inputCls} font-mono text-xs`} rows={3} value={form.bodyText ?? ''} onChange={e => up('bodyText', e.target.value)} />
           </div>
           <div>
@@ -1165,8 +1166,9 @@ interface MetaTemplate {
   qualityScore:  string | null
 }
 
-function SecretInput({ label, name, value, onChange, placeholder, helpText, required }: {
+function SecretInput({ label, name, value, onChange, placeholder, helpText, required, hint }: {
   label: string
+  hint?: string
   required?: boolean
   name:  string
   value: string
@@ -1180,7 +1182,7 @@ function SecretInput({ label, name, value, onChange, placeholder, helpText, requ
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <label className={labelCls}>{label}{required && <> <RequiredMark /></>}</label>
+        <label className={labelCls}>{label}{hint && <HelpHint className="ml-1" text={hint} />}{required && <> <RequiredMark /></>}</label>
         {isMasked && (
           <button
             type="button"
@@ -1430,7 +1432,7 @@ function WhatsAppTab() {
             <input className={`${inputCls} font-mono`} value={config.phoneNumberId ?? ''} onChange={setField('phoneNumberId')} placeholder="Ex.: 123456789012345" />
           </div>
           <div>
-            <label className={labelCls}>WABA ID (Business Account ID) <RequiredMark /></label>
+            <label className={labelCls}>WABA ID (Business Account ID)<HelpHint className="ml-1" title="WABA ID" text="Identificador da conta do WhatsApp Business na Meta. Fica no Gerenciador do WhatsApp; é diferente do Phone Number ID." /> <RequiredMark /></label>
             <input className={`${inputCls} font-mono`} value={config.businessAccountId ?? ''} onChange={setField('businessAccountId')} placeholder="123456789012345" />
           </div>
           <div>
@@ -1453,6 +1455,7 @@ function WhatsAppTab() {
         />
         <SecretInput
           label="App Secret"
+          hint="Chave secreta do app na Meta (Configurações do app → Básico). Usada para conferir que os avisos do webhook vieram mesmo da Meta."
           name="appSecret"
           value={config.appSecret ?? ''}
           onChange={val => setConfig(p => ({ ...p, appSecret: val }))}
@@ -1477,6 +1480,7 @@ function WhatsAppTab() {
         <div className="grid grid-cols-2 gap-3">
           <SecretInput
             label="Webhook Verify Token"
+            hint="Senha que você inventa e repete no painel da Meta ao cadastrar o webhook, para a Meta confirmar que o endereço é seu."
             name="webhookVerifyToken"
             value={config.webhookVerifyToken ?? ''}
             onChange={val => setConfig(p => ({ ...p, webhookVerifyToken: val }))}
@@ -1488,7 +1492,7 @@ function WhatsAppTab() {
         </div>
 
         <div>
-          <label className={labelCls}>Webhook Fields</label>
+          <label className={labelCls}>Webhook Fields<HelpHint className="ml-1" title="Webhook Fields" text="Eventos que a Meta envia ao sistema: messages = mensagens recebidas e status de entrega; message_template_status_update = aprovação ou reprovação de templates." /></label>
           <input className={inputCls} value={config.webhookFields ?? 'messages,message_template_status_update'} onChange={setField('webhookFields')} />
           <p className="mt-1 text-xs text-gray-400">Separados por vírgula</p>
         </div>
@@ -1546,7 +1550,7 @@ function WhatsAppTab() {
               <input className={inputCls} value={config.defaultHeaderImageUrl ?? ''} onChange={setField('defaultHeaderImageUrl')} placeholder="https://cdn.easycar.com.br/logo.png" />
             </div>
             <div>
-              <label className={labelCls}>Header Media ID padrão</label>
+              <label className={labelCls}>Header Media ID padrão<HelpHint className="ml-1" title="Media ID" text="ID de uma imagem já enviada à Meta, usada no cabeçalho dos templates com imagem. Evita reenviar o arquivo a cada disparo." /></label>
               <input className={`${inputCls} font-mono`} value={config.defaultHeaderMediaId ?? ''} onChange={setField('defaultHeaderMediaId')} placeholder="ID do media upload" />
             </div>
             <div>
@@ -1566,7 +1570,7 @@ function WhatsAppTab() {
               <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-brand-600"
                 checked={config.fallbackToText === 'true'}
                 onChange={e => setConfig(p => ({ ...p, fallbackToText: e.target.checked ? 'true' : 'false' }))} />
-              <span className="text-sm text-gray-700">Fallback para texto livre se template falhar</span>
+              <span className="text-sm text-gray-700">Fallback para texto livre se template falhar</span><HelpHint className="ml-1" title="Fallback" text="Se o template for recusado, tenta mandar a mensagem como texto comum. Só funciona se o cliente falou com a loja nas últimas 24 horas." />
             </label>
           </div>
 
@@ -1696,7 +1700,7 @@ function WhatsappTemplateForm({ initial, onSubmit, onCancel, submitting }: {
         </div>
       </div>
       <div>
-        <label className={labelCls}>Nome técnico (template Meta aprovado) <RequiredMark /></label>
+        <label className={labelCls}>Nome técnico (template Meta aprovado)<HelpHint className="ml-1" title="Template Meta" text="Nome exato do template aprovado no Gerenciador do WhatsApp (minúsculas e _). Se não bater, a Meta recusa o envio." /> <RequiredMark /></label>
         <input className={`${inputCls} font-mono`} value={form.templateName ?? ''} onChange={e => up('templateName', e.target.value)} placeholder="welcome_message" required />
       </div>
       <div>

@@ -6,6 +6,8 @@
 // Consome /api/reports/stock/turnover.
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback } from 'react'
 import { Car, RefreshCw, Gauge } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -47,7 +49,7 @@ export default function GiroEstoquePage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Giro de Estoque</h1>
+          <h1 className="flex items-center gap-1 text-xl font-bold text-gray-900">Giro de Estoque<HelpHint className="ml-1" {...opsHint('GIRO')} /></h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${summary?.saidas ?? 0} veículos saíram do estoque`}</p>
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>

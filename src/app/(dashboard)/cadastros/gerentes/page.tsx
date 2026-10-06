@@ -4,6 +4,8 @@
 // Cadastro de Gerentes — AutoDrive
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, UserCog, X, Save, CheckCircle, AlertCircle, Bell } from 'lucide-react'
 import { cn, formatCPF, formatPhone } from '@/lib/utils'
@@ -68,10 +70,10 @@ function inputClass(extra?: string) {
   )
 }
 
-function ToggleRow({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+function ToggleRow({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
   return (
     <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-      <span className="text-sm font-medium text-gray-700">{label}</span>
+      <span className="flex items-center gap-1 text-sm font-medium text-gray-700">{label}{hint && <HelpHint text={hint} />}</span>
       <button
         type="button"
         role="switch"
@@ -193,7 +195,7 @@ function Modal({
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Perfil de acesso</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Perfil de acesso<HelpHint className="ml-1" {...opsHint('NIVEL_ACESSO')} /></label>
               <select className={inputClass()} value={form.accessProfile} onChange={(e) => set('accessProfile', e.target.value as ManagerForm['accessProfile'])}>
                 <option value="GERENTE">Gerente</option>
                 <option value="ADM">Administrador</option>
@@ -216,7 +218,7 @@ function Modal({
 
           <div className="space-y-2">
             <ToggleRow label="Gerente ativo" checked={form.active} onChange={(v) => set('active', v)} />
-            <ToggleRow label="Recebe notificações" checked={form.receivesNotifications} onChange={(v) => set('receivesNotifications', v)} />
+            <ToggleRow label="Recebe notificações" hint="Ligado, o gerente recebe os avisos da loja (pendências atrasadas, escalonamentos e alertas) no WhatsApp." checked={form.receivesNotifications} onChange={(v) => set('receivesNotifications', v)} />
           </div>
 
           {(formErr || error) && (

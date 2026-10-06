@@ -10,6 +10,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { ListOrdered, ArrowUp, ArrowDown, Save, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 
 const CONFIG_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO']
 
@@ -73,7 +75,7 @@ export default function FiPrioritiesPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Prioridades de Envio</h1>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900">Prioridades de Envio<HelpHint {...DEAL_HINTS.PRIORIDADE_BANCO} /></h1>
           {loading && <p className="mt-0.5 text-sm text-gray-500">Carregando...</p>}
         </div>
         <button onClick={save} disabled={saving || loading || rows.length === 0} className="btn-primary text-sm disabled:opacity-50"><Save size={15} />{saving ? 'Salvando...' : 'Salvar ordem'}</button>

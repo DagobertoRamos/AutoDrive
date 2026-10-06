@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { SITE_MAX_BANNERS, SITE_MAX_TESTIMONIALS, type SiteBanner, type SiteConfig, type SiteTestimonial } from '@/lib/site/config-core'
 import { compressPhoto } from '@/lib/stock/photo-compress'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
 
 const input = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50'
 const label = 'mb-1 block text-xs font-medium text-gray-600'
@@ -108,7 +109,7 @@ export default function SiteBannersPage() {
       <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Banners da home</h2>
+            <h2 className="flex items-center gap-1 text-sm font-semibold text-gray-900">Banners da home <HelpHint title="Banners da home" text="Imagens grandes que passam em carrossel no topo da página inicial do site. Use para campanhas, feirões ou chamadas para o WhatsApp." /></h2>
             <p className="text-xs text-gray-500">Proporção 2:1 (ex.: 1916×821 px).</p>
           </div>
           <label className="flex items-center gap-2 text-sm font-medium text-gray-800">

@@ -14,6 +14,14 @@ import Link from 'next/link'
 import { AlertCircle, ChevronLeft, ChevronRight, LayoutGrid, List as ListIcon, Loader2 } from 'lucide-react'
 
 import { canAccessModule } from '@/lib/permissions'
+import { WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
+
+/** "?" nos cabeçalhos da tabela de avaliações. */
+const HEADER_HINT: Record<string, string> = {
+  Avaliado: opsText('VALOR_AVALIACAO'),
+  Status: 'Etapa da avaliação: rascunho/em andamento (sendo feita), aguardando aprovação (gerente decide o valor), liberada/aguardando entrada (aprovada, carro ainda não chegou), no estoque (carro recebido), rejeitada ou cancelada.',
+}
 import { EvaluationHeader }     from '@/components/estoque/avaliacoes/EvaluationHeader'
 import { EvaluationStatsCards, type StatsCounts } from '@/components/estoque/avaliacoes/EvaluationStatsCards'
 import { EvaluationFilters, EMPTY_FILTERS, type EvaluationFiltersState } from '@/components/estoque/avaliacoes/EvaluationFilters'
@@ -314,7 +322,7 @@ function EvaluationListTable({ items }: { items: EvaluationListItem[] }) {
           <thead className="border-b border-gray-100 bg-gray-50">
             <tr>
               {['Placa', 'Veículo', 'Cliente', 'Unidade', 'Avaliado', 'Status', 'Criada em', ''].map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">{h}</th>
+                <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">{HEADER_HINT[h] ? <WithHint text={HEADER_HINT[h]}>{h}</WithHint> : h}</th>
               ))}
             </tr>
           </thead>

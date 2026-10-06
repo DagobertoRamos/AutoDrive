@@ -10,6 +10,8 @@
 // • Excluir flag
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback } from 'react'
 import { useSession }                        from 'next-auth/react'
 import { useRouter }                         from 'next/navigation'
@@ -113,7 +115,7 @@ function CreateModal({ onClose, onSaved }: CreateModalProps) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Chave <RequiredMark /></label>
+              <label className={labelCls}>Chave<HelpHint className="ml-1" title="Chave" text="Identificador técnico usado no código para consultar a flag (minúsculas e _). Não dá para mudar depois sem ajustar o código." /> <RequiredMark /></label>
               <input
                 className={`${inputCls} font-mono`}
                 placeholder="Ex.: nome_da_flag"
@@ -138,7 +140,7 @@ function CreateModal({ onClose, onSaved }: CreateModalProps) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Rollout (%)</label>
+              <label className={labelCls}>Rollout (%)<HelpHint className="ml-1" title="Rollout" text="Percentual das lojas que recebem o recurso quando a flag está ligada. 100 = todas; valores menores liberam aos poucos." /></label>
               <input
                 type="number" min={0} max={100}
                 className={inputCls}
@@ -439,7 +441,7 @@ export default function FeatureFlagsPage() {
             <Flag size={18} className="text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Feature Flags</h1>
+            <h1 className="text-xl font-bold text-gray-900">Feature Flags<HelpHint className="ml-1" {...opsHint('FEATURE_FLAG')} /></h1>
             <p className="text-xs text-gray-400">
               {flags.length} flags — {enabledCount} ativas, {disabledCount} inativas
             </p>

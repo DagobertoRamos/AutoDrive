@@ -11,6 +11,16 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, ChevronDown, ChevronUp, Clock, ExternalLink, Loader2, Plus, Save, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
+
+/** "?" dos cards de resumo da preparação (por rótulo). */
+const SUMMARY_HINT: Record<string, string> = {
+  Serviços: opsText('PREPARACAO'),
+  Atrasados: 'Serviços ainda abertos com a previsão de entrega já vencida.',
+  Previsto: 'Soma dos valores cadastrados (orçados) dos serviços.',
+  'Custo atual': 'Soma do valor real de cada serviço; quando o real ainda não foi informado, usa o valor cadastrado. Entra no custo do veículo.',
+}
 import { DocumentsBadge } from '@/components/documents/DocumentsPanel'
 import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { SERVICE_TYPE_LABELS } from '@/lib/evaluation/catalog'
@@ -80,7 +90,7 @@ export function ServicesPanel({ vehicleId, canEdit, onChanged }: { vehicleId: st
           ['Previsto', brl(s.estimated)], ['Custo atual', brl(s.effective)],
         ] as Array<[string, string]>).map(([l, v]) => (
           <div key={l} className={cn('rounded-lg border bg-white px-2.5 py-2', l === 'Atrasados' && s.overdue ? 'border-red-200 bg-red-50' : 'border-gray-200')}>
-            <p className="text-[10px] uppercase tracking-wide text-gray-500">{l}</p>
+            <p className="text-[10px] uppercase tracking-wide text-gray-500">{SUMMARY_HINT[l] ? <WithHint text={SUMMARY_HINT[l]}>{l}</WithHint> : l}</p>
             <p className="text-sm font-bold tabular-nums text-gray-900">{v}</p>
           </div>
         ))}

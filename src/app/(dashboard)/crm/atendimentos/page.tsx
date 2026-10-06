@@ -5,6 +5,7 @@ import { DealPeekLink } from '@/components/deals/DealPeek'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Loader2, RefreshCw, Search, Sliders, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
 
 interface AttRow {
   id: string; sellerId: string; sellerName: string; unitId: string | null
@@ -112,7 +113,7 @@ export default function CrmAttendancesPage() {
       {/* Cabeçalho */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Atendimentos</h1>
+          <h1 className="flex items-center gap-1.5 text-xl font-bold text-gray-900 dark:text-white">Atendimentos<HelpHint title="Atendimentos" text="Clientes distribuídos pela fila do Vendedor da Vez. Cada atendimento passa por: chamado → aceito → em atendimento → finalizado (com resultado). Recusado/expirado = a vez passou para outro vendedor." /></h1>
           <p className="mt-0.5 text-[11px] text-gray-400">
             {scope === 'all' ? 'Todos os atendimentos' : scope === 'unit' ? 'Da sua unidade' : 'Os seus atendimentos'}
             {meta && <> · <span className="tabular-nums">{meta.total.toLocaleString('pt-BR')}</span></>}
@@ -171,7 +172,7 @@ export default function CrmAttendancesPage() {
 
               {/* Resultado */}
               <div>
-                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">Resultado</p>
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-gray-400"><WithHint text="Como o atendimento terminou, registrado pelo vendedor ao finalizar. 'Convertido em negociação' conta como venda em andamento.">Resultado</WithHint></p>
                 <div className="flex flex-wrap gap-1">
                   {RESULT_OPTS.map(r => (
                     <button key={r.value} onClick={() => setFResult(v => v === r.value ? '' : r.value)}
@@ -232,7 +233,7 @@ export default function CrmAttendancesPage() {
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/80 dark:border-white/5 dark:bg-slate-800/60">
                 {['Data/Hora', 'Cliente', ...(canFilterSeller ? ['Vendedor'] : []), 'Tipo', 'Status', 'Resultado', 'Lead / Negociação'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{h === 'Status' ? <WithHint text="Chamado = aguardando o vendedor aceitar. Aceito/Em atendimento = com o cliente. Expirado = não aceitou no prazo e a vez passou.">{h}</WithHint> : h}</th>
                 ))}
               </tr>
             </thead>

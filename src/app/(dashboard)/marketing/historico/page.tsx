@@ -11,6 +11,7 @@ import { Download, ExternalLink, Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, ChannelMark, ErrorNote, inputCls, PubTabs, STATUS_LABEL, STATUS_TONE, StatusPill } from '@/components/publications/ui'
 import { PublicationDetail } from '@/components/publications/PublicationDetail'
+import { WithHint } from '@/components/ui/help-hint'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const AVULSO_LABEL: Record<string, string> = { RASCUNHO: 'Rascunho', AGENDADO: 'Agendado', ENVIANDO: 'Enviando', PUBLICADO: 'Publicado', FALHA: 'Com erro', CANCELADO: 'Cancelado' }
@@ -91,7 +92,7 @@ export default function HistoricoPage() {
                   <th className="px-3 py-2">{type === 'veiculos' ? 'Veículo' : 'Post'}</th>
                   {type === 'veiculos' && <><th className="px-3 py-2">Placa</th><th className="px-3 py-2">Unidade</th></>}
                   <th className="px-3 py-2">Canal / conta</th>
-                  <th className="px-3 py-2">Formato</th>
+                  <th className="px-3 py-2"><WithHint text="Post = foto(s) no feed. Carrossel = várias imagens deslizando. Story = vertical, some em 24 h. Reels = vídeo curto vertical.">Formato</WithHint></th>
                   <th className="px-3 py-2">Situação</th>
                   <th className="px-3 py-2">Publicado</th>
                   <th className="px-3 py-2">Última movimentação</th>

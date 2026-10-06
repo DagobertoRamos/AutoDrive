@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
 import { DealPeekLink } from '@/components/deals/DealPeek'
 import FiContractPanel, { type FiData, type FiProduct } from '@/components/finance/center/receivables/FiContractPanel'
 
@@ -191,6 +192,7 @@ export default function RecebimentosPage() {
       <button type="button" onClick={() => setOpenFi((o) => (o === r.id ? null : r.id))} aria-expanded={openFi === r.id} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline">
         <Landmark size={12} />F&amp;I do contrato<ChevronDown size={12} className={cn('transition-transform', openFi === r.id && 'rotate-180')} />
       </button>
+      <HelpHint term="FI" size={12} className="ml-1" />
       {openFi === r.id && (
         <FiContractPanel
           key={`${r.id}-${fiVersion}`}
@@ -210,7 +212,7 @@ export default function RecebimentosPage() {
     return (
       <div className="flex flex-wrap items-end gap-2 text-xs">
         {isCard(r) && (
-          <label className="text-gray-600">Autorização do cartão{r.receipts.length ? <RequiredMark className="ml-0.5" /> : null}
+          <label className="text-gray-600"><span className="inline-flex items-center gap-1">Autorização do cartão{r.receipts.length ? <RequiredMark /> : null}<HelpHint size={12} text="Código de autorização impresso no comprovante da maquininha. Serve para conferir a venda com a operadora do cartão." /></span>
             <input value={auth[r.id] ?? r.authorizationCode ?? ''} onChange={(e) => setAuth((a) => ({ ...a, [r.id]: e.target.value }))} placeholder="Nº de autorização" className={cn('mt-0.5 block w-44 rounded-md border px-2 py-1.5 text-sm', needAuth ? 'border-amber-400' : 'border-gray-300')} />
           </label>
         )}
@@ -246,6 +248,7 @@ export default function RecebimentosPage() {
         {STATUS_TABS.map(([t, l]) => (
           <button key={t} type="button" onClick={() => { setRows(null); setTab(t) }} className={cn('rounded-full border px-3 py-1 text-xs', tab === t ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 bg-white text-gray-600')}>{l}</button>
         ))}
+        <HelpHint title="A confirmar × confirmado" text="Pagamento lançado na negociação entra como 'a confirmar'. O financeiro confere o comprovante (ou o extrato do banco) e confirma: só então ele conta como recebido." />
       </div>
 
       {/* Filtros */}

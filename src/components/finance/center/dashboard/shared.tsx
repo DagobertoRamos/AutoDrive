@@ -5,6 +5,8 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { formatBRL } from '@/lib/masks'
+import { HelpHint } from '@/components/ui/help-hint'
+import type { GlossaryTerm } from '@/lib/glossary'
 
 /** Paleta dos gráficos (validada p/ daltonismo): entradas, saídas, saldo. */
 export const CHART = {
@@ -44,13 +46,15 @@ export function Card({ title, actions, children, className }: { title?: ReactNod
   )
 }
 
-export function KpiCard({ label, value, sub, tone = 'default', href, loading }: {
+export function KpiCard({ label, value, sub, tone = 'default', href, loading, helpTerm, helpText }: {
   label: string; value: ReactNode; sub?: ReactNode; tone?: 'default' | 'in' | 'out' | 'alert'; href?: string; loading?: boolean
+  /** "?" ao lado do rótulo (glossário ou texto livre). */
+  helpTerm?: GlossaryTerm; helpText?: string
 }) {
   const valueCls = tone === 'in' ? 'text-teal-700' : tone === 'out' ? 'text-orange-700' : tone === 'alert' ? 'text-red-600' : 'text-gray-900'
   const body = (
     <>
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-gray-500">{label}{(helpTerm || helpText) && <HelpHint term={helpTerm} text={helpText} size={12} />}</p>
       {loading ? <div className="mt-2 h-7 w-32 animate-pulse rounded bg-gray-200" /> : <p className={cn('mt-1 text-xl font-bold tabular-nums sm:text-2xl', valueCls)}>{value}</p>}
       {sub && !loading && <div className="mt-1 text-xs text-gray-500">{sub}</div>}
     </>

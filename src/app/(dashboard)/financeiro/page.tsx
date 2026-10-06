@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowDownCircle, ArrowUpCircle, ChevronLeft, ChevronRight, FileText, LineChart, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { WithHint } from '@/components/ui/help-hint'
 import { Card, ErrorBox, KpiCard, brl, dateBR, inputClass } from '@/components/finance/center/dashboard/shared'
 import { MonthlyFlowChart, type MonthPoint } from '@/components/finance/center/dashboard/MonthlyFlowChart'
 import { ProjectionChart, type ProjectionPoint } from '@/components/finance/center/dashboard/ProjectionChart'
@@ -84,22 +85,22 @@ export default function FinancePanelPage() {
       {error && <ErrorBox message={error} onRetry={() => void load()} />}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <KpiCard label="Saldo consolidado" loading={loading && !d} value={brl(d?.balance.total)} tone={(d?.balance.total ?? 0) < 0 ? 'alert' : 'default'}
+        <KpiCard label="Saldo consolidado" helpTerm="SALDO_CONSOLIDADO" loading={loading && !d} value={brl(d?.balance.total)} tone={(d?.balance.total ?? 0) < 0 ? 'alert' : 'default'}
           sub={d && d.balance.noAccount !== 0 ? `Sem conta: ${brl(d.balance.noAccount)}` : `${d?.balance.accounts.length ?? 0} contas`} href="/financeiro/extrato" />
         <KpiCard label="A receber · 30 dias" loading={loading && !d} value={brl(d?.receivables.next30.total)} tone="in"
           sub={d && <>Hoje {brl(d.receivables.today.total)} · 7 dias {brl(d.receivables.next7.total)}</>} href="/financeiro/receber" />
         <KpiCard label="A pagar · 30 dias" loading={loading && !d} value={brl(d?.payables.next30.total)} tone="out"
           sub={d && <>Hoje {brl(d.payables.today.total)} · 7 dias {brl(d.payables.next7.total)}</>} href="/financeiro/pagar" />
-        <KpiCard label="Vencidos" loading={loading && !d} value={overdueTotal} tone={overdueTotal ? 'alert' : 'default'}
+        <KpiCard label="Vencidos" helpTerm="VENCIDO" loading={loading && !d} value={overdueTotal} tone={overdueTotal ? 'alert' : 'default'}
           sub={d && <>Receber {brl(d.receivables.overdue.total)}<br />Pagar {brl(d.payables.overdue.total)}</>} />
-        <KpiCard label={`Resultado · ${d ? monthName(d.month).split(' ')[0] : ''}`} loading={loading && !d} value={brl(d?.result.result)}
+        <KpiCard label={`Resultado · ${d ? monthName(d.month).split(' ')[0] : ''}`} helpText="Receitas menos despesas do mês pelo regime de competência (pagas ou em aberto)." loading={loading && !d} value={brl(d?.result.result)}
           tone={(d?.result.result ?? 0) < 0 ? 'alert' : 'in'}
           sub={d && <>Receitas {brl(d.result.revenue)}<br />Despesas {brl(d.result.expense)}</>} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2" title="Entradas × saídas · 12 meses"
-          actions={d && <span className="text-xs text-gray-500">Realizado no mês: <span className="font-medium text-teal-700">{brl(d.result.realizedIn)}</span> · <span className="font-medium text-orange-700">{brl(d.result.realizedOut)}</span></span>}>
+        <Card className="lg:col-span-2" title={<WithHint term="FLUXO_CAIXA">Entradas × saídas · 12 meses</WithHint>}
+          actions={d && <span className="inline-flex items-center gap-1 text-xs text-gray-500"><WithHint term="REALIZADO">Realizado no mês:</WithHint> <span className="font-medium text-teal-700">{brl(d.result.realizedIn)}</span> · <span className="font-medium text-orange-700">{brl(d.result.realizedOut)}</span></span>}>
           {d ? <MonthlyFlowChart data={d.series} /> : <div className="h-64 animate-pulse rounded-lg bg-gray-100" />}
         </Card>
         <Card title="Contas">
@@ -127,14 +128,14 @@ export default function FinancePanelPage() {
                   <span className={cn('text-sm font-semibold tabular-nums', d.balance.noAccount < 0 ? 'text-red-600' : 'text-gray-900')}>{brl(d.balance.noAccount)}</span>
                 </li>
               )}
-              <li className="flex items-center justify-between gap-3 pt-2.5 text-sm font-semibold text-gray-900"><span>Total consolidado</span><span className="tabular-nums">{brl(d.balance.total)}</span></li>
+              <li className="flex items-center justify-between gap-3 pt-2.5 text-sm font-semibold text-gray-900"><WithHint term="SALDO_CONSOLIDADO">Total consolidado</WithHint><span className="tabular-nums">{brl(d.balance.total)}</span></li>
             </ul>
           )}
         </Card>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2" title="Saldo projetado · 90 dias"
+        <Card className="lg:col-span-2" title={<WithHint term="SALDO_PROJETADO">Saldo projetado · 90 dias</WithHint>}
           actions={d && d.projection.length > 0 && <span className="text-xs text-gray-500">Em 90 dias: <span className={cn('font-semibold', d.projection[d.projection.length - 1].balance < 0 ? 'text-red-600' : 'text-gray-900')}>{brl(d.projection[d.projection.length - 1].balance)}</span></span>}>
           {d ? <ProjectionChart data={d.projection} /> : <div className="h-56 animate-pulse rounded-lg bg-gray-100" />}
         </Card>

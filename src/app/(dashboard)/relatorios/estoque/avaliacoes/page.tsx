@@ -6,6 +6,8 @@
 // Consome /api/reports/stock/evaluations.
 // =============================================================================
 
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback } from 'react'
 import { ClipboardCheck, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -45,7 +47,7 @@ export default function AvaliacoesReportPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Avaliações</h1>
+          <h1 className="flex items-center gap-1 text-xl font-bold text-gray-900">Avaliações<HelpHint className="ml-1" {...opsHint('AVALIACAO')} /></h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${summary?.count ?? 0} avaliações`}</p>
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
@@ -68,7 +70,7 @@ export default function AvaliacoesReportPage() {
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50"><tr>{['Veículo', 'Placa', 'Proprietário', 'Intenção', 'FIPE', 'Avaliado', 'Resultado', 'Data'].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+            <thead className="bg-gray-50"><tr>{['Veículo', 'Placa', 'Proprietário', 'Intenção', 'FIPE', 'Avaliado', 'Resultado', 'Data'].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h === 'FIPE' ? <WithHint term="FIPE">FIPE</WithHint> : h}</th>))}</tr></thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (<tr key={i}>{Array.from({ length: 8 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))

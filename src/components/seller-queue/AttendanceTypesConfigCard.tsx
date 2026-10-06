@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ListChecks, Save, RefreshCw, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
 
 interface TypeItem { code: string; label: string; active: boolean; consumesTurn: boolean; requiresDescription?: boolean }
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
@@ -52,7 +53,7 @@ export default function AttendanceTypesConfigCard({ unitId }: { unitId?: string 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
       <div className="flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><ListChecks size={17} className="text-brand-600" />Tipos de atendimento</h2>
+        <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><ListChecks size={17} className="text-brand-600" />Tipos de atendimento<HelpHint text="Natureza da visita escolhida ao iniciar o atendimento (ex.: venda, retirada de carro, pós-venda). Cada tipo define se consome a vez do vendedor." /></h2>
         <button onClick={load} disabled={loading} className="rounded p-1.5 text-gray-400 hover:bg-gray-100"><RefreshCw size={14} className={cn(loading && 'animate-spin')} /></button>
       </div>
 
@@ -60,7 +61,7 @@ export default function AttendanceTypesConfigCard({ unitId }: { unitId?: string 
         <div className="mt-4 space-y-3">
           <div className="overflow-x-auto rounded-lg border border-gray-200">
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50"><tr>{['Código', 'Rótulo', 'Ativo', 'Consome a vez', ''].map((h, i) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">{h}{i < 2 && <> <RequiredMark /></>}</th>)}</tr></thead>
+              <thead className="bg-gray-50"><tr>{['Código', 'Rótulo', 'Ativo', 'Consome a vez', ''].map((h, i) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span className="inline-flex items-center gap-1">{h}{i < 2 && <> <RequiredMark /></>}{h === 'Consome a vez' && <HelpHint text="Ligado: atender este tipo manda o vendedor para o fim da fila. Desligado: ele mantém a posição no rodízio." />}</span></th>)}</tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {types.map((t, i) => (
                   <tr key={i}>

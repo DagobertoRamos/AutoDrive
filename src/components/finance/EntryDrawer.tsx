@@ -18,6 +18,7 @@ import { AlertCircle, Ban, Car, CheckCircle2, FileText, Handshake, Loader2, Plus
 import { cn } from '@/lib/utils'
 import { MoneyInput } from '@/components/ui/money-input'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
 import { COST_ITEM_KINDS, COST_ITEM_LABEL, chargeResult, itemsTotal } from '@/lib/finance/entry-settlement-core'
 import { AttachmentsPanel } from '@/components/finance/center/entries/AttachmentsPanel'
 import { DealPeekLink } from '@/components/deals/DealPeek'
@@ -253,12 +254,12 @@ export function EntryDrawer({ entryId: initialId, onClose, onChanged }: { entryI
               {/* Resultado: cobrado × custo real × comissões */}
               {live && d.result && (
                 <section className="rounded-xl border border-gray-200 bg-white p-4">
-                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">{d.resultKind === 'DOCUMENTO' || d.debt?.isDocumentation ? 'Resultado do documento (despachante)' : d.resultKind === 'SERVICO' ? 'Resultado do serviço' : 'Cobrado × custo real'}</h3>
+                  <h3 className="mb-3 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500">{d.resultKind === 'DOCUMENTO' || d.debt?.isDocumentation ? 'Resultado do documento (despachante)' : d.resultKind === 'SERVICO' ? 'Resultado do serviço' : 'Cobrado × custo real'}<HelpHint term="COBRADO_CUSTO" size={12} /></h3>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     <Kpi label="Cobrado do cliente" value={brl(live.charged)} />
                     <Kpi label={validItems.length || settled ? 'Custo real' : 'Custo (previsto)'} value={brl(live.cost)} tone="text-red-700" />
-                    <Kpi label="Lucro bruto" value={brl(live.gross)} tone={live.gross >= 0 ? 'text-emerald-700' : 'text-red-700'} />
-                    <Kpi label="Lucro líquido" value={brl(live.net)} sub={live.margin == null ? undefined : `${live.margin.toLocaleString('pt-BR')}% do cobrado`} tone={live.net >= 0 ? 'text-emerald-700' : 'text-red-700'} />
+                    <Kpi label="Lucro bruto" help="Cobrado do cliente menos o custo real, antes das comissões." value={brl(live.gross)} tone={live.gross >= 0 ? 'text-emerald-700' : 'text-red-700'} />
+                    <Kpi label="Lucro líquido" help="Lucro bruto menos as comissões geradas por este item." value={brl(live.net)} sub={live.margin == null ? undefined : `${live.margin.toLocaleString('pt-BR')}% do cobrado`} tone={live.net >= 0 ? 'text-emerald-700' : 'text-red-700'} />
                   </div>
                   {(d.debt?.isDocumentation || d.resultKind === 'SERVICO') && (
                     <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
@@ -389,10 +390,10 @@ export function EntryDrawer({ entryId: initialId, onClose, onChanged }: { entryI
   )
 }
 
-function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: string }) {
+function Kpi({ label, value, sub, tone, help }: { label: string; value: string; sub?: string; tone?: string; help?: string }) {
   return (
     <div className="rounded-lg border border-gray-200 px-2.5 py-2">
-      <p className="text-[10px] uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-gray-500">{label}{help && <HelpHint text={help} title={label} size={11} />}</p>
       <p className={cn('text-sm font-bold tabular-nums text-gray-900', tone)}>{value}</p>
       {sub && <p className="text-[10px] text-gray-500">{sub}</p>}
     </div>

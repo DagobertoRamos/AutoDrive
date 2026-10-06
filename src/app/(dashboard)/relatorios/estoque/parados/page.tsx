@@ -5,6 +5,8 @@
 // Veículos em estoque há mais tempo. Consome /api/reports/stock/stale.
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback } from 'react'
 import { Car, RefreshCw, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -43,7 +45,7 @@ export default function VeiculosParadosPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Veículos Parados</h1>
+          <h1 className="flex items-center gap-1 text-xl font-bold text-gray-900">Veículos Parados<HelpHint className="ml-1" {...opsHint('DIAS_PARADO')} /></h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${summary?.parados ?? 0} veículos há ${minDays}+ dias em estoque`}</p>
         </div>
         <div className="flex items-center gap-2">

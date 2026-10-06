@@ -11,6 +11,8 @@ import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
 import type { Pipeline, PipelineStage } from '@/lib/crm/pipelines-core'
 import { DealPeekLink } from '@/components/deals/DealPeek'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface LeadTag { id: string; name: string; color: string | null }
@@ -493,8 +495,9 @@ export default function CrmKanbanPage() {
             ) : (
               <h1 className="text-[15px] font-semibold text-gray-900 dark:text-white">{pipeline?.name ?? 'Pipeline CRM'}</h1>
             )}
-            <p className="text-[10px] tabular-nums text-gray-400 dark:text-gray-500">
+            <p className="flex items-center gap-1 text-[10px] tabular-nums text-gray-400 dark:text-gray-500">
               {loading ? 'Carregando…' : `${boardRows.length} leads · ${stages.length} etapas · arraste os cards para mover`}
+              <HelpHint size={11} title="Funil / pipeline" text={`${opsText('FUNIL')}\nSelos "1º contato atrasado" e "Parado há +Xh" mostram leads fora do SLA configurado no CRM.`} />
             </p>
           </div>
 

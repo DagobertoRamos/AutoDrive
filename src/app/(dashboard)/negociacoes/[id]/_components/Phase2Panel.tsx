@@ -14,6 +14,8 @@ import {
 } from 'lucide-react'
 import { formatBRL, maskBRL, parseBRL, numberToBRLMask, maskCPF, maskCNPJ } from '@/lib/masks'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { isLockedPayment } from '@/lib/negotiation/children-sync-core'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -386,7 +388,7 @@ export default function Phase2Panel(props: Props) {
           {/* Veiculos recebidos */}
           {recebidos.length > 0 && (
             <Card>
-              <SubHeader icon={<Car size={14} />} title="Veiculos recebidos" count={recebidos.length} />
+              <SubHeader icon={<Car size={14} />} title="Veiculos recebidos" count={recebidos.length} help={<HelpHint {...DEAL_HINTS.TROCA} />} />
               <ul className="divide-y divide-gray-100">
                 {recebidos.map(v => (
                   <VehicleItem
@@ -402,7 +404,7 @@ export default function Phase2Panel(props: Props) {
 
           {/* Debitos */}
           <Card>
-            <SubHeader icon={<FileText size={14} />} title="Debitos" />
+            <SubHeader icon={<FileText size={14} />} title="Debitos" help={<HelpHint {...DEAL_HINTS.DEBITOS} />} />
             {(!debts || debts.length === 0) ? (
               <Empty text={debtsTotal > 0
                 ? `Total de debitos: ${formatBRL(debtsTotal)} (sem detalhamento)`
@@ -474,7 +476,7 @@ export default function Phase2Panel(props: Props) {
           {/* Descontos aprovados */}
           {discounts.length > 0 && (
             <Card>
-              <SubHeader icon={<Percent size={14} />} title="Descontos" count={discounts.length} />
+              <SubHeader icon={<Percent size={14} />} title="Descontos" count={discounts.length} help={<HelpHint {...DEAL_HINTS.DESCONTO_APROVACAO} />} />
               <ul className="divide-y divide-gray-100">
                 {discounts.map(d => (
                   <li key={d.id} className="flex items-start justify-between gap-2 py-2 text-sm">
@@ -535,7 +537,7 @@ export default function Phase2Panel(props: Props) {
               <Mini label="Veiculos vendidos"   value={formatBRL(totals.totalVeiculosVendidos)} />
               {totals.veiculosRecebidos > 0 && <Mini label="(-) Veiculos recebidos" value={formatBRL(totals.veiculosRecebidos)} />}
               {totals.debitosRelevantes > 0 && <Mini label="Debitos do cliente"     value={formatBRL(totals.debitosRelevantes)} />}
-              {totals.payoffsRecebidos  > 0 && <Mini label="Quitacao recebidos"     value={formatBRL(totals.payoffsRecebidos)} />}
+              {totals.payoffsRecebidos  > 0 && <Mini label="Quitacao recebidos"     value={formatBRL(totals.payoffsRecebidos)} help={<HelpHint {...DEAL_HINTS.QUITACAO} size={12} />} />}
               {totals.totalServicos     > 0 && <Mini label="Servicos"               value={formatBRL(totals.totalServicos)} />}
               {totals.totalDescontosAprovados > 0 && <Mini label="(-) Descontos" value={formatBRL(totals.totalDescontosAprovados)} />}
             </div>
@@ -605,7 +607,7 @@ export default function Phase2Panel(props: Props) {
 
           {/* Totais e saldo */}
           <Card>
-            <SubHeader icon={<DollarSign size={14} />} title="Saldo" />
+            <SubHeader icon={<DollarSign size={14} />} title="Saldo" help={<HelpHint term="SALDO_NEGOCIACAO" />} />
             <dl className="space-y-1 text-sm">
               <Row label="Total da operacao"     value={formatBRL(totals.totalOperacao)} />
               <Row label="Total pagamentos"      value={formatBRL(totals.totalPagamentos)} />
@@ -655,7 +657,7 @@ export default function Phase2Panel(props: Props) {
           {/* Troco */}
           {changes.length > 0 && (
             <Card>
-              <SubHeader icon={<Coins size={14} />} title="Troco" count={changes.length} />
+              <SubHeader icon={<Coins size={14} />} title="Troco" count={changes.length} help={<HelpHint {...DEAL_HINTS.TROCO} />} />
               <ul className="space-y-2">
                 {changes.map(c => (
                   <li key={c.id} className="rounded-lg border border-blue-100 bg-blue-50/40 p-2.5">
@@ -745,10 +747,11 @@ function SectionTitle({ icon, title }: { icon: React.ReactNode; title: string })
   )
 }
 
-function SubHeader({ icon, title, count }: { icon: React.ReactNode; title: string; count?: number }) {
+function SubHeader({ icon, title, count, help }: { icon: React.ReactNode; title: string; count?: number; help?: React.ReactNode }) {
   return (
     <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
       {icon} {title}
+      {help}
       {typeof count === 'number' && (
         <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] font-semibold text-gray-600">{count}</span>
       )}
@@ -760,10 +763,10 @@ function Empty({ text }: { text: string }) {
   return <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-xs italic text-gray-500">{text}</p>
 }
 
-function Mini({ label, value }: { label: string; value: string }) {
+function Mini({ label, value, help }: { label: string; value: string; help?: React.ReactNode }) {
   return (
     <div className="flex justify-between">
-      <span>{label}</span>
+      <span className="inline-flex items-center gap-1">{label}{help}</span>
       <span className="font-medium">{value}</span>
     </div>
   )
@@ -909,7 +912,7 @@ function PaymentModal({
         </div>
 
         {isSignal && (
-          <Field label="Forma do sinal / entrada" required>
+          <Field label="Forma do sinal / entrada" required help={<HelpHint {...DEAL_HINTS.SINAL} size={12} />}>
             <select value={signalMethod} onChange={e => setSignalMethod(e.target.value)} className="input">
               <option value="">Selecione</option>
               <option value="PIX">Pix</option>
@@ -1212,10 +1215,10 @@ function Modal({ title, onClose, children, wide }: { title: string; onClose: () 
   )
 }
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function Field({ label, required, children, help }: { label: string; required?: boolean; children: React.ReactNode; help?: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-gray-600">{label}{required && <> <RequiredMark /></>}</span>
+      <span className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600">{label}{required && <RequiredMark />}{help}</span>
       {children}
     </label>
   )

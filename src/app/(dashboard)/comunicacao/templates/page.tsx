@@ -5,6 +5,7 @@
 // Gerenciamento dos templates usados nos disparos automáticos e manuais
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useState, useEffect, useCallback } from 'react'
 import {
   Plus, Edit2, Trash2, MessageSquare, RefreshCw,
@@ -174,7 +175,7 @@ export default function TemplatesPage() {
                 />
               </div>
               <div>
-                <label className="label">Categoria <RequiredMark /></label>
+                <label className="label">Categoria<HelpHint className="ml-1" title="Categoria" text="Para que tipo de aviso o modelo é usado: lembrete de pendência, vencimento, confirmação de resolução, urgente ou geral." /> <RequiredMark /></label>
                 <select
                   value={form.category}
                   onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
@@ -206,7 +207,7 @@ export default function TemplatesPage() {
             <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
               <div className="flex items-center gap-2 mb-2">
                 <Info size={13} className="text-blue-600 shrink-0" />
-                <span className="text-xs font-semibold text-blue-700">Variáveis</span>
+                <span className="text-xs font-semibold text-blue-700">Variáveis</span><HelpHint className="ml-1" title="Variáveis" text="Campos trocados automaticamente pelos dados reais no envio (nome do cliente, placa, prazo...). Clique numa variável para inserir no texto." />
               </div>
               <div className="flex flex-wrap gap-2">
                 {VARIABLE_HINTS.map((v) => (

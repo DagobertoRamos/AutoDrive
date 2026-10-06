@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Plus, Save, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 
 type ValueType = 'PERCENTUAL' | 'FIXO'
 type DeductionBase = 'GROSS_RETURN' | 'FINANCED_AMOUNT'
@@ -84,11 +86,12 @@ function emptyIofRow(): CompetenceRow {
   }
 }
 
-function ToggleRow({ checked, disabled, label, onChange }: { checked: boolean; disabled: boolean; label: string; onChange: (checked: boolean) => void }) {
+function ToggleRow({ checked, disabled, label, onChange, help }: { checked: boolean; disabled: boolean; label: string; onChange: (checked: boolean) => void; help?: boolean }) {
   return (
     <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
       <input disabled={disabled} type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
       {label}
+      {help && <HelpHint {...DEAL_HINTS.ILA_IOF_ZERO} size={12} />}
     </label>
   )
 }
@@ -101,7 +104,7 @@ function IlaEditor({ rows, onChange, canEdit }: { rows: CompetenceRow[]; onChang
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-gray-900">ILA mensal</h3>
+        <h3 className="flex items-center gap-1 text-sm font-semibold text-gray-900">ILA mensal<HelpHint term="ILA" /></h3>
         {canEdit && <button type="button" onClick={() => onChange([...rows, emptyIlaRow()])} className="btn-secondary text-xs"><Plus size={14} />Adicionar</button>}
       </div>
 
@@ -140,7 +143,7 @@ function IofEditor({ rows, onChange, canEdit }: { rows: CompetenceRow[]; onChang
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-gray-900">IOF periódico</h3>
+        <h3 className="flex items-center gap-1 text-sm font-semibold text-gray-900">IOF periódico<HelpHint term="IOF" /></h3>
         {canEdit && <button type="button" onClick={() => onChange([...rows, emptyIofRow()])} className="btn-secondary text-xs"><Plus size={14} />Adicionar</button>}
       </div>
 
@@ -242,7 +245,7 @@ export function ReturnProfessionalSettings({ canEdit }: { canEdit: boolean }) {
 
         <div className="grid gap-3 sm:grid-cols-5">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Retorno mínimo (%) <RequiredMark /></label>
+            <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Retorno mínimo (%) <RequiredMark /><HelpHint {...DEAL_HINTS.FAIXA_RETORNO} size={12} /></label>
             <input disabled={!canEdit} type="number" min={0.01} max={20} step="0.01" className={inputCls} value={bundle.range.minReturnPercent} onChange={(e) => setRange({ minReturnPercent: Math.max(0, Number(e.target.value) || 0) })} />
           </div>
           <div>
@@ -250,11 +253,11 @@ export function ReturnProfessionalSettings({ canEdit }: { canEdit: boolean }) {
             <input disabled={!canEdit} type="number" min={0.01} max={20} step="0.01" className={inputCls} value={bundle.range.maxReturnPercent} onChange={(e) => setRange({ maxReturnPercent: Math.max(0, Number(e.target.value) || 0) })} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Base padrão</label>
+            <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Base padrão<HelpHint {...DEAL_HINTS.VALOR_FINANCIADO} size={12} /></label>
             <select disabled className={inputCls} value={bundle.range.calculationBase}><option value="FINANCED_AMOUNT">Valor financiado</option></select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Base ILA/IOF</label>
+            <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Base ILA/IOF<HelpHint {...DEAL_HINTS.BASE_DEDUCAO} size={12} /></label>
             <select disabled className={inputCls} value={bundle.range.deductionBase} onChange={(e) => setRange({ deductionBase: e.target.value as DeductionBase })}>
               <option value="GROSS_RETURN">Retorno bruto</option>
             </select>
@@ -266,7 +269,7 @@ export function ReturnProfessionalSettings({ canEdit }: { canEdit: boolean }) {
         </div>
 
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <ToggleRow checked={bundle.range.allowMissingIlaAsZero} disabled={!canEdit} label="Permitir ILA zero quando faltar competência" onChange={(allowMissingIlaAsZero) => setRange({ allowMissingIlaAsZero })} />
+          <ToggleRow help checked={bundle.range.allowMissingIlaAsZero} disabled={!canEdit} label="Permitir ILA zero quando faltar competência" onChange={(allowMissingIlaAsZero) => setRange({ allowMissingIlaAsZero })} />
           <ToggleRow checked={bundle.range.allowMissingIofAsZero} disabled={!canEdit} label="Permitir IOF zero quando não houver vigência" onChange={(allowMissingIofAsZero) => setRange({ allowMissingIofAsZero })} />
         </div>
 

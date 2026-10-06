@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Camera, Eye, EyeOff, ExternalLink, Loader2, Megaphone, Pencil, RefreshCw, Search, Star, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 
 type State = 'PUBLICADO' | 'EM_BREVE' | 'HIDDEN'
 interface Listing { featured: boolean; hidden: boolean; title: string; description: string; options: string[]; videoUrl: string; seoTitle: string; seoDescription: string }
@@ -68,7 +69,7 @@ export default function SiteListingsPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Megaphone size={20} className="text-brand-600" />Anúncios do site</h1>
+        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Megaphone size={20} className="text-brand-600" />Anúncios do site<HelpHint title="Situação no site" text="Publicado = carro disponível com fotos, visível no site. Em breve = disponível, mas ainda sem fotos (aparece como 'em breve'). Fora do site = vendido, inativo ou escondido manualmente." /></h1>
         <button onClick={() => void load()} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
 
@@ -139,7 +140,7 @@ function ListingEditor({ row, onClose, onSave, busy, error }: { row: Row; onClos
         </div>
         <div className="space-y-4">
           <div className="flex flex-wrap gap-4 text-sm">
-            <label className="flex items-center gap-2"><input type="checkbox" checked={l.featured} onChange={(e) => set({ featured: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Destaque</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={l.featured} onChange={(e) => set({ featured: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Destaque <HelpHint title="Destaque" text="Carros em destaque aparecem antes dos demais na listagem do site." /></label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={l.hidden} onChange={(e) => set({ hidden: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Esconder do site</label>
           </div>
           <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Título do anúncio</span><input className={input} value={l.title} placeholder={row.title} onChange={(e) => set({ title: e.target.value })} /></label>
@@ -147,7 +148,7 @@ function ListingEditor({ row, onClose, onSave, busy, error }: { row: Row; onClos
           <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Opcionais <span className="text-gray-400">(um por linha)</span></span><textarea rows={4} className={input} value={optText} placeholder={'Ar-condicionado\nCentral multimídia\nCâmera de ré'} onChange={(e) => setOptText(e.target.value)} /></label>
           <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Vídeo <span className="text-gray-400">(YouTube ou .mp4)</span></span><input className={input} value={l.videoUrl} placeholder="https://www.youtube.com/watch?v=..." onChange={(e) => set({ videoUrl: e.target.value })} /></label>
           <div className="rounded-lg border border-gray-100 p-3">
-            <p className="mb-2 text-xs font-semibold text-gray-700">Como aparece no Google</p>
+            <p className="mb-2 flex items-center gap-1 text-xs font-semibold text-gray-700">Como aparece no Google <HelpHint title="SEO" text="Título e descrição mostrados no resultado de busca do Google. Vazio = o sistema monta sozinho a partir da ficha do carro." /></p>
             <label className="block"><span className="mb-1 flex justify-between text-xs text-gray-600">Título <span className="text-gray-400">{l.seoTitle.length}/70</span></span><input maxLength={70} className={input} value={l.seoTitle} placeholder={autoSeo} onChange={(e) => set({ seoTitle: e.target.value })} /></label>
             <label className="mt-2 block"><span className="mb-1 flex justify-between text-xs text-gray-600">Descrição <span className="text-gray-400">{l.seoDescription.length}/170</span></span><textarea rows={2} maxLength={170} className={input} value={l.seoDescription} placeholder="Automática" onChange={(e) => set({ seoDescription: e.target.value })} /></label>
             <div className="mt-3 rounded-md bg-gray-50 p-2">

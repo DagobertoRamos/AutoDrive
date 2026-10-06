@@ -12,6 +12,8 @@ import Link from 'next/link'
 import { LogOut, Pause, Play, Hand, CheckCircle2, ChevronRight, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 interface Me { status: string; position: number }
 interface Current { me: Me | null; myAttendance: { id: string; status: string } | null; canCheckIn?: boolean }
@@ -81,7 +83,7 @@ export default function QueueSelfCard() {
                 </>
               ) : (
                 <>
-                  <p className="text-xs uppercase tracking-wide text-gray-400">Sua posição na fila</p>
+                  <p className="flex items-center gap-1 text-xs uppercase tracking-wide text-gray-400">Sua posição na fila <HelpHint {...opsHint('RODIZIO')} /></p>
                   <p className="text-2xl font-bold tabular-nums text-gray-900">{me.position}º</p>
                 </>
               )}

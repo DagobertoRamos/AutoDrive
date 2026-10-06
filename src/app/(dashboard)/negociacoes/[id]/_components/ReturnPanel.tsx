@@ -11,6 +11,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Percent, RefreshCw, Save } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 
 interface Props {
   dealId:   string
@@ -106,6 +108,7 @@ export default function ReturnPanel({ dealId, canEdit, onReload, onToast }: Prop
         <div className="flex items-center gap-2">
           <Percent size={15} className="text-brand-700" />
           <h3 className="text-sm font-semibold text-gray-800">Retorno financeiro</h3>
+          <HelpHint term="RETORNO" />
         </div>
         <button onClick={load} disabled={loading} className="text-gray-400 hover:text-gray-600" aria-label="Recarregar">
           <RefreshCw size={14} className={cn(loading && 'animate-spin')} />
@@ -115,11 +118,11 @@ export default function ReturnPanel({ dealId, canEdit, onReload, onToast }: Prop
       <div className="space-y-4 p-4">
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Valor financiado</label>
+            <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Valor financiado<HelpHint {...DEAL_HINTS.VALOR_FINANCIADO} size={12} /></label>
             <input disabled className={inputCls} value={brl(financed)} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">% de retorno ({fmtRate(minRate)}–{fmtRate(maxRate)})</label>
+            <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">% de retorno ({fmtRate(minRate)}–{fmtRate(maxRate)})<HelpHint {...DEAL_HINTS.PERCENTUAL_RETORNO} size={12} /></label>
             <input
               type="text" inputMode="numeric" disabled={!canEdit}
               className={inputCls}
@@ -128,20 +131,20 @@ export default function ReturnPanel({ dealId, canEdit, onReload, onToast }: Prop
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Retorno bruto</label>
+            <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Retorno bruto<HelpHint term="RETORNO_BRUTO" size={12} /></label>
             <input disabled className={inputCls} value={brl(gross)} />
           </div>
           {canSeeFinance && <>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">ILA {config?.competence.label ? `(${config.competence.label})` : ''}</label>
+            <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">ILA {config?.competence.label ? `(${config.competence.label})` : ''}<HelpHint term="ILA" size={12} /></label>
             <input disabled className={inputCls} value={config?.ila ? `${config.ila.valueType === 'FIXO' ? brl(config.ila.value) : `${config.ila.value}%`} = ${brl(ilaValue)}` : 'Não cadastrado'} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">IOF</label>
+            <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">IOF<HelpHint term="IOF" size={12} /></label>
             <input disabled className={inputCls} value={config?.iof ? `${config.iof.valueType === 'FIXO' ? brl(config.iof.value) : `${config.iof.value}%`} = ${brl(iofValue)}` : 'Não cadastrado'} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Retorno líquido</label>
+            <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Retorno líquido<HelpHint term="RETORNO_LIQUIDO" size={12} /></label>
             <input disabled className={cn(inputCls, 'font-semibold text-brand-700')} value={brl(net)} />
           </div>
           </>}

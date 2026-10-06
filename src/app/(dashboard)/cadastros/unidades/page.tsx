@@ -4,6 +4,8 @@
 // Cadastro de Unidades — AutoDrive
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Building2, X, Save, CheckCircle, AlertCircle, Coins, Trophy } from 'lucide-react'
 import { cn, formatCNPJ } from '@/lib/utils'
@@ -229,6 +231,7 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
               <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
                 <Coins className="h-4 w-4 text-amber-500" />
                 Comissões nesta unidade
+                <HelpHint className="ml-1" title="Comissões da unidade" text="Ligado, as vendas desta unidade geram comissão para os cargos marcados. Nenhum cargo marcado = todos recebem. Desligado, ninguém recebe comissão nas vendas desta unidade." />
               </span>
               <Toggle checked={commEnabled} onChange={setCommEnabled} />
             </div>
@@ -380,7 +383,7 @@ export default function UnidadesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Unidades</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Unidades<HelpHint className="ml-1" {...opsHint('UNIDADE')} /></h1>
         </div>
         <button
           onClick={openCreate}

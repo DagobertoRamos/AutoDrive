@@ -52,7 +52,7 @@ export function ExpensesByCategoryReport({ url, onData, registerCsv }: ReportVie
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Kpi label="Despesas no período" value={loading ? '—' : fmt(data?.total ?? 0)} tone="red" />
         <Kpi label="Período anterior" value={loading ? '—' : fmt(data?.previousTotal ?? 0)} hint={data ? `${monthLabel(data.previous.from)} a ${monthLabel(data.previous.to)}` : undefined} />
-        <Kpi label="Variação" value={loading ? '—' : fmtPct(data?.variation)} tone={(data?.variation ?? 0) > 0 ? 'red' : 'green'} />
+        <Kpi label="Variação" helpText="Quanto as despesas subiram (+) ou caíram (−) em relação ao período anterior de mesmo tamanho." value={loading ? '—' : fmtPct(data?.variation)} tone={(data?.variation ?? 0) > 0 ? 'red' : 'green'} />
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Panel title="Participação por grupo">
@@ -141,7 +141,7 @@ export function SuppliersReport({ url, onData, registerCsv }: ReportViewProps) {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Kpi label="Gasto total" value={loading ? '—' : fmt(data?.total ?? 0)} tone="red" />
         <Kpi label="Fornecedores" value={loading ? '—' : String(data?.suppliersCount ?? 0)} />
-        <Kpi label="Concentração top 5" value={loading ? '—' : fmtPct((data?.rows ?? []).slice(0, 5).reduce((s, r) => s + (r.share ?? 0), 0))} />
+        <Kpi label="Concentração top 5" helpText="Quanto dos gastos do período foi para os 5 maiores fornecedores. Alto = dependência de poucos fornecedores." value={loading ? '—' : fmtPct((data?.rows ?? []).slice(0, 5).reduce((s, r) => s + (r.share ?? 0), 0))} />
       </div>
       <Panel title="Maiores gastos">
         <StateBox loading={loading} error={error} empty={!data?.chart.length} />

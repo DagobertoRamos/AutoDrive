@@ -40,6 +40,8 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { maskPhoneInput } from '@/lib/br-docs/phone'
 import MinhaFilaIndividual from '@/components/seller-queue/MinhaFilaIndividual'
 import FilasIndividuaisUnidade from '@/components/seller-queue/FilasIndividuaisUnidade'
@@ -825,7 +827,7 @@ export default function FilaOverviewPage() {
                     <Crown size={22} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500">Vendedor da vez</p>
+                    <p className="flex items-center gap-1 text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500">Vendedor da vez <HelpHint {...opsHint('VENDEDOR_DA_VEZ')} /></p>
                     <h2 className="break-words text-lg sm:text-2xl font-bold text-gray-900 leading-tight">{current?.vendedorDaVez?.sellerName ?? 'Nenhum vendedor disponível'}</h2>
                     <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-gray-500 break-words">
                       {current?.vendedorDaVez ? `Posição ${waitingLine.findIndex((e) => e.sellerId === current.vendedorDaVez?.sellerId) + 1 || 1} · tempo na fila ${timeLabel(currentEntry?.joinedAt, now)}` : noSellerReason}
@@ -843,11 +845,11 @@ export default function FilaOverviewPage() {
                   </div>
                   <div className="rounded-lg border border-gray-200 bg-gray-50 p-1.5 sm:p-2.5">
                     <p className="text-base sm:text-lg font-bold text-amber-700">{stats.paused}</p>
-                    <p className="text-[10px] sm:text-[11px] text-gray-500">Pausados</p>
+                    <p className="flex items-center gap-1 text-[10px] sm:text-[11px] text-gray-500">Pausados <HelpHint {...opsHint('PAUSA')} size={11} /></p>
                   </div>
                   <div className="rounded-lg border border-gray-200 bg-gray-50 p-1.5 sm:p-2.5">
                     <p className="text-base sm:text-lg font-bold text-red-700">{stats.blocked}</p>
-                    <p className="text-[10px] sm:text-[11px] text-gray-500">Bloqueados</p>
+                    <p className="flex items-center gap-1 text-[10px] sm:text-[11px] text-gray-500">Bloqueados <HelpHint text="Vendedores impedidos de receber clientes agora (bloqueio manual da gestão, intervalo após perdas ou bloqueio do dia). A gestão pode liberar a qualquer momento." size={11} /></p>
                   </div>
                 </div>
               </div>
@@ -971,6 +973,7 @@ export default function FilaOverviewPage() {
                 <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
                   <ListOrdered size={16} className="text-brand-600" />
                   Ordem da fila
+                  <HelpHint {...opsHint('RODIZIO')} />
                 </p>
 
               </div>
@@ -1130,6 +1133,7 @@ export default function FilaOverviewPage() {
                     <p className="flex items-center gap-2 text-sm font-semibold text-red-800">
                       <ShieldAlert size={16} />
                       Bloqueios ativos
+                      <HelpHint text="Manual: aplicado pela gestão. Cooldown: intervalo de espera após perdas da vez. Diário: fora da fila até o fim do dia. “Liberar” devolve o vendedor à fila na hora." />
                     </p>
                   </div>
                   <div className="divide-y divide-red-100">
@@ -1159,6 +1163,7 @@ export default function FilaOverviewPage() {
                   <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
                     <Trophy size={16} className="text-amber-500" />
                     Ranking de atendimento
+                    <HelpHint text="Últimos 7 dias. cham. = vezes chamado; fin. = atendimentos finalizados; resp. = tempo médio para aceitar; tout = chamadas perdidas por tempo (timeout); rec. = chamadas recusadas." />
                   </p>
                   <span className="text-xs text-gray-400">7 dias</span>
                 </div>

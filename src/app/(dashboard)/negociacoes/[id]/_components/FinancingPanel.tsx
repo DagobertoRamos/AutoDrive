@@ -12,6 +12,8 @@ import Link from 'next/link'
 import { Banknote, Plus, FolderOpen, CheckCircle2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 
 interface Proposal { id: string; status: string; proponentNome: string; bankNome: string | null; amountRequested: number; approvedValue: number; monthlyPayment: number; installments: number | null; createdAt: string }
 interface Proponent { id: string; name: string }
@@ -81,7 +83,7 @@ export default function FinancingPanel({ dealId, canEdit, onReload, onToast }: {
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-card">
       <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900"><Banknote size={15} className="text-brand-600" />Financiamento (F&amp;I)</h3>
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900"><Banknote size={15} className="text-brand-600" />Financiamento (F&amp;I)<HelpHint term="FI" /></h3>
         {canEdit && !locked && <button onClick={openNew} className="btn-secondary text-xs"><Plus size={13} />Nova ficha</button>}
       </div>
 
@@ -92,15 +94,19 @@ export default function FinancingPanel({ dealId, canEdit, onReload, onToast }: {
           <p className="py-6 text-center text-sm text-gray-400">Nenhuma ficha de F&amp;I vinculada a esta negociação.</p>
         ) : (
           <ul className="space-y-2">
-            {proposals.map((p) => (
+            {proposals.map((p, i) => (
               <li key={p.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 px-3 py-2">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-gray-900">{p.proponentNome}</p>
                   <p className="text-xs text-gray-500">{p.bankNome ?? 'Sem banco'} · {p.installments ?? '—'}x · {p.status === 'APROVADA' && p.approvedValue > 0 ? `aprovado ${fmt(p.approvedValue)}` : fmt(p.amountRequested)}</p>
                 </div>
                 <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_CLS[p.status] ?? 'bg-gray-100 text-gray-600')}>{p.status}</span>
+                {i === 0 && <HelpHint {...DEAL_HINTS.FICHA_STATUS} size={12} />}
                 {canEdit && !locked && p.status === 'APROVADA' && (
                   <button onClick={() => apply(p)} className="inline-flex items-center gap-1 rounded-lg bg-green-50 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-100" title="Aplicar valores à negociação"><CheckCircle2 size={13} />Aplicar</button>
+                )}
+                {canEdit && !locked && p.status === 'APROVADA' && (
+                  <HelpHint {...DEAL_HINTS.APLICAR_FICHA} size={12} />
                 )}
                 <Link href={`/financiamento/fichas/${p.id}`} className="inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-brand-50 hover:text-brand-700" title="Abrir ficha"><FolderOpen size={15} /></Link>
               </li>
@@ -114,7 +120,7 @@ export default function FinancingPanel({ dealId, canEdit, onReload, onToast }: {
           <div className="my-8 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">Nova ficha de F&amp;I</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="space-y-3">
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Proponente <RequiredMark /></label><select className={inputCls} value={form.proponentId} onChange={(e) => setForm((f) => ({ ...f, proponentId: e.target.value }))}><option value="">Selecione...</option>{proponents.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>{proponents.length === 0 && <p className="mt-1 text-[11px] text-amber-600">Nenhum proponente cadastrado.</p>}</div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Proponente <RequiredMark /> <HelpHint {...DEAL_HINTS.PROPONENTE} size={12} /></label><select className={inputCls} value={form.proponentId} onChange={(e) => setForm((f) => ({ ...f, proponentId: e.target.value }))}><option value="">Selecione...</option>{proponents.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>{proponents.length === 0 && <p className="mt-1 text-[11px] text-amber-600">Nenhum proponente cadastrado.</p>}</div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Banco</label><select className={inputCls} value={form.bankId} onChange={(e) => setForm((f) => ({ ...f, bankId: e.target.value }))}><option value="">—</option>{banks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Parcelas</label><input type="number" min={1} className={inputCls} value={form.installments} onChange={(e) => setForm((f) => ({ ...f, installments: e.target.value }))} placeholder="48" /></div>
             </div>

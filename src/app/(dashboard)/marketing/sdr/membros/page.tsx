@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Headset, Plus, Pencil, Trash2, X, Save, Power } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
@@ -131,7 +132,7 @@ export default function SdrMembersPage() {
               </>}
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Papel</label><select className={inputCls} value={form.role} onChange={(e) => set('role', e.target.value)}><option value="SDR">SDR</option><option value="LEADER">Líder</option></select></div>
-                <div><label className="mb-1 block text-xs font-medium text-gray-700">Limite de leads abertos</label><input type="number" min={1} className={inputCls} value={form.maxOpenLeads} onChange={(e) => set('maxOpenLeads', e.target.value)} placeholder="—" /></div>
+                <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Limite de leads abertos <HelpHint title="Limite de leads abertos" text="Máximo de leads em aberto que este membro pode ter ao mesmo tempo. Atingido o limite, a distribuição pula para o próximo. Vazio = sem limite." /></label><input type="number" min={1} className={inputCls} value={form.maxOpenLeads} onChange={(e) => set('maxOpenLeads', e.target.value)} placeholder="—" /></div>
               </div>
               <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.active} onChange={(e) => set('active', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Ativo</label>
               {error && <p className="text-sm text-red-600">{error}</p>}

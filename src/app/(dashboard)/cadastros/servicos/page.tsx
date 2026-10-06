@@ -4,6 +4,7 @@
 // Cadastro de Serviços — AutoDrive
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Wrench, X, Save, CheckCircle, AlertCircle } from 'lucide-react'
 import { cn, formatMoney } from '@/lib/utils'
@@ -134,7 +135,7 @@ function Modal({
               <input className={inputClass()} value={form.category} onChange={(e) => set('category', e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Valor padrão (R$)</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Valor padrão (R$)<HelpHint className="ml-1" title="Valor padrão" text="Preço sugerido ao incluir o serviço numa negociação. Pode ser alterado em cada venda." /></label>
               <input
                 type="text"
                 inputMode="numeric"
@@ -145,7 +146,7 @@ function Modal({
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Comissão padrão (R$)</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Comissão padrão (R$)<HelpHint className="ml-1" title="Comissão padrão" text="Valor fixo de comissão pago ao vendedor quando o serviço é vendido." /></label>
               <input
                 type="text"
                 inputMode="numeric"

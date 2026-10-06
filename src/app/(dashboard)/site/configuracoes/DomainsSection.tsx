@@ -12,6 +12,8 @@ import { Check, ChevronDown, Copy, ExternalLink, Globe, Loader2, RefreshCw, Star
 import { cn } from '@/lib/utils'
 import type { DomainStatus, SiteDomain } from '@/lib/site/domains-core'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 const STATUS: Record<DomainStatus, { label: string; cls: string }> = {
   PENDING_DNS: { label: 'Aguardando DNS', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -115,7 +117,7 @@ export function DomainsSection({ domains, slug, siteBaseDomain, hostingIntegrati
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900"><Globe size={15} className="text-brand-600" />Domínios</h2>
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900"><Globe size={15} className="text-brand-600" />Domínios<HelpHint {...opsHint('DOMINIO')} /></h2>
         {domains.length > 0 && canManage && (
           <button onClick={() => void check()} disabled={!!busy} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(busy === 'all' && 'animate-spin')} />Verificar todos</button>
         )}
@@ -170,7 +172,7 @@ export function DomainsSection({ domains, slug, siteBaseDomain, hostingIntegrati
 
               {d.status !== 'CONNECTED' && d.status !== 'DNS_OK' && (
                 <div className="mt-2 overflow-x-auto">
-                  <p className="mb-1 text-[11px] text-gray-600">Crie no provedor do domínio:</p>
+                  <p className="mb-1 flex items-center gap-1 text-[11px] text-gray-600">Crie no provedor do domínio: <HelpHint title="Registros DNS" text="No painel onde o domínio foi comprado (Registro.br, GoDaddy, Hostinger…), em DNS, crie cada registro abaixo com o mesmo tipo, nome e valor. A propagação pode levar de minutos a algumas horas." /></p>
                   <table className="w-full min-w-[460px] text-xs">
                     <thead><tr className="text-left text-[10px] uppercase tracking-wider text-gray-400"><th className="py-1 pr-3">Tipo</th><th className="py-1 pr-3">Nome / Host</th><th className="py-1 pr-3">Valor / Aponta para</th><th /></tr></thead>
                     <tbody>

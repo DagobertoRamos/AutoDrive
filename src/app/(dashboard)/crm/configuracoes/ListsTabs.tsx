@@ -11,6 +11,9 @@ import { Plus, Save, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCrmSettings } from '@/hooks/useCrmSettings'
 import type { CloseOutcome, CloseReasonCfg, CrmSettings, LeadTypeCfg, SourceCfg, TemperatureCfg } from '@/lib/crm/settings-core'
+import { HelpHint } from '@/components/ui/help-hint'
+import type { GlossaryTerm } from '@/lib/glossary'
+import { opsHint } from '@/lib/glossary-ops'
 
 export const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 export const checkCls = 'rounded border-gray-300 text-brand-600 focus:ring-brand-500'
@@ -41,10 +44,10 @@ export function useSection<K extends keyof CrmSettings>(section: K) {
   return { items, update, save, saving, dirty, msg }
 }
 
-export function Card({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+export function Card({ title, hint, help, children }: { title: string; hint?: string; help?: { term?: GlossaryTerm; text?: string; title?: string }; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
-      <div className="mb-3"><h2 className="text-sm font-semibold text-gray-900">{title}</h2>{hint && <p className="text-xs text-gray-500">{hint}</p>}</div>
+      <div className="mb-3"><h2 className="flex items-center gap-1 text-sm font-semibold text-gray-900">{title}{help && <HelpHint {...help} />}</h2>{hint && <p className="text-xs text-gray-500">{hint}</p>}</div>
       {children}
     </div>
   )
@@ -65,7 +68,7 @@ export function TemperaturesTab({ canManage }: { canManage: boolean }) {
   const s = useSection('temperatures')
   const set = (value: string, patch: Partial<TemperatureCfg>) => s.update(s.items.map((t) => t.value === value ? { ...t, ...patch } : t))
   return (
-    <Card title="Temperaturas">
+    <Card title="Temperaturas" help={opsHint('TEMPERATURA')}>
       <ul className="space-y-2">
         {s.items.map((t) => (
           <li key={t.value} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2">
@@ -86,7 +89,7 @@ export function LeadTypesTab({ canManage }: { canManage: boolean }) {
   const s = useSection('leadTypes')
   const set = (i: number, patch: Partial<LeadTypeCfg>) => s.update(s.items.map((t, idx) => idx === i ? { ...t, ...patch } : t))
   return (
-    <Card title="Tipos de lead">
+    <Card title="Tipos de lead" help={{ title: 'Tipos de lead', text: 'Classificação livre do interesse do lead (ex.: compra, venda do carro, troca, financiamento). Ajuda a filtrar e a criar automações.' }}>
       <ul className="space-y-2">
         {s.items.map((t, i) => (
           <li key={t.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2">
@@ -111,7 +114,7 @@ export function SourcesTab({ canManage }: { canManage: boolean }) {
   const s = useSection('sources')
   const set = (i: number, patch: Partial<SourceCfg>) => s.update(s.items.map((t, idx) => idx === i ? { ...t, ...patch } : t))
   return (
-    <Card title="Origens">
+    <Card title="Origens" help={opsHint('ORIGEM')}>
       <ul className="space-y-2">
         {s.items.map((t, i) => (
           <li key={t.code || `new-${i}`} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2">
@@ -143,7 +146,7 @@ export function CloseReasonsTab({ canManage }: { canManage: boolean }) {
   const set = (id: string, patch: Partial<CloseReasonCfg>) => s.update(s.items.map((r) => r.id === id ? { ...r, ...patch } : r))
   let newSeq = 0
   return (
-    <Card title="Motivos de encerramento">
+    <Card title="Motivos de encerramento" help={{ title: 'Motivos de encerramento', text: 'Perdido = o cliente desistiu ou comprou em outro lugar. Desqualificado = contato inválido ou sem perfil. Reciclado = volta para a base para nova tentativa no futuro.' }}>
       <div className="grid gap-4 lg:grid-cols-3">
         {OUTCOMES.map((o) => {
           const list = s.items.filter((r) => r.outcome === o.value)

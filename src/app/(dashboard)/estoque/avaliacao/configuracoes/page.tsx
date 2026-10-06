@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { canAccessModule } from '@/lib/permissions'
 import { MoneyInput } from '@/components/ui/money-input'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
 import { EVAL_SECTIONS, type RepairOption } from '@/lib/evaluation/repair-prices-core'
 import { SERVICE_TYPES, SERVICE_TYPE_LABELS } from '@/lib/evaluation/catalog'
 
@@ -75,7 +76,7 @@ export default function EvaluationSettingsPage() {
       )}
 
       <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-        <div className="border-b border-gray-100 px-4 py-3"><h2 className="text-sm font-semibold text-gray-900">Tabela de reparos</h2></div>
+        <div className="border-b border-gray-100 px-4 py-3"><h2 className="inline-flex items-center gap-1 text-sm font-semibold text-gray-900">Tabela de reparos <HelpHint title="Tabela de reparos" text="Preço padrão de cada reparo, por seção da avaliação. Quando o avaliador marca um reparo, o valor daqui entra como custo previsto do carro." /></h2></div>
         {!rows ? <div className="p-8 text-center"><Loader2 className="mx-auto animate-spin text-gray-400" /></div> : (
           <div className="divide-y divide-gray-100">
             {rows.map((r, i) => (

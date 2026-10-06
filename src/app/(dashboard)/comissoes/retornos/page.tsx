@@ -11,6 +11,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Save, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import RetornoPercentuais from '@/components/comissoes/RetornoPercentuais'
 import DocumentoConfigCard from '@/components/comissoes/DocumentoConfigCard'
 import GarantiaConfigCard from '@/components/comissoes/GarantiaConfigCard'
@@ -103,7 +105,7 @@ export default function RetornosPage() {
     <div className="max-w-2xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Retorno (ILA / IOF)</h1>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900">Retorno (ILA / IOF)<HelpHint {...DEAL_HINTS.RETORNO_IMPORTACAO} /></h1>
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs">
           <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
@@ -123,15 +125,15 @@ export default function RetornosPage() {
 
             <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">ILA (%){cfg.active && <RequiredMark className="ml-0.5" />}</label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">ILA (%){cfg.active && <RequiredMark />}<HelpHint term="ILA" size={12} /></label>
                 <input inputMode="decimal" className={inputCls()} value={text.ila} onChange={(e) => setField('ila', e.target.value)} />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">IOF (%){cfg.active && <RequiredMark className="ml-0.5" />}</label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">IOF (%){cfg.active && <RequiredMark />}<HelpHint term="IOF" size={12} /></label>
                 <input inputMode="decimal" className={inputCls()} value={text.iof} onChange={(e) => setField('iof', e.target.value)} />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Retorno mínimo (%){cfg.active && <RequiredMark className="ml-0.5" />}</label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Retorno mínimo (%){cfg.active && <RequiredMark />}<HelpHint {...DEAL_HINTS.FAIXA_RETORNO} size={12} /></label>
                 <input inputMode="decimal" className={inputCls()} value={text.min} onChange={(e) => setField('min', e.target.value)} />
               </div>
               <div>

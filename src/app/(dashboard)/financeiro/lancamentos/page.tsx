@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Trash2, Wallet, X, Save, RefreshCw, CheckCircle2, DownloadCloud } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import SearchBox from '@/components/reports/SearchBox'
 import { EntryDrawer } from '@/components/finance/EntryDrawer'
@@ -192,7 +193,7 @@ export default function FinanceEntriesPage() {
               <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Vencimento<RequiredMark className="ml-0.5" /></label><input type="date" className={inputClass} value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></div>
               <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Categoria</label><select className={inputClass} value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}><option value="">—</option>{categories.filter((c) => !c.kind || c.kind === form.type).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
               <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Conta</label><select className={inputClass} value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })}><option value="">—</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Competência</label><input type="date" className={inputClass} value={form.competenceDate} onChange={(e) => setForm({ ...form, competenceDate: e.target.value })} /></div>
+              <div><label className="mb-1.5 flex items-center gap-1 text-xs font-medium text-gray-700">Competência<HelpHint term="COMPETENCIA" size={12} /></label><input type="date" className={inputClass} value={form.competenceDate} onChange={(e) => setForm({ ...form, competenceDate: e.target.value })} /></div>
               <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Fornecedor / cliente</label><input className={inputClass} value={form.counterparty} onChange={(e) => setForm({ ...form, counterparty: e.target.value })} /></div>
               <div className="col-span-2"><label className="mb-1.5 block text-xs font-medium text-gray-700">Observações</label><input className={inputClass} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
               {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}

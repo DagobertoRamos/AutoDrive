@@ -19,6 +19,16 @@ import { PriorityBadge, StatusBadge } from '@/components/pendencies/PendencyStat
 import { PendencyModal } from '@/components/pendencies/PendencyModal'
 import { CreatePendencyModal } from '@/components/pendencies/CreatePendencyModal'
 import { cn, formatDate } from '@/lib/utils'
+import { WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
+import { GLOSSARY } from '@/lib/glossary'
+
+const CENTRAL_HINTS: Record<string, string> = {
+  'SLA Vencido': 'Pendências que passaram do prazo (SLA) definido pela prioridade e ainda não foram resolvidas.',
+  Escaladas: 'Pendências que ficaram sem solução no prazo e foram encaminhadas para a gestão acompanhar.',
+  'Prioridade / Severidade': opsText('PRIORIDADE'),
+  SLA: GLOSSARY.SLA.text,
+}
 import type { PendencyWithRelations } from '@/types'
 
 // ── Tipos locais ──────────────────────────────────────────────────────────────
@@ -432,7 +442,7 @@ export default function CentralAvisosPage() {
             <div key={c.label} className={cn('rounded-xl border p-3 text-center', c.color)}>
               <Icon size={14} className="mx-auto mb-1 opacity-60" />
               <p className="text-2xl font-bold tabular-nums">{loading ? '—' : c.value}</p>
-              <p className="mt-0.5 text-xs font-medium">{c.label}</p>
+              <p className="mt-0.5 text-xs font-medium">{CENTRAL_HINTS[c.label] ? <WithHint text={CENTRAL_HINTS[c.label]}>{c.label}</WithHint> : c.label}</p>
             </div>
           )
         })}
@@ -581,7 +591,7 @@ export default function CentralAvisosPage() {
                     key={h}
                     className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500"
                   >
-                    {h}
+                    {CENTRAL_HINTS[h] ? <WithHint text={CENTRAL_HINTS[h]}>{h}</WithHint> : h}
                   </th>
                 ))}
               </tr>

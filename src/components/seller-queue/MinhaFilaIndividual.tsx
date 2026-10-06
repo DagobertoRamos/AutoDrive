@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ListChecks, Play, X, RefreshCw, Clock, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 
 interface Item {
   id: string
@@ -70,7 +71,7 @@ export default function MinhaFilaIndividual({ onChanged }: { onChanged?: () => v
   return (
     <div className="max-w-full overflow-hidden rounded-xl border border-brand-200 bg-white shadow-card">
       <div className="flex items-center justify-between border-b border-gray-100 bg-brand-50 px-4 py-2.5">
-        <p className="flex items-center gap-1.5 text-sm font-semibold text-brand-800"><ListChecks size={15} />Minha fila individual ({items.length})</p>
+        <p className="flex items-center gap-1.5 text-sm font-semibold text-brand-800"><ListChecks size={15} />Minha fila individual ({items.length})<HelpHint text="Seus agendamentos, retornos e pós-vendas que chegaram enquanto você atendia. Não dependem do rodízio: inicie quando terminar o atendimento atual." title="Fila individual" /></p>
         <button onClick={load} className="rounded p-1 text-brand-600 hover:bg-brand-100" title="Atualizar"><RefreshCw size={13} /></button>
       </div>
       {error && <div className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}

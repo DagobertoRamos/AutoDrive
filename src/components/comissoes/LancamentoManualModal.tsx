@@ -9,6 +9,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { X, Save, RefreshCw, AlertCircle, CheckCircle2, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { RequiredMark } from '@/components/ui/field'
 
 interface Option { id: string; nome: string }
@@ -76,7 +78,7 @@ export default function LancamentoManualModal({ periodDefault, colaboradores, on
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Wallet size={18} className="text-brand-600" />Lançamento manual (RH)</h2>
+          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Wallet size={18} className="text-brand-600" />Lançamento manual (RH)<HelpHint {...DEAL_HINTS.LANCAMENTO_MANUAL} /></h2>
           <button onClick={onClose} className="rounded p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button>
         </div>
 

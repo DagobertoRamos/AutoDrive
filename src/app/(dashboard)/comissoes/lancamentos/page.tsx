@@ -9,6 +9,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { DollarSign, RefreshCw, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import LancamentoManualModal from '@/components/comissoes/LancamentoManualModal'
 import { DealPeekLink } from '@/components/deals/DealPeek'
 
@@ -177,7 +179,7 @@ export default function LancamentosComissaoPage() {
             <thead className="bg-gray-50">
               <tr>
                 {['Responsável', 'Tipo', 'Escopo', 'Descrição', 'Base', 'Comissão', 'Status', 'Período'].map((h) => (
-                  <th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
+                  <th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500"><span className="inline-flex items-center gap-1">{h}{h === 'Escopo' && <HelpHint {...DEAL_HINTS.ESCOPO_COMISSAO} />}{h === 'Base' && <HelpHint {...DEAL_HINTS.VALOR_BASE} />}{h === 'Status' && <HelpHint {...DEAL_HINTS.COMISSAO_STATUS} />}</span></th>
                 ))}
               </tr>
             </thead>

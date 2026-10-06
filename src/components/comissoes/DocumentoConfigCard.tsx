@@ -11,6 +11,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { FileText, Save, RefreshCw, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 
 interface Tier { minFee: string; maxFee: string; gerente: string; vendedor: string; setor: string; setorGerente: string }
 interface Config { active: boolean; lojaPagaSemComissao: boolean; exigirPagadorCliente: boolean; tiers: Tier[] }
@@ -63,7 +65,7 @@ export default function DocumentoConfigCard() {
     <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><FileText size={17} className="text-brand-600" />Comissão de documentação</h2>
+          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><FileText size={17} className="text-brand-600" />Comissão de documentação<HelpHint {...DEAL_HINTS.COMISSAO_DOCUMENTO} /></h2>
         </div>
         <button onClick={load} disabled={loading} className="rounded p-1.5 text-gray-400 hover:bg-gray-100"><RefreshCw size={14} className={cn(loading && 'animate-spin')} /></button>
       </div>
@@ -83,12 +85,13 @@ export default function DocumentoConfigCard() {
           <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
             <input type="checkbox" checked={cfg.exigirPagadorCliente} onChange={(e) => { setSaved(false); setCfg({ ...cfg, exigirPagadorCliente: e.target.checked }) }} className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
             <span className="text-sm font-medium text-gray-800">Pagar só com o cliente confirmado como pagador</span>
+            <HelpHint {...DEAL_HINTS.PAGADOR_CLIENTE} />
           </label>
 
           <div className="overflow-x-auto rounded-lg border border-gray-200">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50">
-                <tr>{['De (R$) *', 'Até (R$)', 'Gerente da loja (R$)', 'Vendedor (R$)', 'Setor doc. (R$/pessoa)', 'Gerente doc. (R$)', ''].map((h) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>)}</tr>
+                <tr>{['De (R$) *', 'Até (R$)', 'Gerente da loja (R$)', 'Vendedor (R$)', 'Setor doc. (R$/pessoa)', 'Gerente doc. (R$)', ''].map((h) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span className="inline-flex items-center gap-1">{h}{h.startsWith('Setor doc.') && <HelpHint {...DEAL_HINTS.SETOR_DOC} />}</span></th>)}</tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {cfg.tiers.map((t, i) => (

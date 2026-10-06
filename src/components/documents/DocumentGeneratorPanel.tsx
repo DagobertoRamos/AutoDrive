@@ -8,6 +8,7 @@
 // editáveis para ajuste fino. Imprime/salva em PDF pelo navegador.
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FileText, Loader2, Printer, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -150,7 +151,7 @@ export default function DocumentGeneratorPanel({ category }: { category: DocCate
       {/* Formulário */}
       <div className="space-y-4">
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-700">Modelo</label>
+          <label className="mb-1 block text-xs font-medium text-gray-700">Modelo<HelpHint className="ml-1" title="Modelo" text="Tipo de documento a gerar (contrato, procuração, declaração, termo...). Escolha abaixo de onde vêm os dados: negociação, cliente, veículo ou fornecedor; os campos são preenchidos sozinhos." /></label>
           <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className={inputCls}>
             {templates.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
           </select>

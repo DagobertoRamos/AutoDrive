@@ -5,6 +5,7 @@
 // Gerenciamento de planilhas e mapeamento de abas
 // =============================================================================
 
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import {
@@ -121,17 +122,17 @@ function SheetTabModal({ configId, initial, onSave, onClose }: SheetTabModalProp
             <input className="input" value={internalName} onChange={(e) => setInternalName(e.target.value)} placeholder="Ex.: Vendas do Mês" />
           </div>
           <div>
-            <label className="label">Nome real na planilha <RequiredMark /></label>
+            <label className="label">Nome real na planilha<HelpHint className="ml-1" title="Nome da aba" text="Nome exato da aba no Google Sheets, como aparece embaixo na planilha (maiúsculas e espaços contam)." /> <RequiredMark /></label>
             <input className="input font-mono" value={sheetName} onChange={(e) => setSheetName(e.target.value)} placeholder="Ex.: VENDAS" />
           </div>
           <div>
-            <label className="label">Tipo da aba <RequiredMark /></label>
+            <label className="label">Tipo da aba<HelpHint className="ml-1" title="Tipo da aba" text="Diz ao sistema que tipo de dado a aba contém (vendas, clientes, veículos...), para ler as colunas certas. Use Personalizado para outros formatos." /> <RequiredMark /></label>
             <select className="input" value={tabType} onChange={(e) => setTabType(e.target.value as any)}>
               {TAB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div>
-            <label className="label">Linha do cabeçalho <RequiredMark /></label>
+            <label className="label">Linha do cabeçalho<HelpHint className="ml-1" title="Linha do cabeçalho" text="Número da linha onde estão os nomes das colunas. Os dados são lidos a partir da linha seguinte." /> <RequiredMark /></label>
             <input type="number" min={1} className="input" value={headerRow} onChange={(e) => setHeaderRow(Number(e.target.value))} />
           </div>
           <div>
@@ -353,7 +354,7 @@ export default function SheetsConfigPage() {
                               <th className="px-3 py-2 text-left font-medium text-gray-500">Aba na planilha</th>
                               <th className="px-3 py-2 text-left font-medium text-gray-500">Tipo</th>
                               <th className="px-3 py-2 text-left font-medium text-gray-500">Status</th>
-                              <th className="px-3 py-2 text-left font-medium text-gray-500">Última sync</th>
+                              <th className="px-3 py-2 text-left font-medium text-gray-500"><WithHint text="Última vez que o sistema leu ou gravou dados nesta aba.">Última sync</WithHint></th>
                               <th className="px-3 py-2" />
                             </tr>
                           </thead>

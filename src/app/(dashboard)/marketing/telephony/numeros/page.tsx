@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Hash, Plus, Pencil, Power, X, Save } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO']
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
@@ -118,7 +119,7 @@ export default function TelephonyNumbersPage() {
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Ramal</label><input className={inputCls} value={form.extension} onChange={(e) => set('extension', e.target.value)} /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="mb-1 block text-xs font-medium text-gray-700">Origem (campanha)</label><input className={inputCls} value={form.source} onChange={(e) => set('source', e.target.value)} /></div>
+                <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Origem (campanha) <HelpHint title="Origem do número" text="Use um número diferente por campanha ou anúncio. As ligações recebidas nele ficam marcadas com esta origem, para saber qual campanha traz clientes." /></label><input className={inputCls} value={form.source} onChange={(e) => set('source', e.target.value)} /></div>
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Conexão</label><select className={inputCls} value={form.connectionId} onChange={(e) => set('connectionId', e.target.value)}><option value="">—</option>{conns.map((c) => <option key={c.id} value={c.id}>{c.label || c.provider?.name}</option>)}</select></div>
               </div>
               <div className="flex gap-4">

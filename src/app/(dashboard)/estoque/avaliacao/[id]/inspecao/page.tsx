@@ -23,6 +23,9 @@ import { StockEntryPanel } from '../../_components/StockEntryPanel'
 import { VehicleHistoryPanel } from '@/components/estoque/VehicleHistoryPanel'
 import { getStatusDef } from '@/components/estoque/avaliacoes/status'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
+import type { GlossaryTerm } from '@/lib/glossary'
 import { compressImage } from '@/lib/images/compress-client'
 import {
   ArrowLeft, Loader2, Sofa, ArrowUp, ArrowRight, ArrowDown, ArrowLeftRight,
@@ -388,10 +391,10 @@ export default function InspecaoPage() {
 
       {/* Totalizador sticky */}
       <div className="sticky top-0 z-20 grid grid-cols-2 gap-2 rounded-xl border border-brand-200 bg-white/95 p-3 shadow-sm backdrop-blur sm:grid-cols-4">
-        <Stat label="FIPE"       value={data.fipeValue != null ? fmtBRL(data.fipeValue) : '—'} />
-        <Stat label="Avaliado"   value={data.evaluatedValue != null ? fmtBRL(data.evaluatedValue) : '—'} />
-        <Stat label="Sugerido"   value={data.suggestedSalePrice != null ? fmtBRL(data.suggestedSalePrice) : '—'} />
-        <Stat label="Gastos previstos" value={fmtBRL(total)} highlight />
+        <Stat label="FIPE" term="FIPE" value={data.fipeValue != null ? fmtBRL(data.fipeValue) : '—'} />
+        <Stat label="Avaliado" help={opsText('VALOR_AVALIACAO')} value={data.evaluatedValue != null ? fmtBRL(data.evaluatedValue) : '—'} />
+        <Stat label="Sugerido" help={opsText('PRECO_SUGERIDO')} value={data.suggestedSalePrice != null ? fmtBRL(data.suggestedSalePrice) : '—'} />
+        <Stat label="Gastos previstos" help="Soma dos custos estimados dos serviços e reparos apontados na avaliação. Vira a preparação do carro quando ele entra no estoque." value={fmtBRL(total)} highlight />
       </div>
 
       {/* Painel de precificação — gerente+ quando aguardando aprovação */}
@@ -488,10 +491,10 @@ export default function InspecaoPage() {
 
 // ── Subcomponentes ────────────────────────────────────────────────────────────
 
-function Stat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function Stat({ label, value, highlight, term, help }: { label: string; value: string; highlight?: boolean; term?: GlossaryTerm; help?: string }) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="text-[10px] uppercase tracking-wide text-gray-500">{term || help ? <WithHint term={term} text={help}>{label}</WithHint> : label}</p>
       <p className={`text-base font-bold ${highlight ? 'text-emerald-700' : 'text-gray-800'}`}>{value}</p>
     </div>
   )
@@ -1042,7 +1045,7 @@ function CustomerDecisionCard({ evaluation }: { evaluation: Evaluation }) {
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
       <div className="border-b border-gray-100 bg-gray-50 px-4 py-2.5">
-        <h3 className="text-sm font-semibold text-gray-800">Decisão do Cliente</h3>
+        <h3 className="inline-flex items-center gap-1 text-sm font-semibold text-gray-800">Decisão do Cliente <HelpHint title="Decisão do cliente" text="Se o cliente aceitou ou recusou o valor oferecido. Só com o aceite o carro pode entrar na negociação (troca, compra ou consignação) e seguir para o estoque." /></h3>
       </div>
 
       <div className="space-y-3 p-4">

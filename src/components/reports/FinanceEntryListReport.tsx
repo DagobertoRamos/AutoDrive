@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Wallet, RefreshCw } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
 import PeriodFilter from './PeriodFilter'
 import SearchBox from './SearchBox'
 
@@ -65,7 +66,7 @@ export default function FinanceEntryListReport({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <div className="rounded-xl border border-brand-200 bg-brand-50 p-4"><p className="text-xs font-medium uppercase tracking-wide text-brand-700">Total</p><p className="mt-1 text-xl font-bold tabular-nums text-brand-800">{loading ? '—' : fmt(summary?.total ?? 0)}</p></div>
         <div className="rounded-xl border border-gray-200 bg-white p-4"><p className="text-xs font-medium uppercase tracking-wide text-gray-500">Lançamentos</p><p className="mt-1 text-xl font-bold tabular-nums text-gray-900">{loading ? '—' : summary?.count ?? 0}</p></div>
-        {aging && <div className="rounded-xl border border-red-200 bg-red-50 p-4"><p className="text-xs font-medium uppercase tracking-wide text-red-700">Vencidas</p><p className="mt-1 text-xl font-bold tabular-nums text-red-700">{loading ? '—' : summary?.vencidas ?? 0}</p></div>}
+        {aging && <div className="rounded-xl border border-red-200 bg-red-50 p-4"><p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-red-700">Vencidas<HelpHint term="VENCIDO" size={12} /></p><p className="mt-1 text-xl font-bold tabular-nums text-red-700">{loading ? '—' : summary?.vencidas ?? 0}</p></div>}
       </div>
 
       {byCategory.length > 0 && (
@@ -77,7 +78,7 @@ export default function FinanceEntryListReport({
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50"><tr>{['Descrição', 'Categoria', 'Contraparte', aging ? 'Vencimento' : 'Competência', 'Valor', 'Status'].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+            <thead className="bg-gray-50"><tr>{['Descrição', 'Categoria', 'Contraparte', aging ? 'Vencimento' : 'Competência', 'Valor', 'Status'].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h === 'Competência' ? <WithHint term="COMPETENCIA">{h}</WithHint> : h}</th>))}</tr></thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (<tr key={i}>{Array.from({ length: 6 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))

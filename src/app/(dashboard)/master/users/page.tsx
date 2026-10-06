@@ -10,6 +10,8 @@
 // • Criar usuário em qualquer tenant
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSession }                        from 'next-auth/react'
 import { useRouter }                         from 'next/navigation'
@@ -289,7 +291,7 @@ function EditModal({ user, positions, onClose, onSaved }: { user: UserRecord; po
             {tab === 'acesso' && (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
-                  <label className={labelCls}>Empresa (Tenant)</label>
+                  <label className={labelCls}>Empresa (Tenant)<HelpHint className="ml-1" {...opsHint('TENANT')} /></label>
                   <select className={inputCls} value={form.tenantId}
                     onChange={e => setForm(p => ({ ...p, tenantId: e.target.value, unitId: '', positionId: '' }))}>
                     <option value="">— sem empresa (plataforma) —</option>
@@ -305,7 +307,7 @@ function EditModal({ user, positions, onClose, onSaved }: { user: UserRecord; po
                   </select>
                 </div>
                 <div>
-                  <label className={labelCls}>Papel <RequiredMark /></label>
+                  <label className={labelCls}>Papel<HelpHint className="ml-1" {...opsHint('NIVEL_ACESSO')} /> <RequiredMark /></label>
                   <select className={inputCls} value={form.role}
                     onChange={e => setForm(p => ({ ...p, role: e.target.value }))}>
                     {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
@@ -319,7 +321,7 @@ function EditModal({ user, positions, onClose, onSaved }: { user: UserRecord; po
                   </select>
                 </div>
                 <div className="md:col-span-2">
-                  <label className={labelCls}>Cargo</label>
+                  <label className={labelCls}>Cargo<HelpHint className="ml-1" title="Cargo" text="Função da pessoa na loja (vendedor, gerente, F&I...). Cada cargo tem um perfil de acesso e é usado em comissões, metas e relatórios." /></label>
                   <select className={inputCls} value={form.positionId}
                     onChange={e => setForm(p => ({ ...p, positionId: e.target.value }))}>
                     <option value="">— sem cargo —</option>
@@ -381,7 +383,7 @@ function EditModal({ user, positions, onClose, onSaved }: { user: UserRecord; po
                       checked={seller.receivesCharge ?? true}
                       onChange={e => setSeller(s => ({ ...s, receivesCharge: e.target.checked }))}
                     />
-                    <span className="text-sm text-gray-700">Recebe pendências/cobranças</span>
+                    <span className="text-sm text-gray-700">Recebe pendências/cobranças</span><HelpHint className="ml-1" title="Pendências" text="Ligado, o vendedor pode ser responsável por pendências e recebe os lembretes de cobrança delas." />
                   </label>
                 </div>
               ) : (

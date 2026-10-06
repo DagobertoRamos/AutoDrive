@@ -12,6 +12,8 @@ import { ExternalLink } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { LEAD_FIELDS, type DistributionCfg, type RequiredFieldsCfg, type SlaCfg } from '@/lib/crm/settings-core'
 import { Card, SaveBar, checkCls, inputCls, useSection } from './ListsTabs'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 // ── Campos obrigatórios ───────────────────────────────────────────────────────
 export function RequiredFieldsTab({ canManage }: { canManage: boolean }) {
@@ -46,10 +48,10 @@ export function RequiredFieldsTab({ canManage }: { canManage: boolean }) {
 }
 
 // ── SLA e follow-up ───────────────────────────────────────────────────────────
-function NumberField({ label, suffix, value, onChange, disabled, min }: { label: string; suffix: string; value: number; onChange: (n: number) => void; disabled: boolean; min: number }) {
+function NumberField({ label, suffix, value, onChange, disabled, min, help }: { label: string; suffix: string; value: number; onChange: (n: number) => void; disabled: boolean; min: number; help?: { text: string; title?: string } }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-gray-600">{label}</span>
+      <span className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600">{label}{help && <HelpHint {...help} />}</span>
       <span className="flex items-center gap-2">
         <input type="number" min={min} disabled={disabled} value={value} onChange={(e) => onChange(Number(e.target.value))} className={cn(inputCls, 'w-28')} />
         <span className="text-xs text-gray-500">{suffix}</span>
@@ -63,14 +65,14 @@ export function SlaTab({ canManage }: { canManage: boolean }) {
   const set = (patch: Partial<SlaCfg>) => s.update({ ...s.items, ...patch })
   const off = !canManage || !s.items.enabled
   return (
-    <Card title="SLA e follow-up">
+    <Card title="SLA e follow-up" help={{ term: 'SLA' }}>
       <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
         <input type="checkbox" disabled={!canManage} checked={s.items.enabled} onChange={(e) => set({ enabled: e.target.checked })} className={checkCls} />
         Ativar SLA do CRM
       </label>
       <div className={cn('mt-4 grid gap-4 sm:grid-cols-2', !s.items.enabled && 'opacity-50')}>
-        <NumberField label="Prazo para o 1º contato" suffix="minutos após a criação" min={5} value={s.items.firstContactMinutes} onChange={(n) => set({ firstContactMinutes: n })} disabled={off} />
-        <NumberField label="Alerta de lead parado" suffix="horas sem contato" min={1} value={s.items.noContactHours} onChange={(n) => set({ noContactHours: n })} disabled={off} />
+        <NumberField label="Prazo para o 1º contato" suffix="minutos após a criação" min={5} help={opsHint('TEMPO_PRIMEIRA_RESPOSTA')} value={s.items.firstContactMinutes} onChange={(n) => set({ firstContactMinutes: n })} disabled={off} />
+        <NumberField label="Alerta de lead parado" suffix="horas sem contato" min={1} help={{ title: 'Lead parado', text: 'Lead sem nenhum contato registrado há mais horas que este limite. Entra no alerta, pode gerar tarefa de follow-up e aviso aos gestores.' }} value={s.items.noContactHours} onChange={(n) => set({ noContactHours: n })} disabled={off} />
       </div>
       <div className={cn('mt-4 space-y-2', !s.items.enabled && 'opacity-50')}>
         <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -79,7 +81,7 @@ export function SlaTab({ canManage }: { canManage: boolean }) {
         </label>
         <label className="flex items-center gap-2 text-sm text-gray-700">
           <input type="checkbox" disabled={off} checked={s.items.escalateToManagers} onChange={(e) => set({ escalateToManagers: e.target.checked })} className={checkCls} />
-          Avisar os gestores com um resumo quando houver leads fora do SLA
+          Avisar os gestores com um resumo quando houver leads fora do SLA <HelpHint {...opsHint('ESCALONAMENTO')} />
         </label>
       </div>
       <SaveBar canManage={canManage} {...s} />
@@ -107,7 +109,7 @@ export function DistributionTab({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-4">
-      <Card title="Distribuição de leads">
+      <Card title="Distribuição de leads" help={opsHint('DISTRIBUICAO_AUTO')}>
         <div className="space-y-2">
           <label className="flex items-start gap-2 text-sm text-gray-700">
             <input type="checkbox" disabled={!canManage} checked={s.items.autoAssignNew} onChange={(e) => set({ autoAssignNew: e.target.checked })} className={cn(checkCls, 'mt-0.5')} />
@@ -115,7 +117,7 @@ export function DistributionTab({ canManage }: { canManage: boolean }) {
           </label>
           <label className="flex items-start gap-2 text-sm text-gray-700">
             <input type="checkbox" disabled={!canManage} checked={s.items.runSdrInTick} onChange={(e) => set({ runSdrInTick: e.target.checked })} className={cn(checkCls, 'mt-0.5')} />
-            <span>Redistribuir sozinho: rodar o SLA e a distribuição da Mesa SDR a cada minuto</span>
+            <span>Redistribuir sozinho: rodar o SLA e a distribuição da Mesa SDR a cada minuto <HelpHint {...opsHint('SDR')} /></span>
           </label>
         </div>
         {(s.items.autoAssignNew || s.items.runSdrInTick) && info && !activeAuto && (
@@ -124,7 +126,7 @@ export function DistributionTab({ canManage }: { canManage: boolean }) {
         <SaveBar canManage={canManage} {...s} />
       </Card>
 
-      <Card title="Políticas da Mesa SDR">
+      <Card title="Políticas da Mesa SDR" help={{ title: 'Políticas de distribuição', text: 'Regra que escolhe quem recebe o lead: Roleta (um de cada vez), Menor carga (quem tem menos leads abertos), Por desempenho (quem converte mais recebe mais), Tanque (quem pegar primeiro) ou Manual.' }}>
         {!info ? <div className="h-16 animate-pulse rounded-lg bg-gray-100" /> : (
           <>
             <div className="mb-3 flex flex-wrap gap-2 text-xs">

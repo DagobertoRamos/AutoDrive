@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import {
   ShieldAlert,
   Building2,
@@ -418,7 +420,7 @@ export function ManagerDashboard({ firstName, greeting }: ManagerDashboardProps)
               <strong className="text-gray-900 font-bold">{data.unitOverview.purchasesMonth} / {data.unitOverview.tradesMonth}</strong>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Ativas no Funil:</span>
+              <span className="inline-flex items-center gap-1 text-gray-500">Ativas no Funil: <HelpHint text="Negociações em andamento: ainda não foram fechadas nem perdidas." /></span>
               <strong className="text-gray-900 font-bold">{data.unitOverview.activeDeals}</strong>
             </div>
           </div>
@@ -461,7 +463,7 @@ export function ManagerDashboard({ firstName, greeting }: ManagerDashboardProps)
         {/* Leads */}
         <div className="bg-white border border-gray-150 p-5 rounded-2xl shadow-sm space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Cockpit de Leads</h3>
+            <h3 className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-gray-400">Cockpit de Leads <HelpHint {...opsHint('LEAD')} /></h3>
             <Sparkles size={16} className="text-orange-500" />
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
@@ -470,7 +472,7 @@ export function ManagerDashboard({ firstName, greeting }: ManagerDashboardProps)
               <strong className="text-gray-900">{data.leads.newCount}</strong>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">Hoje:</span>
+              <span className="inline-flex items-center gap-1 text-gray-500">Hoje: <HelpHint text="Leads com retorno (follow-up) agendado para hoje." /></span>
               <strong className="text-brand-600 font-bold">{data.leads.followUpTodayCount}</strong>
             </div>
             <div className="flex justify-between">
@@ -480,7 +482,7 @@ export function ManagerDashboard({ firstName, greeting }: ManagerDashboardProps)
               </strong>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">Conversões:</span>
+              <span className="inline-flex items-center gap-1 text-gray-500">Conversões: <HelpHint {...opsHint('CONVERSAO')} /></span>
               <strong className="text-emerald-700 font-bold">{data.leads.convertedMonth}</strong>
             </div>
           </div>
@@ -494,7 +496,7 @@ export function ManagerDashboard({ firstName, greeting }: ManagerDashboardProps)
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-500">Críticas:</span>
+              <span className="inline-flex items-center gap-1 text-gray-500">Críticas: <HelpHint text="Pendências que viraram críticas: urgentes sem resposta há muito tempo ou com prazos combinados estourados várias vezes." /></span>
               <strong className={data.pendingIssues.criticalCount > 0 ? 'text-red-600 font-bold animate-pulse' : 'text-gray-900'}>
                 {data.pendingIssues.criticalCount}
               </strong>
@@ -506,7 +508,7 @@ export function ManagerDashboard({ firstName, greeting }: ManagerDashboardProps)
               </strong>
             </div>
             <div className="flex justify-between col-span-2">
-              <span className="text-gray-500">Escalonadas Gestor:</span>
+              <span className="inline-flex items-center gap-1 text-gray-500">Escalonadas Gestor: <HelpHint text="Pendências que passaram do prazo sem solução e foram encaminhadas ao gestor." /></span>
               <strong className="text-gray-900">{data.pendingIssues.escalatedCount}</strong>
             </div>
           </div>
@@ -698,6 +700,7 @@ export function ManagerDashboard({ firstName, greeting }: ManagerDashboardProps)
           <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
             <Activity size={18} className="text-orange-500" />
             Funil Comercial da Loja
+            <HelpHint {...opsHint('FUNIL')} />
           </h2>
 
           <div className="space-y-2">
@@ -823,6 +826,7 @@ export function ManagerDashboard({ firstName, greeting }: ManagerDashboardProps)
             <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center gap-2">
               <Mail size={18} className="text-indigo-500" />
               Cobranças Recomendadas à Gestão
+              <HelpHint text="Sugestões automáticas do que cobrar de cada vendedor hoje (leads sem contato, pendências atrasadas, tarefas em aberto), com atalho para a tela certa." />
             </h2>
           </div>
 
@@ -860,6 +864,7 @@ export function ManagerDashboard({ firstName, greeting }: ManagerDashboardProps)
           <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center gap-2">
             <Activity size={18} className="text-brand-600" />
             Fila da Unidade
+            <HelpHint {...opsHint('VENDEDOR_DA_VEZ')} />
           </h2>
 
           <div className="space-y-3">

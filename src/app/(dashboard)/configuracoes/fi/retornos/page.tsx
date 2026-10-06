@@ -11,6 +11,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Plus, Pencil, Trash2, Percent, X, Save, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import { useFiPermissions } from '@/components/financing/useFiPermissions'
 import { ReturnProfessionalSettings } from '@/components/financing/ReturnProfessionalSettings'
@@ -135,7 +137,7 @@ export default function FiReturnsPage() {
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50"><tr>{['Banco', 'Retorno', 'Faixa de parcelas', 'Observações', 'Status', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+            <thead className="bg-gray-50"><tr>{['Banco', 'Retorno', 'Faixa de parcelas', 'Observações', 'Status', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500"><span className="inline-flex items-center gap-1">{h}{h === 'Retorno' && <HelpHint term="RETORNO" />}{h === 'Faixa de parcelas' && <HelpHint {...DEAL_HINTS.FAIXA_PARCELAS} />}</span></th>))}</tr></thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 Array.from({ length: 4 }).map((_, i) => (<tr key={i}>{Array.from({ length: 6 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
@@ -169,9 +171,9 @@ export default function FiReturnsPage() {
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editingId ? 'Editar regra' : 'Nova regra de retorno'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Banco</label><select className={inputCls} value={form.bankId} onChange={(e) => set('bankId', e.target.value)}><option value="">Todos os bancos</option>{banks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}{editingId && form.bankId && !banks.some((b) => b.id === form.bankId) && <option value={form.bankId}>Banco atual</option>}</select></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Percentual (%)</label><input type="text" inputMode="decimal" className={inputCls} value={form.percent} onChange={(e) => set('percent', e.target.value.replace(/[^0-9.,]/g, ''))} placeholder="2,5" /></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Valor fixo</label><input type="text" inputMode="numeric" className={inputCls} value={maskBRL(form.fixedValue ? Math.round(form.fixedValue * 100).toString() : '')} onChange={(e) => set('fixedValue', parseBRL(maskBRL(e.target.value)) ?? 0)} placeholder="0,00" /></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Parcela mínima</label><input type="number" min={1} className={inputCls} value={form.minInstallments} onChange={(e) => set('minInstallments', e.target.value)} placeholder="1" /></div>
+              <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Percentual (%)<HelpHint {...DEAL_HINTS.PERCENTUAL_RETORNO} size={12} /></label><input type="text" inputMode="decimal" className={inputCls} value={form.percent} onChange={(e) => set('percent', e.target.value.replace(/[^0-9.,]/g, ''))} placeholder="2,5" /></div>
+              <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Valor fixo<HelpHint term="PLUS" size={12} /></label><input type="text" inputMode="numeric" className={inputCls} value={maskBRL(form.fixedValue ? Math.round(form.fixedValue * 100).toString() : '')} onChange={(e) => set('fixedValue', parseBRL(maskBRL(e.target.value)) ?? 0)} placeholder="0,00" /></div>
+              <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Parcela mínima<HelpHint {...DEAL_HINTS.FAIXA_PARCELAS} size={12} /></label><input type="number" min={1} className={inputCls} value={form.minInstallments} onChange={(e) => set('minInstallments', e.target.value)} placeholder="1" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Parcela máxima</label><input type="number" min={1} className={inputCls} value={form.maxInstallments} onChange={(e) => set('maxInstallments', e.target.value)} placeholder="60" /></div>
               <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Observações</label><textarea className={cn(inputCls, 'min-h-[60px] resize-y')} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
               <label className="col-span-2 flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.active} onChange={(e) => set('active', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Regra ativa</label>

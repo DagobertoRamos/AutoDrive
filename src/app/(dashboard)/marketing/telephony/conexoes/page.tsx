@@ -10,6 +10,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Phone, Plus, Pencil, Trash2, X, Save, Power, PlugZap } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO']
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
@@ -134,7 +136,7 @@ export default function TelephonyConnectionsPage() {
             <div className="space-y-3">
               {!editingId && <div><label className="mb-1 block text-xs font-medium text-gray-700">Provedor <span className="text-red-500">*</span></label><select className={inputCls} value={form.providerId} onChange={(e) => set('providerId', e.target.value)}>{providers.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.kind})</option>)}</select></div>}
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="mb-1 block text-xs font-medium text-gray-700">Ambiente</label><select className={inputCls} value={form.environment} onChange={(e) => set('environment', e.target.value)}><option value="PRODUCAO">Produção</option><option value="HOMOLOGACAO">Homologação</option></select></div>
+                <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Ambiente <HelpHint title="Ambiente" text="Produção = ligações reais. Homologação/sandbox = ambiente de testes do provedor, sem custo nem ligações reais." /></label><select className={inputCls} value={form.environment} onChange={(e) => set('environment', e.target.value)}><option value="PRODUCAO">Produção</option><option value="HOMOLOGACAO">Homologação</option></select></div>
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Rótulo</label><input className={inputCls} value={form.label} onChange={(e) => set('label', e.target.value)} /></div>
               </div>
               <div>
@@ -142,7 +144,7 @@ export default function TelephonyConnectionsPage() {
                 <textarea className={cn(inputCls, 'h-24 font-mono text-xs')} value={form.secrets} onChange={(e) => set('secrets', e.target.value)} placeholder='{ "accountSid": "...", "authToken": "...", "webhookSecret": "..." }' />
                 <p className="mt-1 text-[11px] text-gray-400">Cifradas no servidor; nunca exibidas em texto puro.</p>
               </div>
-              <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.webhookActive} onChange={(e) => set('webhookActive', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Webhook ativo</label>
+              <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.webhookActive} onChange={(e) => set('webhookActive', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Webhook ativo <HelpHint {...opsHint('WEBHOOK')} /></label>
               {error && <p className="text-sm text-red-600">{error}</p>}
             </div>
             <div className="mt-5 flex justify-end gap-2"><button onClick={() => setModal(false)} className="btn-secondary text-sm">Cancelar</button><button onClick={save} disabled={saving} className="btn-primary text-sm"><Save size={15} />{saving ? 'Salvando...' : 'Salvar'}</button></div>

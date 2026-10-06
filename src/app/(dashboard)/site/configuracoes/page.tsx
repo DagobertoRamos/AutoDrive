@@ -16,6 +16,7 @@ import { BrandingSection } from './BrandingSection'
 import { ComingSoonImageField } from './ComingSoonImageField'
 import { DomainsSection } from './DomainsSection'
 import { LayoutSection } from './LayoutSection'
+import { HelpHint } from '@/components/ui/help-hint'
 
 interface ServiceDef { key: string; label: string; locked: boolean; available: boolean; hint: string }
 interface Payload { config: SiteConfig; services: ServiceDef[]; stats: { total: number; published: number; comingSoon: number }; canManage: boolean; siteBaseDomain: string | null; hostingIntegration: boolean }
@@ -25,18 +26,18 @@ const label = 'mb-1 block text-xs font-medium text-gray-600'
 
 const fetchConfig = () => fetch('/api/site-admin/config', { credentials: 'include' }).then((r) => r.json()).catch(() => null)
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Section({ title, hint, help, children }: { title: string; hint?: string; help?: string; children: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
-      <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+      <h2 className="flex items-center gap-1 text-sm font-semibold text-gray-900">{title}{help && <HelpHint title={title} text={help} />}</h2>
       {hint && <p className="mb-3 text-xs text-gray-500">{hint}</p>}
       <div className={cn(!hint && 'mt-3')}>{children}</div>
     </section>
   )
 }
 
-function Field({ l, children, className, required }: { l: string; children: React.ReactNode; className?: string; required?: boolean }) {
-  return <label className={cn('block', className)}><span className={label}>{l}{required && <> <RequiredMark /></>}</span>{children}</label>
+function Field({ l, children, className, required, help }: { l: string; children: React.ReactNode; className?: string; required?: boolean; help?: string }) {
+  return <label className={cn('block', className)}><span className={label}>{l}{required && <> <RequiredMark /></>}{help && <> <HelpHint title={l} text={help} /></>}</span>{children}</label>
 }
 
 /** WhatsApp aceita DDD + número, com ou sem o 55 do país. */
@@ -117,10 +118,10 @@ export default function SiteConfigPage() {
       <Section title="Publicação e endereço">
         <label className="mb-4 flex items-center gap-2 text-sm font-medium text-gray-800">
           <input type="checkbox" disabled={dis} checked={cfg.enabled} onChange={(e) => set({ enabled: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
-          Site no ar
+          Site no ar <HelpHint title="Site no ar" text="Ligado, o site fica aberto ao público com o estoque disponível. Desligado, os visitantes veem a página de 'em breve'." />
         </label>
         <div className="grid gap-3 md:grid-cols-2">
-          <Field l="Endereço da loja (subdomínio)" required>
+          <Field l="Endereço da loja (subdomínio)" required help="Endereço grátis do site, no formato sualoja + domínio do sistema. Funciona mesmo sem domínio próprio; só letras minúsculas, números e hífen.">
             <div className="flex items-center gap-1">
               <input disabled={dis} className={input} value={cfg.slug} onChange={(e) => set({ slug: e.target.value.toLowerCase() })} />
               {data.siteBaseDomain && <span className="whitespace-nowrap text-xs text-gray-500">.{data.siteBaseDomain}</span>}
@@ -228,7 +229,7 @@ export default function SiteConfigPage() {
         {!dis && cfg.about.sections.length < 8 && <button onClick={() => setIn('about', { sections: [...cfg.about.sections, { title: '', text: '' }] })} className="mt-2 flex items-center gap-1 text-xs font-semibold text-brand-700 hover:underline"><Plus size={12} />Adicionar bloco</button>}
       </Section>
 
-      <Section title="Google e aviso legal">
+      <Section title="Google e aviso legal" help="Título e descrição que aparecem no resultado de busca do Google (SEO). Use o nome da loja, cidade e o que vende.">
         <div className="grid gap-3 md:grid-cols-2">
           <Field l="Título no Google"><input disabled={dis} className={input} value={cfg.seo.title} onChange={(e) => setIn('seo', { title: e.target.value })} /></Field>
           <Field l="Descrição no Google"><input disabled={dis} className={input} value={cfg.seo.description} onChange={(e) => setIn('seo', { description: e.target.value })} /></Field>
@@ -236,7 +237,7 @@ export default function SiteConfigPage() {
         </div>
       </Section>
 
-      <Section title="Páginas por marca e cidade (Google)">
+      <Section title="Páginas por marca e cidade (Google)" help="O site cria páginas como 'Carros Toyota em Osasco' para aparecer em buscas locais no Google. Liste as cidades onde a loja atende.">
         <Field l="Cidades atendidas (uma por linha, até 12; opcional: “Cidade | texto”)">
           <textarea disabled={dis} rows={4} className={input}
             value={cfg.seoCities.map((c) => (c.text ? `${c.name} | ${c.text}` : c.name)).join('\n')}
@@ -246,7 +247,7 @@ export default function SiteConfigPage() {
         {!cfg.services.seoLandings && <p className="mt-1 text-[11px] text-amber-700">Serviço “Páginas por marca e cidade” desligado.</p>}
       </Section>
 
-      <Section title="Medição de anúncios (Pixel da Meta e Google)">
+      <Section title="Medição de anúncios (Pixel da Meta e Google)" help="Códigos que avisam a Meta (Facebook/Instagram) e o Google quando alguém visita o site ou envia contato. Permitem medir resultado e criar públicos para os anúncios.">
         <div className="grid gap-3 md:grid-cols-2">
           {([
             ['metaPixelId', 'ID do Pixel da Meta', '1234567890123456', cleanMetaPixelId],

@@ -12,6 +12,8 @@ import { Trash2, Calculator, X, Save, Eye, Landmark } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { financedAmount, priceInstallment } from '@/lib/finance/simulation-service'
 
 interface Bank { id: string; name: string }
@@ -132,7 +134,7 @@ export default function SimulationManager() {
           ) : (
             <div className="overflow-hidden rounded-lg border border-gray-200">
               <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50"><tr>{['Banco', 'Taxa % a.m.', `Parcela (${header.installments || 0}x)`, ''].map((h) => (<th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+                <thead className="bg-gray-50"><tr>{['Banco', 'Taxa % a.m.', `Parcela (${header.installments || 0}x)`, ''].map((h) => (<th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500"><SimHead h={h} /></th>))}</tr></thead>
                 <tbody className="divide-y divide-gray-100">
                   {rows.map((r) => {
                     const parcela = priceInstallment(financed, rateNum(r.rate), header.installments)
@@ -163,7 +165,7 @@ export default function SimulationManager() {
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50"><tr>{['Veículo', 'Proponente', 'Financiado', 'Parcelas', 'Bancos', 'Menor parcela', ...(canSeeReturn ? ['Melhor retorno'] : []), 'Data', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+              <thead className="bg-gray-50"><tr>{['Veículo', 'Proponente', 'Financiado', 'Parcelas', 'Bancos', 'Menor parcela', ...(canSeeReturn ? ['Melhor retorno'] : []), 'Data', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500"><SimHead h={h} /></th>))}</tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {loading ? (
                   Array.from({ length: 4 }).map((_, i) => (<tr key={i}>{Array.from({ length: canSeeReturn ? 9 : 8 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
@@ -203,7 +205,7 @@ export default function SimulationManager() {
             </div>
             <div className="overflow-hidden rounded-lg border border-gray-200">
               <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50"><tr>{['Banco', 'Taxa', 'Parcela', ...(detail.options.some((o) => o.estimatedReturn != null) ? ['Retorno est.'] : [])].map((h) => (<th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+                <thead className="bg-gray-50"><tr>{['Banco', 'Taxa', 'Parcela', ...(detail.options.some((o) => o.estimatedReturn != null) ? ['Retorno est.'] : [])].map((h) => (<th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500"><SimHead h={h} /></th>))}</tr></thead>
                 <tbody className="divide-y divide-gray-100">
                   {detail.options.map((o) => (
                     <tr key={o.id}>
@@ -221,4 +223,12 @@ export default function SimulationManager() {
       )}
     </div>
   )
+}
+
+/** Cabeçalho de coluna com "?" nos termos técnicos (taxa, retorno). */
+function SimHead({ h }: { h: string }) {
+  if (h.startsWith('Taxa')) return <span className="inline-flex items-center gap-1">{h}<HelpHint {...DEAL_HINTS.TAXA_AM} /></span>
+  if (h === 'Melhor retorno' || h === 'Retorno est.') return <span className="inline-flex items-center gap-1">{h}<HelpHint term="RETORNO" /></span>
+  if (h === 'Financiado') return <span className="inline-flex items-center gap-1">{h}<HelpHint {...DEAL_HINTS.VALOR_FINANCIADO} /></span>
+  return <>{h}</>
 }

@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Briefcase, CheckCircle2, ChevronLeft, ChevronRight, Printer } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
 import SearchBox from '@/components/reports/SearchBox'
 import { Badge, EmptyState, PageHeader, Toggle, api, brl, currentMonth, iconBtn } from '../config/ui'
 import EmployeeDrawer from './EmployeeDrawer'
@@ -60,7 +61,7 @@ export default function PayrollCenter() {
     <div className="space-y-5">
       <PageHeader
         title="Folha e comissões"
-        subtitle={data ? `Competência ${data.monthLabel}` : undefined}
+        subtitle={data ? <WithHint term="COMPETENCIA">{`Competência ${data.monthLabel}`}</WithHint> : undefined}
         actions={<>
           <div className="inline-flex items-center rounded-lg border border-gray-200 bg-white">
             <button onClick={() => setMonth((m) => shift(m, -1))} className="p-2 text-gray-500 hover:text-gray-900" aria-label="Mês anterior"><ChevronLeft size={16} /></button>
@@ -78,7 +79,7 @@ export default function PayrollCenter() {
           ['Líquido a pagar', t?.net],
         ].map(([label, v], i) => (
           <div key={label as string} className={cn('rounded-xl border bg-white p-4 shadow-card', i === 3 ? 'border-brand-200' : 'border-gray-200')}>
-            <p className="text-xs text-gray-500">{label}</p>
+            <p className="flex items-center gap-1 text-xs text-gray-500">{label}{i === 2 ? <HelpHint size={12} title="Adiantamentos a descontar" text="Vales e adiantamentos já pagos ao colaborador que ainda não foram abatidos. Na hora de pagar, saem do salário (os mais antigos primeiro)." /> : i === 3 ? <HelpHint size={12} title="Líquido a pagar" text="Salário + benefícios + comissões do mês, menos os adiantamentos descontados." /> : null}</p>
             <p className={cn('mt-1 text-lg font-bold tabular-nums', i === 3 ? 'text-brand-700' : 'text-gray-900')}>{loading ? '—' : brl(v as number)}</p>
           </div>
         ))}
@@ -99,7 +100,7 @@ export default function PayrollCenter() {
               <th className="px-3 py-3 text-right">Salário</th>
               <th className="px-3 py-3 text-right">Comissões</th>
               <th className="hidden px-3 py-3 text-right md:table-cell">Benefícios</th>
-              <th className="px-3 py-3 text-right">Adiant.</th>
+              <th className="px-3 py-3 text-right"><WithHint text="Adiantamentos e vales a descontar do salário neste mês.">Adiant.</WithHint></th>
               <th className="px-3 py-3 text-right">Líquido</th>
               <th className="px-3 py-3 text-left">Situação</th>
               <th className="px-3 py-3" />

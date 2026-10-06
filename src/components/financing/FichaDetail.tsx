@@ -13,6 +13,8 @@ import Link from 'next/link'
 import { ArrowLeft, FileCheck2, Send, Plus, Trash2, Clock, Landmark, AlertTriangle, Check, Lock, Paperclip, Bot, Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useFiPermissions } from './useFiPermissions'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 
 type DocStatus = 'PENDENTE' | 'APROVADO' | 'REPROVADO'
 interface Proposal { id: string; vehicle: string | null; status: string; amountRequested: number; downPayment: number; installments: number | null; proponent: { nomeCompleto: string; occupation: string | null } | null; bank: { name: string } | null }
@@ -139,7 +141,7 @@ export default function FichaDetail({ id }: { id: string }) {
             <h1 className="text-xl font-bold text-gray-900">{proposal.proponent?.nomeCompleto ?? 'Ficha'}</h1>
             <p className="mt-0.5 text-sm text-gray-500">{proposal.vehicle ?? 'Sem veículo'} · {proposal.installments ?? '—'}x · {fmt(proposal.amountRequested)}</p>
           </div>
-          <span className={cn('rounded-full px-3 py-1 text-xs font-semibold', SUB_CLS[proposal.status] ?? 'bg-gray-100 text-gray-600')}>{proposal.status}</span>
+          <span className="inline-flex items-center gap-1"><span className={cn('rounded-full px-3 py-1 text-xs font-semibold', SUB_CLS[proposal.status] ?? 'bg-gray-100 text-gray-600')}>{proposal.status}</span><HelpHint {...DEAL_HINTS.FICHA_STATUS} /></span>
         </div>
       </div>
 
@@ -219,7 +221,7 @@ export default function FichaDetail({ id }: { id: string }) {
 
       {/* Submissões + linha do tempo */}
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
-        <h2 className="mb-3 flex items-center gap-2 font-semibold text-gray-900"><Clock size={17} className="text-brand-600" />Submissões e status</h2>
+        <h2 className="mb-3 flex items-center gap-2 font-semibold text-gray-900"><Clock size={17} className="text-brand-600" />Submissões e status<HelpHint {...DEAL_HINTS.SUBMISSAO_STATUS} /></h2>
         {subs.length === 0 ? (
           <p className="py-6 text-center text-sm text-gray-400">Nenhum envio ainda.</p>
         ) : (

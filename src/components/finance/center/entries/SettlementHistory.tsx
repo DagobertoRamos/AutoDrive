@@ -10,6 +10,7 @@
 import { useState } from 'react'
 import { ExternalLink, FileText, Loader2, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
 import { RequiredMark } from '@/components/ui/field'
 import { BatchReceipt } from './BatchReceipt'
 import { ErrorLine, brl, dt, inputCls, postJson } from './ui'
@@ -76,7 +77,9 @@ export function SettlementHistory({ info, type, currentId, canManage, onOpenEntr
             <thead>
               <tr className="text-left text-[10px] uppercase tracking-wide text-gray-500">
                 {['Data', 'Conta / forma', 'Principal', 'Juros', 'Desc.', 'Pago', ''].map((h, i) => (
-                  <th key={i} className={cn('whitespace-nowrap px-1 py-1 font-semibold', i >= 2 && i <= 5 && 'text-right')}>{h}</th>
+                  <th key={i} className={cn('whitespace-nowrap px-1 py-1 font-semibold', i >= 2 && i <= 5 && 'text-right')}>
+                    {i === 3 ? <WithHint term="JUROS_MULTA">{h}</WithHint> : i === 4 ? <WithHint term="DESCONTO">{h}</WithHint> : i === 6 && canManage ? <HelpHint term="ESTORNO" size={11} /> : h}
+                  </th>
                 ))}
               </tr>
             </thead>

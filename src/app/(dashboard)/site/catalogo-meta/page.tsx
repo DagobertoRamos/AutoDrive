@@ -12,6 +12,8 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, Check, Copy, Download, Loader2, RefreshCw, ShoppingBag } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 interface Issue { id: string; title: string; code: 'SEM_FOTO' | 'SEM_PRECO' | 'LINK_SEM_HTTPS'; message: string }
 interface Report {
@@ -61,13 +63,13 @@ export default function SiteMetaCatalogPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><ShoppingBag size={20} className="text-brand-600" />Catálogo Meta</h1>
+        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><ShoppingBag size={20} className="text-brand-600" />Catálogo Meta<HelpHint {...opsHint('CATALOGO_META')} /></h1>
         <button onClick={() => void load()} className="btn-secondary text-xs"><RefreshCw size={13} />Atualizar</button>
       </div>
 
       <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h2 className="text-sm font-semibold text-gray-900">Feed do catálogo</h2>
+          <h2 className="flex items-center gap-1 text-sm font-semibold text-gray-900">Feed do catálogo <HelpHint title="Feed do catálogo" text="Endereço com a lista atualizada dos carros do site (preço, fotos, link). A Meta lê esse endereço periodicamente (na programação definida lá), então o catálogo acompanha o estoque sozinho." /></h2>
           <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
             <input type="checkbox" checked={r.catalog.enabled} disabled={busy} onChange={(e) => void save({ enabled: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Feed ligado
           </label>
@@ -85,7 +87,7 @@ export default function SiteMetaCatalogPage() {
           </div>
         )}
         <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_90px_auto] sm:items-end">
-          <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Cidade dos anúncios</span><input className={input} value={city} maxLength={80} placeholder="Cidade da loja" onChange={(e) => setCity(e.target.value)} /></label>
+          <label className="block"><span className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600">Cidade dos anúncios <HelpHint title="Cidade dos anúncios" text="Localização enviada com cada carro. A Meta usa para mostrar os anúncios a pessoas da região." /></span><input className={input} value={city} maxLength={80} placeholder="Cidade da loja" onChange={(e) => setCity(e.target.value)} /></label>
           <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">UF</span><input className={input} value={uf} maxLength={2} placeholder="SP" onChange={(e) => setUf(e.target.value.toUpperCase())} /></label>
           <button onClick={() => void save({})} disabled={busy || (city === r.catalog.city && uf === r.catalog.state)} className="btn-primary text-sm">{busy && <Loader2 size={14} className="animate-spin" />}Salvar</button>
         </div>

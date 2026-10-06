@@ -15,6 +15,8 @@ import { ART_TEMPLATES, FORMAT_INFO, SOCIAL_FORMATS, TEMPLATE_INFO, type SocialF
 import { MOOD_LABEL, MUSIC_MOODS } from '@/lib/publications/social/music-core'
 import type { AutoProgram, AutoSlot } from '@/lib/publications/social/autoprog-core'
 import { isSocialChannel, socialName } from '@/lib/publications/channels'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 const DAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
 const DAY_NAMES = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
@@ -49,7 +51,7 @@ export function AutoProgramPanel({ onPlanned }: { onPlanned?: () => void }) {
   return (
     <details className="group rounded-xl border border-brand-200 bg-white" open={p.enabled || undefined}>
       <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3">
-        <span className="flex items-center gap-2 text-sm font-semibold text-gray-900"><CalendarClock size={16} className="text-brand-700" />Programação automática {p.enabled ? <span className="rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700">ligada</span> : <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">desligada</span>}</span>
+        <span className="flex items-center gap-2 text-sm font-semibold text-gray-900"><CalendarClock size={16} className="text-brand-700" />Programação automática <HelpHint {...opsHint('PILOTO_AUTOMATICO')} /> {p.enabled ? <span className="rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700">ligada</span> : <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">desligada</span>}</span>
         <ChevronDown size={16} className="transition-transform group-open:rotate-180" />
       </summary>
       <fieldset disabled={!can} className="space-y-4 border-t border-gray-100 p-4">
@@ -69,7 +71,7 @@ export function AutoProgramPanel({ onPlanned }: { onPlanned?: () => void }) {
         </div>
 
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-700">Grade da semana</p>
+          <p className="flex items-center gap-1 text-xs font-semibold text-gray-700">Grade da semana <HelpHint title="Grade da semana" text="Cada linha é um horário fixo: nos dias marcados, naquele horário, sai um post no formato escolhido (post, carrossel, story ou reels) com um carro do estoque." /></p>
           {p.slots.map((s, i) => (
             <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 p-2">
               <div className="flex gap-0.5" role="group" aria-label="Dias">
@@ -98,7 +100,7 @@ export function AutoProgramPanel({ onPlanned }: { onPlanned?: () => void }) {
               {MUSIC_MOODS.map((m) => <option key={m} value={m}>Automática — {MOOD_LABEL[m]}</option>)}
             </select>
           </label>
-          <label className="block text-xs text-gray-600">Repetir o mesmo carro após (dias)
+          <label className="block text-xs text-gray-600">Repetir o mesmo carro após (dias) <HelpHint title="Repetir o mesmo carro" text="Quantos dias o carro espera antes de aparecer de novo na programação. 0 = pode repetir a qualquer momento." />
             <input type="number" min={0} max={60} className={inputCls} value={p.minDaysBetween} onChange={(e) => set({ minDaysBetween: Number(e.target.value) || 0 })} />
           </label>
           <label className="flex items-center gap-2 pt-5 text-xs text-gray-600"><input type="checkbox" checked={p.promoFirst} onChange={(e) => set({ promoFirst: e.target.checked })} />Carros em promoção primeiro</label>

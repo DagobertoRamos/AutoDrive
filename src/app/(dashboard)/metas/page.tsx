@@ -7,6 +7,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Trash2, Target, X, Save, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { RequiredMark } from '@/components/ui/field'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -173,13 +175,13 @@ function Modal({
         <form onSubmit={(e) => { e.preventDefault(); onSave(form) }} className="space-y-4 px-6 py-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Tipo <RequiredMark /></label>
+              <label className="mb-1.5 flex items-center gap-1 text-xs font-medium text-gray-700">Tipo <RequiredMark /><HelpHint {...DEAL_HINTS.META_METRICA} size={12} /></label>
               <select className={inputClass()} value={form.type} onChange={(e) => set('type', e.target.value)}>
                 {TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Escopo <RequiredMark /></label>
+              <label className="mb-1.5 flex items-center gap-1 text-xs font-medium text-gray-700">Escopo <RequiredMark /><HelpHint {...DEAL_HINTS.META_ESCOPO} size={12} /></label>
               <select className={inputClass()} value={form.scope} onChange={(e) => set('scope', e.target.value)}>
                 {SCOPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
@@ -252,7 +254,7 @@ function Modal({
             )}
 
             <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Alvo base <RequiredMark /></label>
+              <label className="mb-1.5 flex items-center gap-1 text-xs font-medium text-gray-700">Alvo base <RequiredMark /><HelpHint {...DEAL_HINTS.META_ALVO} size={12} /></label>
               <input
                 type="number" min={0} step="any" className={inputClass()}
                 value={form.targetValue}
@@ -264,7 +266,7 @@ function Modal({
           {/* Progressão por níveis */}
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">Metas progressivas (níveis)</span>
+              <span className="flex items-center gap-1 text-sm font-medium text-gray-700">Metas progressivas (níveis)<HelpHint {...DEAL_HINTS.META_NIVEIS} /></span>
               <button
                 type="button" role="switch" aria-checked={form.progressive}
                 onClick={() => set('progressive', !form.progressive)}
@@ -458,7 +460,7 @@ export default function MetasPage() {
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                 {['Tipo', 'Escopo', 'Período', 'Alvo', 'Níveis', 'Status', 'Ações'].map((h) => (
-                  <th key={h} className="whitespace-nowrap px-4 py-3">{h}</th>
+                  <th key={h} className="whitespace-nowrap px-4 py-3"><span className="inline-flex items-center gap-1">{h}{h === 'Escopo' && <HelpHint {...DEAL_HINTS.META_ESCOPO} />}{h === 'Alvo' && <HelpHint {...DEAL_HINTS.META_ALVO} />}{h === 'Níveis' && <HelpHint {...DEAL_HINTS.META_NIVEIS} />}</span></th>
                 ))}
               </tr>
             </thead>

@@ -12,6 +12,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ShieldCheck, Save, RefreshCw, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 
 interface Produto { match: string; valorCheia: string; vendedorCheia: string; vendedorDesconto: string; gerente: string }
@@ -92,7 +94,7 @@ export default function GarantiaConfigCard() {
           <div className="overflow-x-auto rounded-lg border border-gray-200">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50">
-                <tr>{['Produto *', 'Valor cheio (R$)', 'Vend. cheia', 'Vend. desconto', 'Gerente', ''].map((h) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>)}</tr>
+                <tr>{['Produto *', 'Valor cheio (R$)', 'Vend. cheia', 'Vend. desconto', 'Gerente', ''].map((h) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span className="inline-flex items-center gap-1">{h}{h === 'Vend. desconto' && <HelpHint {...DEAL_HINTS.GARANTIA_CHEIA_REDUZIDA} />}</span></th>)}</tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {cfg.produtos.map((p, i) => (

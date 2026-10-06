@@ -17,6 +17,8 @@ import { api, ago, ChannelMark, Drawer, ErrorNote, inputCls, PubTabs, StatusPill
 import { ART_TEMPLATES, FORMAT_INFO, SOCIAL_FORMATS, TEMPLATE_INFO } from '@/lib/publications/social/formats'
 import { MOOD_LABEL, MUSIC_MOODS } from '@/lib/publications/social/music-core'
 import { isSocialChannel } from '@/lib/publications/channels'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Channel = any
@@ -234,7 +236,7 @@ function ConnectForm({ channel, onClose, onDone }: { channel: Channel; onClose: 
         {channel.credentialFields.map((f: any) => (
           <label key={f.key} className="block text-xs text-gray-600">{f.label}<input className={inputCls} type={f.secret ? 'password' : 'text'} autoComplete="off" placeholder={f.placeholder} value={creds[f.key] ?? ''} onChange={(e) => setCreds((c) => ({ ...c, [f.key]: e.target.value }))} />{f.help && <span className="text-[11px] text-gray-400">{f.help}</span>}</label>
         ))}
-        <label className="block text-xs text-gray-600">Ambiente<select className={inputCls} value={env} onChange={(e) => setEnv(e.target.value)}><option value="PRODUCAO">Produção</option><option value="HOMOLOGACAO">Homologação (testes do portal)</option></select></label>
+        <label className="block text-xs text-gray-600">Ambiente <HelpHint title="Ambiente" text="Produção = anúncios reais, visíveis no portal. Homologação = ambiente de testes do portal, usado na liberação da integração; nada aparece para o público." /><select className={inputCls} value={env} onChange={(e) => setEnv(e.target.value)}><option value="PRODUCAO">Produção</option><option value="HOMOLOGACAO">Homologação (testes do portal)</option></select></label>
         {err && <ErrorNote message={err} />}
         <p className="text-[11px] text-gray-500">Ao salvar, testamos a conexão. Autenticação aprovada ainda não comprova publicação.</p>
         <div className="flex justify-end gap-2"><button onClick={onClose} className="btn-secondary px-3 py-1.5 text-xs">Cancelar</button><button onClick={submit} disabled={busy} className="btn-primary px-3 py-1.5 text-xs">{busy && <Loader2 size={13} className="animate-spin" />}Salvar e testar</button></div>
@@ -324,7 +326,7 @@ function MetaConnectForm({ channel, onClose, onDone }: { channel: Channel; onClo
           ))}
           <li className="flex gap-2"><span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-700 text-[11px] font-semibold text-white">5</span><p className="text-xs font-semibold text-gray-800">Cole o token abaixo e clique em Conectar.</p></li>
         </ol>
-        <label className="block text-xs text-gray-600">Token de acesso<textarea className={cn(inputCls, 'font-mono text-[11px]')} rows={3} autoComplete="off" spellCheck={false} value={token} onChange={(e) => setToken(e.target.value)} placeholder="EAAG..." /></label>
+        <label className="block text-xs text-gray-600">Token de acesso <HelpHint title="Token de acesso" text="Chave gerada na Meta (Facebook) que autoriza o sistema a publicar na Página e no Instagram da loja. Funciona como uma senha: não compartilhe." /><textarea className={cn(inputCls, 'font-mono text-[11px]')} rows={3} autoComplete="off" spellCheck={false} value={token} onChange={(e) => setToken(e.target.value)} placeholder="EAAG..." /></label>
         <details className="text-xs text-gray-600">
           <summary className="cursor-pointer text-brand-700">Usei um token de usuário comum (não do usuário do sistema)</summary>
           <p className="mt-1 text-[11px] text-gray-500">Tokens comuns vencem em poucas horas. Informe o ID e a chave secreta do app (Configurações do app › Básico) para convertermos em um token que não vence.</p>
@@ -371,7 +373,7 @@ function ConfigForm({ conn, spec, onClose, onDone }: { conn: Connection; spec: C
     <Drawer open onClose={onClose} title={`Configurar ${spec?.name ?? conn.channel}`} subtitle={conn.label}>
       <div className="space-y-3">
         <label className="block text-xs text-gray-600">Nome<input className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} /></label>
-        <label className="block text-xs text-gray-600">Ambiente<select className={inputCls} value={env} onChange={(e) => setEnv(e.target.value)}><option value="PRODUCAO">Produção</option><option value="HOMOLOGACAO">Homologação</option></select></label>
+        <label className="block text-xs text-gray-600">Ambiente <HelpHint title="Ambiente" text="Produção = anúncios reais, visíveis no portal. Homologação = ambiente de testes do portal, usado na liberação da integração; nada aparece para o público." /><select className={inputCls} value={env} onChange={(e) => setEnv(e.target.value)}><option value="PRODUCAO">Produção</option><option value="HOMOLOGACAO">Homologação</option></select></label>
         {fields.map((f) => <label key={f.key} className="block text-xs text-gray-600">{f.label}<input className={inputCls} value={cfg[f.key] ?? ''} onChange={(e) => setCfg((c) => ({ ...c, [f.key]: e.target.value }))} />{f.help && <span className="text-[11px] text-gray-400">{f.help}</span>}</label>)}
         {conn.channel === 'WEBMOTORS' && (
           <fieldset className="rounded-lg border border-gray-200 p-2 text-xs text-gray-600">
@@ -422,10 +424,10 @@ function SettingsForm({ connections, channels, canEdit }: { connections: Connect
         </div>
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-700">Venda × anúncios</p>
-          <label className="block text-xs text-gray-600">Pausar os anúncios quando
+          <label className="block text-xs text-gray-600">Pausar os anúncios quando <HelpHint title="Venda × anúncios" text="Quando o carro é vendido, os anúncios nos portais são pausados para não receber contatos de um carro que já saiu. Escolha se isso acontece já na negociação aberta ou só na aprovação da venda." />
             <select className={inputCls} value={s.sale.pauseOn} onChange={(e) => set('sale.pauseOn', e.target.value)}><option value="NEGOCIACAO">A venda é registrada (negociação aberta)</option><option value="APROVACAO">A venda é aprovada</option></select>
           </label>
-          <label className="block text-xs text-gray-600">Canal que não permite pausar
+          <label className="block text-xs text-gray-600">Canal que não permite pausar <HelpHint title="Canal sem pausa" text="Alguns portais não têm a opção de pausar. Retirar = o anúncio é removido e republicado se a venda cair. Avisar = fica no ar e alguém da loja decide." />
             <select className={inputCls} value={s.sale.whenNoPause} onChange={(e) => set('sale.whenNoPause', e.target.value)}><option value="RETIRAR">Retirar e republicar se a venda cair</option><option value="AVISAR">Manter no ar e avisar (ação manual)</option></select>
           </label>
           <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={s.sale.resumeOnCancel} onChange={(e) => set('sale.resumeOnCancel', e.target.checked)} />Reativar sozinho se a negociação for cancelada</label>
@@ -435,23 +437,23 @@ function SettingsForm({ connections, channels, canEdit }: { connections: Connect
           <label className="block text-xs text-gray-600">Fuso horário<input className={inputCls} value={s.timezone} onChange={(e) => set('timezone', e.target.value)} /></label>
           {s.posting && (
             <div className="space-y-2 rounded-lg border border-gray-200 p-2">
-              <p className="text-xs font-semibold text-gray-700">Disparo nas redes (Instagram, Facebook, TikTok)</p>
+              <p className="flex items-center gap-1 text-xs font-semibold text-gray-700">Disparo nas redes (Instagram, Facebook, TikTok) <HelpHint {...opsHint('JANELA_PUBLICACAO')} /></p>
               <div className="grid grid-cols-2 gap-2">
                 <label className="block text-xs text-gray-600">Das<input type="time" className={inputCls} value={s.posting.windowStart} onChange={(e) => set('posting.windowStart', e.target.value)} /></label>
                 <label className="block text-xs text-gray-600">Até<input type="time" className={inputCls} value={s.posting.windowEnd} onChange={(e) => set('posting.windowEnd', e.target.value)} /></label>
-                <label className="block text-xs text-gray-600">Intervalo mínimo (min)<input type="number" min={15} max={720} step={5} className={inputCls} value={s.posting.gapMin} onChange={(e) => set('posting.gapMin', Number(e.target.value))} /></label>
+                <label className="block text-xs text-gray-600">Intervalo mínimo (min) <HelpHint title="Intervalo entre posts" text="Tempo de espera entre dois posts na mesma conta. O sistema sorteia um valor entre o mínimo e o máximo para parecer natural e não ser limitado pelas redes." /><input type="number" min={15} max={720} step={5} className={inputCls} value={s.posting.gapMin} onChange={(e) => set('posting.gapMin', Number(e.target.value))} /></label>
                 <label className="block text-xs text-gray-600">Intervalo máximo (min)<input type="number" min={15} max={720} step={5} className={inputCls} value={s.posting.gapMax} onChange={(e) => set('posting.gapMax', Number(e.target.value))} /></label>
-                <label className="block text-xs text-gray-600">Posts no feed por dia<input type="number" min={1} max={10} className={inputCls} value={s.posting.perDay.FEED} onChange={(e) => set('posting.perDay.FEED', Number(e.target.value))} /></label>
+                <label className="block text-xs text-gray-600">Posts no feed por dia <HelpHint {...opsHint('LIMITE_DIARIO')} /><input type="number" min={1} max={10} className={inputCls} value={s.posting.perDay.FEED} onChange={(e) => set('posting.perDay.FEED', Number(e.target.value))} /></label>
                 <label className="block text-xs text-gray-600">Reels por dia<input type="number" min={1} max={5} className={inputCls} value={s.posting.perDay.REELS} onChange={(e) => set('posting.perDay.REELS', Number(e.target.value))} /></label>
                 <label className="block text-xs text-gray-600">Stories por dia<input type="number" min={1} max={20} className={inputCls} value={s.posting.perDay.STORY} onChange={(e) => set('posting.perDay.STORY', Number(e.target.value))} /></label>
-                <label className="block text-xs text-gray-600">Guardar mídias (dias)<input type="number" min={1} max={30} className={inputCls} value={s.posting.mediaKeepDays} onChange={(e) => set('posting.mediaKeepDays', Number(e.target.value))} /></label>
+                <label className="block text-xs text-gray-600">Guardar mídias (dias) <HelpHint title="Guardar mídias" text="Por quantos dias as fotos e vídeos gerados ficam disponíveis para baixar depois de publicados. Depois disso são apagados para liberar espaço." /><input type="number" min={1} max={30} className={inputCls} value={s.posting.mediaKeepDays} onChange={(e) => set('posting.mediaKeepDays', Number(e.target.value))} /></label>
               </div>
               <p className="text-[11px] text-gray-500">Publicações em lote são distribuídas sozinhas dentro desse horário, com o intervalo sorteado entre o mínimo e o máximo na mesma conta e sem encostar no que já está agendado. Fotos e vídeos ficam guardados (para baixar e postar) pelos dias acima depois de publicados; depois disso o post sai do painel e fica só no histórico.</p>
             </div>
           )}
         </div>
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-700">Publicação automática</p>
+          <p className="flex items-center gap-1 text-xs font-semibold text-gray-700">Publicação automática <HelpHint {...opsHint('PILOTO_AUTOMATICO')} /></p>
           <label className="flex items-start gap-2 text-xs text-gray-700"><input type="checkbox" className="mt-0.5" checked={s.autoPublish.enabled} onChange={(e) => set('autoPublish.enabled', e.target.checked)} /><span>Publicar sozinho quando as fotos do veículo forem <b>aprovadas</b>.</span></label>
           {s.autoPublish.enabledAt && <p className="text-[11px] text-gray-500">Ligada por {s.autoPublish.enabledByName ?? '—'} em {new Date(s.autoPublish.enabledAt).toLocaleString('pt-BR')}.</p>}
           <p className="text-[11px] text-gray-500">Destinos:</p>

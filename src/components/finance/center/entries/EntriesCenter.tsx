@@ -13,6 +13,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { ArrowRightLeft, Ban, CheckCircle2, Copy, CornerDownRight, Eye, Layers, Loader2, Paperclip, Pencil, Plus, Repeat, RefreshCw, Trash2, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import type { GlossaryTerm } from '@/lib/glossary'
 import { EntryDrawer } from '@/components/finance/EntryDrawer'
 import { DealPeekLink } from '@/components/deals/DealPeek'
 import { CategorySelect } from './CategorySelect'
@@ -261,8 +263,8 @@ export function EntriesCenter({ kind }: { kind: Kind }) {
 
       {summary && (
         <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
-          <Kpi label="Em aberto" value={brl(summary.aberto.amount)} />
-          <Kpi label="Vencidos" value={brl(summary.vencidos.amount)} tone={summary.vencidos.amount > 0 ? 'text-red-600' : undefined} />
+          <Kpi label="Em aberto" helpTerm="PREVISTO" value={brl(summary.aberto.amount)} />
+          <Kpi label="Vencidos" helpTerm="VENCIDO" value={brl(summary.vencidos.amount)} tone={summary.vencidos.amount > 0 ? 'text-red-600' : undefined} />
           <Kpi label={isExpense ? 'Pagos' : 'Recebidos'} value={brl(summary.pagos.amount)} tone="text-emerald-700" />
         </div>
       )}
@@ -306,10 +308,10 @@ function IconBtn({ title, onClick, tone, children }: { title: string; onClick: (
   )
 }
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone?: string }) {
+function Kpi({ label, value, tone, helpTerm }: { label: string; value: string; tone?: string; helpTerm?: GlossaryTerm }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
-      <p className="text-[11px] uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-gray-500">{label}{helpTerm && <HelpHint term={helpTerm} size={11} />}</p>
       <p className={cn('text-base font-bold tabular-nums text-gray-900', tone)}>{value}</p>
     </div>
   )

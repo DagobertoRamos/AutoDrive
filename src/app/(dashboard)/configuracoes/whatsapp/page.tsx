@@ -7,6 +7,8 @@
 // (/api/settings/whatsapp/providers). Webhook só aparece p/ Meta.
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback } from 'react'
 import { MessageSquare, Save, Eye, EyeOff, Loader2, CheckCircle2, AlertCircle, RefreshCw, Link2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -100,7 +102,7 @@ export default function WhatsAppConfigPage() {
         <div className="section-header"><MessageSquare size={15} className="text-brand-700" /><h2 className="text-sm font-semibold text-gray-800">Provedor</h2></div>
         <div className="space-y-4 p-4">
           <div>
-            <label className="label">Provedor de WhatsApp <RequiredMark /></label>
+            <label className="label">Provedor de WhatsApp<HelpHint className="ml-1" title="Provedor de WhatsApp" text="Serviço que envia as mensagens desta loja. As credenciais são da própria loja e ficam guardadas só para ela." /> <RequiredMark /></label>
             <select value={provider} onChange={(e) => setProvider(e.target.value)} className="input">
               {providers.map((p) => <option key={p.kind} value={p.kind}>{p.label}</option>)}
             </select>
@@ -129,7 +131,7 @@ export default function WhatsAppConfigPage() {
         <div className="card">
           <div className="section-header"><Link2 size={15} className="text-brand-700" /><h2 className="text-sm font-semibold text-gray-800">Webhook (Meta)</h2></div>
           <div className="p-4">
-            <label className="label">URL do Webhook</label>
+            <label className="label">URL do Webhook<HelpHint className="ml-1" {...opsHint('WEBHOOK')} /></label>
             <div className="flex gap-2">
               <input value={webhookUrl} readOnly className="input flex-1 bg-gray-50 font-mono text-xs text-gray-600" />
               <button onClick={() => navigator.clipboard.writeText(webhookUrl)} className="btn-secondary shrink-0 text-xs" title="Copiar URL">Copiar</button>
@@ -143,6 +145,7 @@ export default function WhatsAppConfigPage() {
         <div className="flex items-center gap-3 p-4">
           <input type="checkbox" id="wa_active" checked={active} onChange={(e) => setActive(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
           <label htmlFor="wa_active" className="text-sm font-medium text-gray-700">WhatsApp ativo nesta loja</label>
+          <HelpHint className="ml-1" title="WhatsApp ativo" text="Desligado, o sistema não envia mensagens de WhatsApp por esta loja, mesmo com as credenciais salvas." />
         </div>
       </div>
 

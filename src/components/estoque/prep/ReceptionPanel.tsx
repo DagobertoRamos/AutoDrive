@@ -10,6 +10,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, Loader2, PackageCheck, RotateCcw, Save } from 'lucide-react'
 import { VehicleFilesField, type VFile } from './VehicleFilesField'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 interface Item { key: string; status: 'OK' | 'NAO_POSSUI' | 'PENDENTE'; note: string | null }
 interface State {
@@ -90,6 +92,7 @@ export function ReceptionPanel({ vehicleId, canEdit, onChanged }: { vehicleId: s
         </label>
       </div>
 
+      <p className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Checklist de recebimento <HelpHint {...opsHint('RECEBIMENTO')} /></p>
       <ul className="grid gap-3 md:grid-cols-2">
         {s.catalog.map((c) => {
           const it = items[c.key]

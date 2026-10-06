@@ -16,6 +16,7 @@ import { useSearchParams } from 'next/navigation'
 import { Settings, Plus, Pencil, Trash2, X, Save, Lock, Power, Clock, Send, ListChecks } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
 
 const CONFIG_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 
@@ -146,7 +147,7 @@ export default function PendencyConfigPage() {
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50"><tr>{['Tipo', 'Categoria', 'Ordem', 'Origem', 'Status', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+              <thead className="bg-gray-50"><tr>{['Tipo', 'Categoria', 'Ordem', 'Origem', 'Status', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h === 'Origem' ? <WithHint text="Global: tipo criado pela administração do sistema, vale para todas as lojas e não pode ser editado aqui. Loja: criado pela sua loja.">{h}</WithHint> : h}</th>))}</tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {loadingOpt ? (
                   Array.from({ length: 4 }).map((_, i) => (<tr key={i}>{Array.from({ length: 6 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
@@ -183,7 +184,7 @@ export default function PendencyConfigPage() {
 
       {/* ── Seção B: SLA por prioridade ── */}
       <section className="space-y-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-700"><Clock size={16} className="text-brand-600" />SLA padrão por prioridade</h2>
+        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-700"><Clock size={16} className="text-brand-600" />SLA padrão por prioridade<HelpHint term="SLA" /></h2>
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
           {loadingSet || !settings ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => (<div key={i} className="h-16 animate-pulse rounded-lg bg-gray-100" />))}</div>
@@ -206,7 +207,7 @@ export default function PendencyConfigPage() {
 
       {/* ── Seção C: Envio automático ── */}
       <section className="space-y-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-700"><Send size={16} className="text-brand-600" />Envio automático (padrão)</h2>
+        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-700"><Send size={16} className="text-brand-600" />Envio automático (padrão)<HelpHint text="Padrão para novas pendências: o sistema reenvia o aviso ao responsável sozinho, só nos dias e horários permitidos, na frequência escolhida, até a pendência ser resolvida ou atingir o máximo de envios." /></h2>
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
           {loadingSet || !settings ? (
             <div className="h-40 animate-pulse rounded-lg bg-gray-100" />
@@ -231,8 +232,8 @@ export default function PendencyConfigPage() {
                   <div><label className="mb-1 block text-xs font-medium text-gray-700">Início</label><input type="time" className={inputCls} value={settings.autoSend.startTime} onChange={(e) => setAuto('startTime', e.target.value)} /></div>
                   <div><label className="mb-1 block text-xs font-medium text-gray-700">Fim</label><input type="time" className={inputCls} value={settings.autoSend.endTime} onChange={(e) => setAuto('endTime', e.target.value)} /></div>
                   <div><label className="mb-1 block text-xs font-medium text-gray-700">Frequência</label><select className={inputCls} value={settings.autoSend.frequency} onChange={(e) => setAuto('frequency', e.target.value)}>{FREQS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
-                  <div><label className="mb-1 block text-xs font-medium text-gray-700">Máx. de envios</label><input type="number" min={1} max={100} className={inputCls} value={settings.autoSend.maxSends} onChange={(e) => setAuto('maxSends', Math.max(1, Number(e.target.value) || 1))} /></div>
-                  <div><label className="mb-1 block text-xs font-medium text-gray-700">Envios por dia</label><input type="number" min={1} max={24} className={inputCls} value={settings.autoSend.sendsPerDay} onChange={(e) => setAuto('sendsPerDay', Math.max(1, Number(e.target.value) || 1))} /></div>
+                  <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Máx. de envios <HelpHint text="Total de avisos enviados para a mesma pendência. Depois disso, o envio automático para." /></label><input type="number" min={1} max={100} className={inputCls} value={settings.autoSend.maxSends} onChange={(e) => setAuto('maxSends', Math.max(1, Number(e.target.value) || 1))} /></div>
+                  <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Envios por dia <HelpHint text="Limite de avisos por dia para a mesma pendência, para não incomodar o responsável." /></label><input type="number" min={1} max={24} className={inputCls} value={settings.autoSend.sendsPerDay} onChange={(e) => setAuto('sendsPerDay', Math.max(1, Number(e.target.value) || 1))} /></div>
                 </div>
               </div>
             </div>

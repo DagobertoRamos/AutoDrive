@@ -1,5 +1,6 @@
 'use client'
 
+import { WithHint } from '@/components/ui/help-hint'
 import { useEffect, useState, useCallback } from 'react'
 
 interface ProductMap {
@@ -104,9 +105,9 @@ export default function AutoconfProdutosPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
-                <th className="px-4 py-3">Rótulo AutoConf</th>
-                <th className="px-4 py-3">IDs externos</th>
-                <th className="px-4 py-3">Categoria</th>
+                <th className="px-4 py-3"><WithHint text="Nome do produto ou débito como vem do AutoConf ao importar as negociações.">Rótulo AutoConf</WithHint></th>
+                <th className="px-4 py-3"><WithHint text="Códigos do tipo de débito e do produto no AutoConf. É por eles que o sistema reconhece o mesmo item nas próximas importações.">IDs externos</WithHint></th>
+                <th className="px-4 py-3"><WithHint text="Como o sistema trata o item na negociação e no financeiro (garantia, documentação, quitação...). Itens marcados como auto foram classificados sozinhos e pedem conferência.">Categoria</WithHint></th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Visto</th>
               </tr>

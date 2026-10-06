@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { Activity, Clock3, Columns3, Handshake, Inbox, RefreshCw, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
 
 interface CockpitData {
   scope: string
@@ -22,15 +24,15 @@ interface CockpitData {
   bySeller: Array<{ sellerId: string | null; sellerName: string; total: number }>
 }
 
-const CARD_META = [
-  { key: 'totalLeads', label: 'Leads no CRM', icon: Inbox, tone: 'text-brand-700 bg-brand-50 border-brand-100' },
+const CARD_META: Array<{ key: keyof CockpitData['cards']; label: string; icon: typeof Inbox; tone: string; help?: string }> = [
+  { key: 'totalLeads', label: 'Leads no CRM', help: opsText('LEAD'), icon: Inbox, tone: 'text-brand-700 bg-brand-50 border-brand-100' },
   { key: 'newLeads', label: 'Leads novos', icon: Activity, tone: 'text-blue-700 bg-blue-50 border-blue-100' },
-  { key: 'delayedLeads', label: 'Leads atrasados', icon: Clock3, tone: 'text-amber-700 bg-amber-50 border-amber-100' },
-  { key: 'convertedLeads', label: 'Convertidos', icon: Handshake, tone: 'text-green-700 bg-green-50 border-green-100' },
+  { key: 'delayedLeads', label: 'Leads atrasados', help: 'Leads em aberto (nem convertidos nem perdidos) sem contato registrado há mais de 48 horas.', icon: Clock3, tone: 'text-amber-700 bg-amber-50 border-amber-100' },
+  { key: 'convertedLeads', label: 'Convertidos', help: 'Leads que viraram venda (marcados como convertidos).', icon: Handshake, tone: 'text-green-700 bg-green-50 border-green-100' },
   { key: 'lostLeads', label: 'Perdidos', icon: Columns3, tone: 'text-red-700 bg-red-50 border-red-100' },
-  { key: 'autoconfLeads', label: 'Vindos do AutoConf', icon: Columns3, tone: 'text-violet-700 bg-violet-50 border-violet-100' },
-  { key: 'totalAttendances', label: 'Atendimentos', icon: Users, tone: 'text-slate-700 bg-slate-50 border-slate-100' },
-  { key: 'openAttendances', label: 'Em atendimento', icon: Activity, tone: 'text-indigo-700 bg-indigo-50 border-indigo-100' },
+  { key: 'autoconfLeads', label: 'Vindos do AutoConf', help: 'Leads importados do AutoConf (sistema de gestão/portais) pela integração.', icon: Columns3, tone: 'text-violet-700 bg-violet-50 border-violet-100' },
+  { key: 'totalAttendances', label: 'Atendimentos', help: 'Clientes atendidos pela fila do Vendedor da Vez no período, inclusive os de loja.', icon: Users, tone: 'text-slate-700 bg-slate-50 border-slate-100' },
+  { key: 'openAttendances', label: 'Em atendimento', help: 'Atendimentos da fila ainda abertos: chamados, aceitos ou em andamento.', icon: Activity, tone: 'text-indigo-700 bg-indigo-50 border-indigo-100' },
   { key: 'todayAttendances', label: 'Hoje', icon: Clock3, tone: 'text-cyan-700 bg-cyan-50 border-cyan-100' },
 ] as const
 
@@ -79,7 +81,7 @@ export default function CrmCockpitPage() {
           return (
             <div key={card.key} className={cn('rounded-xl border p-4 shadow-card', card.tone)}>
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wide">{card.label}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide">{card.help ? <WithHint text={card.help}>{card.label}</WithHint> : card.label}</p>
                 <Icon size={16} />
               </div>
               <p className="mt-3 text-3xl font-black">{loading ? '...' : value}</p>
@@ -90,7 +92,7 @@ export default function CrmCockpitPage() {
 
       <section className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
-          <h2 className="text-sm font-semibold text-gray-900">Leads por origem</h2>
+          <h2 className="text-sm font-semibold text-gray-900"><WithHint text={opsText('ORIGEM')}>Leads por origem</WithHint></h2>
           <div className="mt-4 space-y-2">
             {(data?.bySource ?? []).map((item) => (
               <div key={item.source} className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">

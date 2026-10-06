@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, FolderTree, Pencil, Plus, Power, Save, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { FieldLabel } from '@/components/ui/field'
+import { WithHint } from '@/components/ui/help-hint'
 import { DRE_GROUPS } from '@/lib/finance/dre-core'
 import { Badge, ColorPicker, EmptyState, Modal, PageHeader, Toggle, api, iconBtn, inputClass } from './ui'
 
@@ -142,6 +143,7 @@ export default function ChartOfAccounts() {
     <div className="space-y-5">
       <PageHeader
         title="Plano de contas"
+        helpTerm="PLANO_CONTAS"
         subtitle={loading ? 'Carregando...' : `${all.filter((n) => n.active).length} categorias ativas`}
         actions={<>
           <Toggle checked={showInactive} onChange={setShowInactive} label="Mostrar inativas" />
@@ -162,7 +164,7 @@ export default function ChartOfAccounts() {
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="flex items-center gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
           <div className="flex-1">Categoria</div>
-          <div className="hidden w-64 md:block">Linha da DRE</div>
+          <div className="hidden w-64 md:block"><WithHint text="Em qual linha da DRE os lançamentos desta categoria aparecem. Em cinza: herdada da categoria pai.">Linha da DRE</WithHint></div>
           <div className="w-16 text-right">Lanç.</div>
           <div className="w-28" />
         </div>
@@ -200,7 +202,7 @@ export default function ChartOfAccounts() {
                 {parentOptions.map((p) => <option key={p.id} value={p.id}>{' '.repeat(p.depth * 3)}{p.code ? `${p.code} ` : ''}{p.name}</option>)}
               </select>
             </div>
-            <div><FieldLabel>Linha da DRE</FieldLabel>
+            <div><FieldLabel helpText="Em qual linha da DRE os lançamentos desta categoria aparecem. Em branco, herda a linha da categoria pai.">Linha da DRE</FieldLabel>
               <select className={cn(inputClass, 'mt-1')} value={form.dreGroup} onChange={(e) => setForm({ ...form, dreGroup: e.target.value })}>
                 <option value="">{inheritedLabel ? `Herdar: ${inheritedLabel}` : 'Não definida'}</option>
                 {DRE_GROUPS.filter((g) => g.kind === form.kind || g.key === 'NAO_OPERACIONAL').map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}

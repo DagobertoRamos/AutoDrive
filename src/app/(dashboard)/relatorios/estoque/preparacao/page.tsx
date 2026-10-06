@@ -6,6 +6,8 @@
 // Consome /api/reports/stock/preparation.
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback } from 'react'
 import { Wrench, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -46,7 +48,7 @@ export default function PreparacaoPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Custo de Preparação</h1>
+          <h1 className="flex items-center gap-1 text-xl font-bold text-gray-900">Custo de Preparação<HelpHint className="ml-1" {...opsHint('PREPARACAO')} /></h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${summary?.count ?? 0} serviços de preparação`}</p>
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>

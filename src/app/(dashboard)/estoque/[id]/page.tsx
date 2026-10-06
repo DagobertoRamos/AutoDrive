@@ -34,6 +34,8 @@ import { ReceptionPanel } from '@/components/estoque/prep/ReceptionPanel'
 import { ServicesPanel } from '@/components/estoque/prep/ServicesPanel'
 import { LedgerPanel } from '@/components/estoque/prep/LedgerPanel'
 import { DealPeekLink } from '@/components/deals/DealPeek'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -133,7 +135,7 @@ const RESULT_CONFIG: Record<string, { label: string; icon: React.ReactNode; clas
 
 // ── Aba info ──────────────────────────────────────────────────────────────────
 
-function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
+function InfoRow({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
       <span className="text-sm text-gray-500 shrink-0 w-40">{label}</span>
@@ -434,7 +436,7 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
               </h3>
               <InfoRow label="Placa"    value={vehicle.plate    ?? '—'} />
               <InfoRow label="Chassi"   value={vehicle.chassi   ?? '—'} />
-              <InfoRow label="Renavam"  value={vehicle.renavam  ?? '—'} />
+              <InfoRow label={<WithHint text={opsText('RENAVAM')}>Renavam</WithHint>}  value={vehicle.renavam  ?? '—'} />
               <InfoRow label="Ano/Fab." value={yearLabel} />
               <InfoRow label="KM"       value={fmtKm(vehicle.km)} />
               <InfoRow label="Cor"      value={vehicle.color} />
@@ -445,9 +447,9 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
                 Estoque
               </h3>
-              <InfoRow label="Status"     value={<VehicleStatusBadge status={vehicle.stockStatus} />} />
-              <InfoRow label="Localização" value={vehicle.stockLocation ?? '—'} />
-              <InfoRow label="Tipo"       value={vehicle.stockType ? <StockTypeBadge type={vehicle.stockType} /> : '—'} />
+              <InfoRow label={<WithHint text={opsText('STATUS_ESTOQUE')}>Status</WithHint>}     value={<VehicleStatusBadge status={vehicle.stockStatus} />} />
+              <InfoRow label={<WithHint text={opsText('SITUACAO_ESTOQUE')}>Localização</WithHint>} value={vehicle.stockLocation ?? '—'} />
+              <InfoRow label={<WithHint text={opsText('CONSIGNADO')}>Tipo</WithHint>}       value={vehicle.stockType ? <StockTypeBadge type={vehicle.stockType} /> : '—'} />
               <InfoRow label="Condição"   value={vehicle.conditionType ? <ConditionBadge condition={vehicle.conditionType} /> : '—'} />
               <InfoRow label="Unidade"    value={vehicle.unit ? `${vehicle.unit.name}${vehicle.unit.city ? ` — ${vehicle.unit.city}/${vehicle.unit.state}` : ''}` : '—'} />
               {vehicle.origin && (
@@ -455,7 +457,7 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
                   <InfoRow label="Código interno" value={vehicle.origin.internalCode ? `#${vehicle.origin.internalCode}` : '—'} />
                   <InfoRow label="Código catálogo" value={vehicle.origin.catalogId} />
                   <InfoRow
-                    label="Origem"
+                    label={<WithHint text={opsText('LOJA_PARCEIRA')}>Origem</WithHint>}
                     value={vehicle.origin.originType === 'PARTNER' ? 'Loja parceira' : vehicle.origin.originType === 'PRIVATE' ? 'Particular' : 'Próprio'}
                   />
                   {vehicle.origin.partnerName && (
@@ -474,11 +476,11 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
                     <InfoRow label="Preço do parceiro" value={vehicle.origin.originPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} />
                   )}
                   {vehicle.origin.markup != null && (
-                    <InfoRow label="Margem do site" value={vehicle.origin.markup.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} />
+                    <InfoRow label={<WithHint text="Valor somado ao preço do parceiro para anunciar o carro no site da loja.">Margem do site</WithHint>} value={vehicle.origin.markup.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} />
                   )}
                 </>
               )}
-              <InfoRow label="Cautelar"   value={<CautelarBadge status={vehicle.cautelarStatus} />} />
+              <InfoRow label={<WithHint text={opsText('PERICIA')}>Cautelar</WithHint>}   value={<CautelarBadge status={vehicle.cautelarStatus} />} />
               {vehicle.notes && (
                 <div className="mt-4 rounded-lg bg-gray-50 p-3">
                   <p className="text-xs font-medium text-gray-500 mb-1">Observações</p>
@@ -667,8 +669,8 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
                         </span>
                       </div>
                       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 text-sm">
-                        <div><p className="text-xs text-gray-500">FIPE</p><p className="font-medium">{fmt(ev.fipeValue)}</p></div>
-                        <div><p className="text-xs text-gray-500">Avaliado</p><p className="font-medium">{fmt(ev.evaluatedValue)}</p></div>
+                        <div><p className="text-xs text-gray-500"><WithHint term="FIPE">FIPE</WithHint></p><p className="font-medium">{fmt(ev.fipeValue)}</p></div>
+                        <div><p className="text-xs text-gray-500"><WithHint text={opsText('VALOR_AVALIACAO')}>Avaliado</WithHint></p><p className="font-medium">{fmt(ev.evaluatedValue)}</p></div>
                       </div>
                       {ev.notes && <p className="mt-2 text-xs text-gray-600">{ev.notes}</p>}
                     </div>
@@ -714,12 +716,12 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
               </div>
               <div className="rounded-xl bg-gray-50 p-4 text-center">
                 <History className="h-6 w-6 text-gray-400 mx-auto mb-1" />
-                <p className="text-xs text-gray-500">Tabela FIPE</p>
+                <p className="text-xs text-gray-500"><WithHint term="FIPE">Tabela FIPE</WithHint></p>
                 <p className="text-xl font-bold text-gray-900 mt-1">{fmt(vehicle.fipeValue)}</p>
               </div>
               {vehicle.purchasePrice != null && vehicle.salePrice != null && (
                 <div className="sm:col-span-3 rounded-lg bg-emerald-50 border border-emerald-200 p-4 flex items-center justify-between">
-                  <p className="text-sm font-medium text-emerald-700">Margem estimada</p>
+                  <p className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700">Margem estimada <HelpHint title="Margem estimada" text="Preço de venda menos preço de compra, em R$ e em % sobre a compra. Não considera preparação, documentação nem comissões." /></p>
                   <p className="text-lg font-bold text-emerald-800">
                     {fmt(vehicle.salePrice - vehicle.purchasePrice)}
                     {' '}

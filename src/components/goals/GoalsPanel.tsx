@@ -8,6 +8,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Target, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { GoalCard, type GoalCardData } from '@/components/goals/GoalCard'
 
 export function GoalsPanel() {
@@ -38,6 +40,7 @@ export function GoalsPanel() {
         <div className="flex items-center gap-2">
           <Target size={16} className="text-brand-700" />
           <h2 className="text-sm font-semibold text-gray-800">Minhas Metas</h2>
+          <HelpHint {...DEAL_HINTS.META_ATINGIMENTO} />
         </div>
         <button
           type="button"

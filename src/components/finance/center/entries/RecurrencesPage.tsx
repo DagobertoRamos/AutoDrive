@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2, Pause, Pencil, Play, Plus, Repeat, Save, Square } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 import { MoneyInput } from '@/components/ui/money-input'
 import { CategorySelect } from './CategorySelect'
 import { ErrorLine, Field, Modal, brl, dt, inputCls, postJson, todayYmd } from './ui'
@@ -61,7 +62,7 @@ export function RecurrencesPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold text-gray-900">Despesas e receitas fixas</h1>
+        <h1 className="flex items-center gap-1.5 text-xl font-bold text-gray-900">Despesas e receitas fixas<HelpHint term="RECORRENCIA" size={15} /></h1>
         {refs.canManage && <button type="button" onClick={() => setEditing('new')} className="btn-primary text-sm"><Plus size={15} />Nova</button>}
       </div>
 

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Car, ChevronRight, Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 
 interface Row {
   id: string; plate: string | null; title: string; stockStatus: string | null; stockType: string | null; entryDate: string | null
@@ -38,7 +39,7 @@ export default function CustosVeiculosPage() {
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         {([['Total lançado', totals.total, ''], ['Pago', totals.paid, 'text-emerald-700'], ['A pagar', totals.pending, 'text-amber-700']] as Array<[string, number, string]>).map(([l, v, c]) => (
-          <div key={l} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"><p className="text-xs text-gray-500">{l}</p><p className={cn('text-2xl font-bold tabular-nums text-gray-900', c)}>{brl(v)}</p></div>
+          <div key={l} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"><p className="flex items-center gap-1 text-xs text-gray-500">{l}{l === 'Total lançado' && <HelpHint size={12} title="Total lançado" text="Soma dos custos lançados nos veículos (compra, preparação, documentação). Enquanto o carro não é vendido, fica como custo em estoque; entra na DRE no mês da venda." />}</p><p className={cn('text-2xl font-bold tabular-nums text-gray-900', c)}>{brl(v)}</p></div>
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-3">

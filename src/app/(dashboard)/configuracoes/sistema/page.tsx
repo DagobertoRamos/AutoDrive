@@ -4,6 +4,8 @@
 // Configurações do Sistema — AutoDrive
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import {
@@ -306,7 +308,7 @@ export default function ConfiguracoesSistemaPage() {
               <input className={inputClass()} value={settings.companyName} onChange={(e) => set('companyName', e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Unidade padrão</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Unidade padrão<HelpHint className="ml-1" title="Unidade padrão" text="Loja/filial usada quando um registro é criado sem unidade escolhida. Informe o ID da unidade (veja em Cadastros, Unidades)." /></label>
               <input className={inputClass()} value={settings.defaultUnit} onChange={(e) => set('defaultUnit', e.target.value)} placeholder="ID da unidade" />
             </div>
             <div>
@@ -320,14 +322,14 @@ export default function ConfiguracoesSistemaPage() {
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Modo</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Modo<HelpHint className="ml-1" title="Modo" text="Manutenção indica que o sistema está em ajustes e pode restringir o uso pelas equipes. Use Normal no dia a dia." /></label>
               <select className={inputClass()} value={settings.mode} onChange={(e) => set('mode', e.target.value as SystemSettings['mode'])}>
                 <option value="NORMAL">Normal</option>
                 <option value="MAINTENANCE">Manutenção</option>
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Ambiente</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Ambiente<HelpHint className="ml-1" title="Ambiente" text="Teste serve para experimentar configurações sem afetar a operação real. Em Produção os avisos e envios valem de verdade." /></label>
               <select className={inputClass()} value={settings.environment} onChange={(e) => set('environment', e.target.value as SystemSettings['environment'])}>
                 <option value="PRODUCTION">Produção</option>
                 <option value="TEST">Teste</option>
@@ -340,7 +342,7 @@ export default function ConfiguracoesSistemaPage() {
         <AccordionSection icon={Clock} title="Horários">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700">Trava de horário ativa</label>
+              <label className="text-sm font-medium text-gray-700">Trava de horário ativa<HelpHint className="ml-1" title="Trava de horário" text="Ligada, os avisos automáticos só saem nos dias e no horário definidos abaixo. Fora da janela, ficam para o próximo horário permitido." /></label>
               <Toggle checked={settings.scheduleEnabled} onChange={(v) => set('scheduleEnabled', v)} />
             </div>
 
@@ -359,13 +361,13 @@ export default function ConfiguracoesSistemaPage() {
                 <input type="time" className={inputClass()} value={settings.scheduleEnd} onChange={(e) => set('scheduleEnd', e.target.value)} />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-700">Tolerância (minutos)</label>
+                <label className="mb-1.5 block text-xs font-medium text-gray-700">Tolerância (minutos)<HelpHint className="ml-1" title="Tolerância" text="Margem, em minutos, aceita além do horário final antes de segurar o envio para o próximo dia permitido." /></label>
                 <input type="number" min={0} className={inputClass()} value={settings.toleranceMinutes} onChange={(e) => set('toleranceMinutes', Number(e.target.value))} />
               </div>
             </div>
 
             <div>
-              <label className="mb-2 block text-xs font-medium text-gray-700">Envios por dia por prioridade</label>
+              <label className="mb-2 block text-xs font-medium text-gray-700">Envios por dia por prioridade<HelpHint className="ml-1" title="Envios por dia" text="Quantas vezes por dia o mesmo aviso pode ser reenviado, conforme a prioridade. Prioridade maior costuma permitir mais envios." /></label>
               <div className="grid gap-3 sm:grid-cols-4">
                 {(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const).map((p) => {
                   const labels = { LOW: 'Baixa', MEDIUM: 'Média', HIGH: 'Alta', CRITICAL: 'Crítica' }
@@ -411,17 +413,17 @@ export default function ConfiguracoesSistemaPage() {
                 </select>
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-700">Frequência (horas)</label>
+                <label className="mb-1.5 block text-xs font-medium text-gray-700">Frequência (horas)<HelpHint className="ml-1" title="Frequência dos lembretes" text="Intervalo entre um lembrete e o próximo enquanto a pendência continua aberta." /></label>
                 <input type="number" min={1} className={inputClass()} value={settings.frequency} onChange={(e) => set('frequency', Number(e.target.value))} />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-700">Máx. envios</label>
+                <label className="mb-1.5 block text-xs font-medium text-gray-700">Máx. envios<HelpHint className="ml-1" title="Máximo de envios" text="Total máximo de lembretes de uma pendência. Atingido o limite, o sistema para de cobrar o responsável." /></label>
                 <input type="number" min={1} className={inputClass()} value={settings.maxSends} onChange={(e) => set('maxSends', Number(e.target.value))} />
               </div>
             </div>
 
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700">Envio automático</label>
+              <label className="text-sm font-medium text-gray-700">Envio automático<HelpHint className="ml-1" {...opsHint('LEMBRETE')} /></label>
               <Toggle checked={settings.autoSend} onChange={(v) => set('autoSend', v)} />
             </div>
 
@@ -437,7 +439,7 @@ export default function ConfiguracoesSistemaPage() {
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-700">Provedor ativo</label>
+                <label className="mb-1.5 block text-xs font-medium text-gray-700">Provedor ativo<HelpHint className="ml-1" title="Provedor de WhatsApp" text="Serviço usado para mandar as mensagens de WhatsApp: API oficial da Meta, Twilio ou WPPConnect. Cada um pede suas próprias credenciais." /></label>
                 <select className={inputClass()} value={settings.whatsappProvider} onChange={(e) => set('whatsappProvider', e.target.value)}>
                   <option value="META">Meta (WhatsApp Business API)</option>
                   <option value="TWILIO">Twilio</option>
@@ -453,16 +455,16 @@ export default function ConfiguracoesSistemaPage() {
                 </select>
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-700">Phone Number ID</label>
+                <label className="mb-1.5 block text-xs font-medium text-gray-700">Phone Number ID<HelpHint className="ml-1" title="Phone Number ID" text="Identificador do número de WhatsApp na Meta (não é o telefone). Fica no painel do WhatsApp Business, em Configuração da API." /></label>
                 <input className={inputClass()} value={settings.phoneNumberId} onChange={(e) => set('phoneNumberId', e.target.value)} placeholder="123456789" />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-700">Webhook Verify Token</label>
+                <label className="mb-1.5 block text-xs font-medium text-gray-700">Webhook Verify Token<HelpHint className="ml-1" title="Verify Token" text="Senha combinada que você inventa e repete no painel da Meta ao cadastrar o webhook. Serve para a Meta confirmar que o endereço é seu." /></label>
                 <input className={inputClass()} value={settings.webhookVerifyToken} onChange={(e) => set('webhookVerifyToken', e.target.value)} placeholder="meu_token_secreto" />
               </div>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Access Token</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Access Token<HelpHint className="ml-1" title="Access Token" text="Chave de acesso gerada no painel da Meta que autoriza o sistema a enviar mensagens pelo seu número. Prefira um token permanente." /></label>
               <input
                 type="password"
                 className={inputClass()}
@@ -473,7 +475,7 @@ export default function ConfiguracoesSistemaPage() {
               />
             </div>
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700">Usar templates oficiais</label>
+              <label className="text-sm font-medium text-gray-700">Usar templates oficiais<HelpHint className="ml-1" title="Templates oficiais" text="Envia mensagens usando modelos aprovados pela Meta. Obrigatório para iniciar conversa com quem não falou com a loja nas últimas 24 horas." /></label>
               <Toggle checked={settings.officialTemplates} onChange={(v) => set('officialTemplates', v)} />
             </div>
           </div>
@@ -483,12 +485,12 @@ export default function ConfiguracoesSistemaPage() {
         <AccordionSection icon={Upload} title="Importação de Planilha">
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Planilha ID (Google Sheets)</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Planilha ID (Google Sheets)<HelpHint className="ml-1" title="ID da planilha" text="Código que aparece no endereço da planilha, entre /d/ e /edit." /></label>
               <input className={inputClass()} value={settings.spreadsheetId} onChange={(e) => set('spreadsheetId', e.target.value)} />
             </div>
 
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700">Importação automática</label>
+              <label className="text-sm font-medium text-gray-700">Importação automática<HelpHint className="ml-1" title="Importação automática" text="Ligada, o sistema lê a planilha sozinho a cada intervalo definido e importa as linhas novas." /></label>
               <Toggle checked={settings.autoImport} onChange={(v) => set('autoImport', v)} />
             </div>
 
@@ -498,7 +500,7 @@ export default function ConfiguracoesSistemaPage() {
                 <input type="number" min={5} className={inputClass()} value={settings.importIntervalMinutes} onChange={(e) => set('importIntervalMinutes', Number(e.target.value))} />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-700">Delay entre itens (segundos)</label>
+                <label className="mb-1.5 block text-xs font-medium text-gray-700">Delay entre itens (segundos)<HelpHint className="ml-1" title="Delay entre itens" text="Pausa entre cada linha importada, para não estourar o limite de uso da API do Google." /></label>
                 <input type="number" min={0} className={inputClass()} value={settings.importDelaySeconds} onChange={(e) => set('importDelaySeconds', Number(e.target.value))} />
               </div>
             </div>

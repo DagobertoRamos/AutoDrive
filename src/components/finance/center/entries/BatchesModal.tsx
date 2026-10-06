@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { FileText, Layers, Loader2, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { WithHint } from '@/components/ui/help-hint'
 import { BatchReceipt } from './BatchReceipt'
 import { ErrorLine, Field, Modal, brl, dt, inputCls, postJson, todayYmd } from './ui'
 
@@ -48,7 +49,7 @@ export function BatchesModal({ type, accounts, canManage, onClose, onChanged }: 
 
   return (
     <>
-      <Modal wide title="Lotes de baixa" onClose={onClose}>
+      <Modal wide title={<WithHint term="BAIXA_LOTE">Lotes de baixa</WithHint>} onClose={onClose}>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2 sm:max-w-md">
             <Field label="De"><input type="date" className={inputCls} value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
@@ -121,7 +122,7 @@ function ReverseBatchModal({ batch, onClose, onDone }: { batch: Batch; onClose: 
     onDone()
   }
   return (
-    <Modal title="Estornar lote" onClose={onClose} footer={
+    <Modal title={<WithHint term="ESTORNO">Estornar lote</WithHint>} onClose={onClose} footer={
       <>
         <button type="button" onClick={onClose} className="btn-secondary text-sm">Voltar</button>
         <button type="button" onClick={() => void submit()} disabled={busy} className="btn-primary text-sm">{busy ? <Loader2 size={15} className="animate-spin" /> : <RotateCcw size={15} />}Estornar lote</button>

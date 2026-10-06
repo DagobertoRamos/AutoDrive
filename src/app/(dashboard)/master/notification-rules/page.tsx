@@ -6,6 +6,8 @@
 // são gerados e distribuídos.
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback } from 'react'
 import {
   Bell, Plus, Loader2, Pencil, Trash2, ToggleLeft, ToggleRight,
@@ -378,7 +380,7 @@ export default function NotificationRulesPage() {
               <div className="grid grid-cols-2 gap-4">
                 {/* Módulo */}
                 <div>
-                  <label className="label">Módulo <RequiredMark /></label>
+                  <label className="label">Módulo<HelpHint className="ml-1" title="Módulo" text="Área do sistema que dispara a regra (negociações, estoque, pendências...)." /> <RequiredMark /></label>
                   <select
                     value={form.module}
                     onChange={(e) => setForm((f) => ({ ...f, module: e.target.value }))}
@@ -392,7 +394,7 @@ export default function NotificationRulesPage() {
 
                 {/* Tipo de condição */}
                 <div>
-                  <label className="label">Tipo de condição <RequiredMark /></label>
+                  <label className="label">Tipo de condição<HelpHint className="ml-1" title="Tipo de condição" text="Código do evento que aciona a regra, definido no sistema (ex.: DEAL_STUCK_24H = negociação parada há mais de 24 h)." /> <RequiredMark /></label>
                   <input
                     value={form.conditionType}
                     onChange={(e) => setForm((f) => ({ ...f, conditionType: e.target.value }))}
@@ -417,7 +419,7 @@ export default function NotificationRulesPage() {
 
                 {/* Severidade */}
                 <div>
-                  <label className="label">Severidade</label>
+                  <label className="label">Severidade<HelpHint className="ml-1" title="Severidade" text="Gravidade do alerta (informativo, aviso, crítico). Define o destaque visual da notificação." /></label>
                   <select
                     value={form.severity}
                     onChange={(e) => setForm((f) => ({ ...f, severity: e.target.value }))}
@@ -431,7 +433,7 @@ export default function NotificationRulesPage() {
 
                 {/* SLA */}
                 <div>
-                  <label className="label">SLA (minutos)</label>
+                  <label className="label">SLA (minutos)<HelpHint className="ml-1" term="SLA" /></label>
                   <input
                     type="number" min={0}
                     value={form.slaMinutes}
@@ -443,7 +445,7 @@ export default function NotificationRulesPage() {
 
                 {/* Max por dia */}
                 <div>
-                  <label className="label">Máx. por dia / usuário</label>
+                  <label className="label">Máx. por dia / usuário<HelpHint className="ml-1" title="Máximo por dia" text="Limite de vezes que a mesma regra notifica cada pessoa por dia, para não virar spam." /></label>
                   <input
                     type="number" min={1} max={100}
                     value={form.maxPerDay}
@@ -454,7 +456,7 @@ export default function NotificationRulesPage() {
 
                 {/* Escalonamento após */}
                 <div>
-                  <label className="label">Escalonar após (min)</label>
+                  <label className="label">Escalonar após (min)<HelpHint className="ml-1" {...opsHint('ESCALONAMENTO')} /></label>
                   <input
                     type="number" min={0}
                     value={form.escalationAfterMinutes}
@@ -489,7 +491,7 @@ export default function NotificationRulesPage() {
 
               {/* Roles alvo */}
               <div>
-                <label className="label">Notificar roles</label>
+                <label className="label">Notificar roles<HelpHint className="ml-1" title="Roles" text="Cargos (perfis de acesso) que recebem a notificação quando a regra dispara." /></label>
                 <div className="flex flex-wrap gap-2">
                   {ALL_ROLES.map((r) => (
                     <button

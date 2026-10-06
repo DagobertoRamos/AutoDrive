@@ -12,6 +12,8 @@ import { ShieldCheck, RefreshCw, Plus, Trash2, Pencil, Check, X } from 'lucide-r
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { DocumentsBadge } from '@/components/documents/DocumentsPanel'
 
 interface Props {
@@ -226,7 +228,7 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Custo da garantia</label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Custo da garantia<HelpHint {...DEAL_HINTS.GARANTIA_CUSTO} size={12} /></label>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -242,6 +244,7 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input type="checkbox" checked={premium} onChange={(e) => setPremium(e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
                 Cliente comprou o adicional {selected.premiumAddonName || 'prêmio/luxo'}? (+{brl(num(selected.premiumAddonValue))})
+                <HelpHint {...DEAL_HINTS.GARANTIA_PREMIUM} />
               </label>
             )}
 
@@ -254,6 +257,7 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
                   <span className="text-gray-400"> · vendido </span>
                   <span className="font-semibold text-gray-900">{brl(finalPrice)}</span>
                   <span className="text-gray-400"> · {commissionLabel} </span>
+                  <HelpHint {...DEAL_HINTS.GARANTIA_CHEIA_REDUZIDA} className="mr-1" />
                   <span className={cn('font-semibold', commissionStatus === 'zero' ? 'text-amber-700' : 'text-brand-700')}>{brl(commTotal)}</span>
                   {premiumValue > 0 && <span className="text-gray-400"> · adicional {brl(premiumValue)}</span>}
                   {commissionStatus === 'zero' && <span className="block text-xs text-amber-700">Valor vendido abaixo do valor com desconto. Esta garantia não gera comissão.</span>}

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Copy, Save, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MoneyInput } from '@/components/ui/money-input'
+import { WithHint } from '@/components/ui/help-hint'
 import { EmptyState, PageHeader, api, brl, currentMonth, smallInputClass } from './ui'
 
 type Kind = 'DESPESA' | 'RECEITA'
@@ -113,6 +114,7 @@ export default function BudgetGrid() {
     <div className="space-y-5">
       <PageHeader
         title="Orçamento"
+        helpTerm="ORCADO_REALIZADO"
         subtitle={view === 'year' ? `Ano ${year}` : monthName(month)}
         actions={<>
           {view === 'month' && <button onClick={copyPrevious} className="btn-secondary text-sm"><Copy size={15} />Copiar do mês anterior</button>}
@@ -158,9 +160,9 @@ export default function BudgetGrid() {
               <tr>
                 <th className="sticky left-0 bg-gray-50 px-4 py-3 text-left">Categoria</th>
                 <th className="w-44 px-3 py-3 text-right">Orçado</th>
-                <th className="px-3 py-3 text-right">Realizado</th>
+                <th className="px-3 py-3 text-right"><WithHint term="REALIZADO">Realizado</WithHint></th>
                 <th className="px-3 py-3 text-right">Diferença</th>
-                <th className="w-40 px-4 py-3 text-left">Consumo</th>
+                <th className="w-40 px-4 py-3 text-left"><WithHint text="Quanto do orçado já foi usado, em %. Acima de 100% = estourou o orçamento.">Consumo</WithHint></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">

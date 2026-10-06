@@ -6,6 +6,15 @@ import { useCallback, useEffect, useState } from 'react'
 import { Download, Printer, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { addMonths, monthKeySP, monthLabel, toCsv } from '@/lib/finance/reports-core'
+import { HelpHint } from '@/components/ui/help-hint'
+import type { GlossaryTerm } from '@/lib/glossary'
+
+/** "?" opcional ao lado de rótulos (termo do glossário ou texto livre). */
+export interface HintProps { helpTerm?: GlossaryTerm; helpText?: string; helpTitle?: string }
+export function Hint({ helpTerm, helpText, helpTitle }: HintProps) {
+  if (!helpTerm && !helpText) return null
+  return <HelpHint term={helpTerm} text={helpText} title={helpTitle} size={12} />
+}
 
 export const inputClass = 'rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 
@@ -98,7 +107,7 @@ export function SelectInput({ label, value, onChange, options, all }: { label: s
 export function RegimeToggle({ value, onChange }: { value: 'competencia' | 'caixa'; onChange: (v: 'competencia' | 'caixa') => void }) {
   return (
     <div className="flex flex-col gap-1 text-xs font-medium text-gray-600">
-      Regime
+      <span className="inline-flex items-center gap-1">Regime<HelpHint size={12} title="Competência × Caixa" text={'Competência: conta a receita e a despesa no mês em que aconteceram, mesmo que o dinheiro entre ou saia depois.\nCaixa: conta só o dinheiro que efetivamente entrou ou saiu, na data do pagamento.'} /></span>
       <div className="inline-flex rounded-lg border border-gray-300 bg-white p-0.5">
         {(['competencia', 'caixa'] as const).map((r) => (
           <button key={r} type="button" onClick={() => onChange(r)}
@@ -124,23 +133,23 @@ export function Toolbar({ children, onCsv, onReload, loading }: { children?: Rea
   )
 }
 
-export function Kpi({ label, value, hint, tone = 'default' }: { label: string; value: string; hint?: string; tone?: 'default' | 'green' | 'red' | 'amber' | 'blue' }) {
+export function Kpi({ label, value, hint, tone = 'default', ...help }: { label: string; value: string; hint?: string; tone?: 'default' | 'green' | 'red' | 'amber' | 'blue' } & HintProps) {
   const toneCls = { default: 'text-gray-900', green: 'text-green-700', red: 'text-red-600', amber: 'text-amber-700', blue: 'text-brand-700' }[tone]
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card print:shadow-none">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-gray-500">{label}<Hint {...help} /></p>
       <p className={cn('mt-1 text-xl font-bold tabular-nums', toneCls)}>{value}</p>
       {hint && <p className="mt-0.5 text-xs text-gray-500">{hint}</p>}
     </div>
   )
 }
 
-export function Panel({ title, children, className, actions }: { title?: string; children: React.ReactNode; className?: string; actions?: React.ReactNode }) {
+export function Panel({ title, children, className, actions, ...help }: { title?: string; children: React.ReactNode; className?: string; actions?: React.ReactNode } & HintProps) {
   return (
     <section className={cn('overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card print:break-inside-avoid print:shadow-none', className)}>
       {(title || actions) && (
         <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
-          {title && <h2 className="text-sm font-semibold text-gray-800">{title}</h2>}
+          {title && <h2 className="flex items-center gap-1 text-sm font-semibold text-gray-800">{title}<Hint {...help} /></h2>}
           {actions}
         </div>
       )}
@@ -178,10 +187,10 @@ export function useSort<K extends string>(initial: K, dir: SortDir = 'desc') {
   return { sort, toggle, apply }
 }
 
-export function SortTh<K extends string>({ k, label, sort, toggle, right }: { k: K; label: string; sort: { key: K; dir: SortDir }; toggle: (k: K) => void; right?: boolean }) {
+export function SortTh<K extends string>({ k, label, sort, toggle, right, ...help }: { k: K; label: string; sort: { key: K; dir: SortDir }; toggle: (k: K) => void; right?: boolean } & HintProps) {
   return (
     <th className={cn(right ? thR : th, 'cursor-pointer select-none hover:text-gray-800')} onClick={() => toggle(k)}>
-      {label}{sort.key === k ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
+      <span className="inline-flex items-center gap-1">{label}{sort.key === k ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}<Hint {...help} /></span>
     </th>
   )
 }

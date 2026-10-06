@@ -10,6 +10,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Inbox, Hand, RefreshCw, Plus, X, Save, CheckCircle2, Undo2, Phone, Mail } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const dt = (s: string | null) => (s ? new Date(s).toLocaleString('pt-BR') : '—')
@@ -96,7 +98,7 @@ export default function SdrInboxPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Inbox size={20} className="text-brand-600" />Caixa de Leads</h1>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Inbox size={20} className="text-brand-600" />Caixa de Leads<HelpHint {...opsHint('SDR')} /></h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${available.length} disponível(is) · ${mine.length} em atendimento`}</p>
         </div>
         <div className="flex gap-2">
@@ -109,7 +111,7 @@ export default function SdrInboxPage() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <section>
-          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-700"><Hand size={15} className="text-brand-600" />Disponíveis (tanque)</h2>
+          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-700"><Hand size={15} className="text-brand-600" />Disponíveis (tanque)<HelpHint title="Tanque" text="Leads ainda sem dono, liberados para quem pegar primeiro. Ao pegar, o lead passa para Meus leads e o prazo de 1º contato começa a contar." /></h2>
           {loading ? <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-24 animate-pulse rounded-xl bg-gray-100" />)}</div>
           : available.length === 0 ? <div className="rounded-xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">Nenhum lead disponível.</div>
           : <div className="space-y-2">{available.map(card)}</div>}

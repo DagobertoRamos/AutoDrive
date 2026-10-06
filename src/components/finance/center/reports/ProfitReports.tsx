@@ -6,7 +6,7 @@ import { useEffect, useMemo } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { cn } from '@/lib/utils'
 import { DealPeekLink } from '@/components/deals/DealPeek'
-import { COLORS, Kpi, Panel, StateBox, SortTh, fmt, fmtDate, fmtPct, fmtShort, td, tdR, useFinanceData, useSort } from './shared'
+import { COLORS, Kpi, Panel, StateBox, SortTh, type HintProps, fmt, fmtDate, fmtPct, fmtShort, td, tdR, useFinanceData, useSort } from './shared'
 import type { ReportViewProps } from './types'
 
 interface ProfitMath { saleValue: number; acquisition: number; preparation: number; documentation: number; commissions: number; fiReturn: number; totalCost: number; profit: number; margin: number | null }
@@ -26,9 +26,9 @@ function TotalsKpis({ t, loading }: { t: Aggregate | null | undefined; loading: 
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
       <Kpi label="Veículos vendidos" value={loading ? '—' : String(t?.count ?? 0)} />
       <Kpi label="Faturamento" value={loading ? '—' : fmt(t?.saleValue ?? 0)} tone="blue" />
-      <Kpi label="Lucro" value={loading ? '—' : fmt(t?.profit ?? 0)} tone={(t?.profit ?? 0) < 0 ? 'red' : 'green'} />
+      <Kpi label="Lucro" helpTerm="LUCRO_VEICULO" value={loading ? '—' : fmt(t?.profit ?? 0)} tone={(t?.profit ?? 0) < 0 ? 'red' : 'green'} />
       <Kpi label="Margem" value={loading ? '—' : fmtPct(t?.margin)} hint={t ? `Lucro médio ${fmt(t.avgProfit)}` : undefined} />
-      <Kpi label="Dias em estoque" value={loading ? '—' : t?.avgDays != null ? `${t.avgDays} dias` : '—'} hint="Média" />
+      <Kpi label="Dias em estoque" helpTerm="DIAS_ESTOQUE" value={loading ? '—' : t?.avgDays != null ? `${t.avgDays} dias` : '—'} hint="Média" />
     </div>
   )
 }
@@ -60,6 +60,14 @@ function Composition({ t }: { t: Aggregate }) {
   )
 }
 
+/** "?" nos cabeçalhos das tabelas de lucratividade. */
+const COL_HINT: Record<string, HintProps | undefined> = {
+  fiReturn: { helpTitle: 'Retorno F&I', helpText: 'Receitas de F&I desta venda (retorno líquido do financiamento, PLUS…). Somam no lucro do veículo.' },
+  profit: { helpTerm: 'LUCRO_VEICULO' },
+  daysInStock: { helpTerm: 'DIAS_ESTOQUE' },
+  avgDays: { helpTerm: 'DIAS_ESTOQUE' },
+}
+
 type VKey = 'saleDate' | 'description' | 'sellerName' | 'saleValue' | 'acquisition' | 'preparation' | 'documentation' | 'commissions' | 'fiReturn' | 'profit' | 'margin' | 'daysInStock'
 
 export function VehicleProfitReport({ url, onData, registerCsv }: ReportViewProps) {
@@ -89,7 +97,7 @@ export function VehicleProfitReport({ url, onData, registerCsv }: ReportViewProp
         {!loading && !error && !!data?.rows.length && (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50"><tr>{cols.map(([k, l, r]) => <SortTh key={k} k={k} label={l} sort={sort} toggle={toggle} right={r} />)}</tr></thead>
+              <thead className="bg-gray-50"><tr>{cols.map(([k, l, r]) => <SortTh key={k} k={k} label={l} sort={sort} toggle={toggle} right={r} {...COL_HINT[k]} />)}</tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map((r) => (
                   <tr key={r.id} className="hover:bg-gray-50">
@@ -177,7 +185,7 @@ export function GroupProfitReport({ url, onData, registerCsv, groupLabel }: Repo
         <Panel>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50"><tr>{cols.map(([k, l, r]) => <SortTh key={k} k={k} label={l} sort={sort} toggle={toggle} right={r} />)}</tr></thead>
+              <thead className="bg-gray-50"><tr>{cols.map(([k, l, r]) => <SortTh key={k} k={k} label={l} sort={sort} toggle={toggle} right={r} {...COL_HINT[k]} />)}</tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map((r) => (
                   <tr key={r.key || 'none'} className="hover:bg-gray-50">

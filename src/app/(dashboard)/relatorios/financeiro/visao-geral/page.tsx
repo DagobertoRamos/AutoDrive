@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 import PeriodFilter from '@/components/reports/PeriodFilter'
 
 interface Summary { receitas: number; despesas: number; saldo: number; aReceber: number; aPagar: number }
@@ -50,7 +51,7 @@ export default function VisaoGeralFinanceiraPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         {cards.map((c) => (
           <div key={c.label} className={cn('rounded-xl border p-4', c.cls)}>
-            <p className="text-xs font-medium uppercase tracking-wide opacity-80">{c.label}</p>
+            <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide opacity-80">{c.label}{c.label.includes('realizadas') && <HelpHint term="REALIZADO" size={12} />}</p>
             <p className="mt-1 text-2xl font-bold tabular-nums">{loading ? '—' : fmt(c.value)}</p>
           </div>
         ))}

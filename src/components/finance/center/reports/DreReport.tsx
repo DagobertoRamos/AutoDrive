@@ -7,6 +7,8 @@ import { Fragment, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { cn } from '@/lib/utils'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
+import type { GlossaryTerm } from '@/lib/glossary'
 import {
   COLORS, Kpi, MonthInput, Panel, RegimeToggle, SelectInput, StateBox, Toolbar, currentMonth, downloadCsv, fmt, fmtPct,
   fmtShort, monthLabel, monthsBack, qs, useFinanceData, type Option,
@@ -74,7 +76,7 @@ export default function DreReport() {
       />
       <PrintFooter label={`DRE gerencial (${regimeLabel}) · ${monthLabel(from <= to ? from : to)} a ${monthLabel(from <= to ? to : from)}`} />
       <div className="print:hidden">
-        <h1 className="text-xl font-bold text-gray-900">DRE gerencial</h1>
+        <h1 className="flex items-center gap-1.5 text-xl font-bold text-gray-900">DRE gerencial<HelpHint term="DRE" size={15} /></h1>
         <p className="mt-0.5 text-sm text-gray-500">
           {data ? `${monthLabel(data.from)} a ${monthLabel(data.to)} · regime de ${data.regime === 'caixa' ? 'caixa' : 'competência'}` : 'Demonstração do resultado'}
         </p>
@@ -90,11 +92,11 @@ export default function DreReport() {
       </Toolbar>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Receita líquida" value={loading ? '—' : fmt(rl?.total ?? 0)} tone="blue" />
-        <Kpi label="Margem bruta" value={loading ? '—' : fmt(mb?.total ?? 0)} hint={mb?.avTotal != null ? `${fmtPct(mb.avTotal)} da receita líquida` : undefined} tone={(mb?.total ?? 0) < 0 ? 'red' : 'default'} />
-        <Kpi label="Resultado líquido" value={loading ? '—' : fmt(res?.total ?? 0)} hint={res?.avTotal != null ? `Margem líquida ${fmtPct(res.avTotal)}` : undefined} tone={(res?.total ?? 0) < 0 ? 'red' : 'green'} />
+        <Kpi label="Receita líquida" helpTerm="RECEITA_LIQUIDA" value={loading ? '—' : fmt(rl?.total ?? 0)} tone="blue" />
+        <Kpi label="Margem bruta" helpTerm="MARGEM_BRUTA" value={loading ? '—' : fmt(mb?.total ?? 0)} hint={mb?.avTotal != null ? `${fmtPct(mb.avTotal)} da receita líquida` : undefined} tone={(mb?.total ?? 0) < 0 ? 'red' : 'default'} />
+        <Kpi label="Resultado líquido" helpTerm="RESULTADO_LIQUIDO" value={loading ? '—' : fmt(res?.total ?? 0)} hint={res?.avTotal != null ? `Margem líquida ${fmtPct(res.avTotal)}` : undefined} tone={(res?.total ?? 0) < 0 ? 'red' : 'green'} />
         {regime === 'competencia'
-          ? <Kpi label="Custo em estoque" value={loading ? '—' : fmt(data?.estoqueEmFormacao.total ?? 0)} hint={data ? `${data.estoqueEmFormacao.vehicles} veículo(s) não vendido(s)` : undefined} tone="amber" />
+          ? <Kpi label="Custo em estoque" helpTerm="CUSTO_ESTOQUE" value={loading ? '—' : fmt(data?.estoqueEmFormacao.total ?? 0)} hint={data ? `${data.estoqueEmFormacao.vehicles} veículo(s) não vendido(s)` : undefined} tone="amber" />
           : <Kpi label="Meses" value={String(periods.length)} />}
       </div>
 
@@ -138,7 +140,7 @@ export default function DreReport() {
                   <th className="sticky left-0 z-10 min-w-[260px] bg-gray-50 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Linha</th>
                   {periods.map((p) => <th key={p} className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">{monthLabel(p)}</th>)}
                   <th className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-700">Total</th>
-                  <th className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">AV %</th>
+                  <th className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-500"><WithHint term="AV">AV %</WithHint></th>
                 </tr>
               </thead>
               <tbody>
@@ -153,10 +155,13 @@ export default function DreReport() {
                       <tr className={cn('border-t border-gray-100', rowCls)}>
                         <td className={cn('sticky left-0 z-10 px-3 py-2', stickyBg)}>
                           {canOpen ? (
-                            <button type="button" onClick={() => toggle(l.key)} className="inline-flex items-center gap-1 text-left hover:text-brand-700">
-                              {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{l.label}
-                            </button>
-                          ) : <span className={cn(l.kind === 'group' && 'pl-[18px]')}>{l.label}</span>}
+                            <span className="inline-flex items-center gap-1">
+                              <button type="button" onClick={() => toggle(l.key)} className="inline-flex items-center gap-1 text-left hover:text-brand-700">
+                                {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{l.label}
+                              </button>
+                              {LINE_TERM[l.key] && <HelpHint term={LINE_TERM[l.key]} size={12} />}
+                            </span>
+                          ) : <span className={cn('inline-flex items-center gap-1', l.kind === 'group' && 'pl-[18px]')}>{l.label}{LINE_TERM[l.key] && <HelpHint term={LINE_TERM[l.key]} size={12} />}</span>}
                         </td>
                         {periods.map((p) => (
                           <td key={p} className={cn('whitespace-nowrap px-3 py-2 text-right tabular-nums', (l.values[p] ?? 0) < 0 && 'text-red-600', (l.values[p] ?? 0) === 0 && 'text-gray-300')}>
@@ -185,7 +190,7 @@ export default function DreReport() {
       </Panel>
 
       {!loading && data?.regime === 'competencia' && data.estoqueEmFormacao.total !== 0 && (
-        <Panel title="Custo em estoque (veículos não vendidos)">
+        <Panel title="Custo em estoque (veículos não vendidos)" helpTerm="CUSTO_ESTOQUE">
           <div className="flex flex-wrap gap-6 px-4 py-3 text-sm">
             <div><p className="text-xs text-gray-500">Total</p><p className="font-semibold tabular-nums text-gray-900">{fmt(data.estoqueEmFormacao.total)}</p></div>
             <div><p className="text-xs text-gray-500">Veículos</p><p className="font-semibold tabular-nums text-gray-900">{data.estoqueEmFormacao.vehicles}</p></div>
@@ -197,6 +202,12 @@ export default function DreReport() {
       )}
     </PrintFrame>
   )
+}
+
+/** Linhas da DRE que ganham o "?" (subtotais e o início do CMV). */
+const LINE_TERM: Record<string, GlossaryTerm | undefined> = {
+  RECEITA_BRUTA: 'RECEITA_BRUTA', RECEITA_LIQUIDA: 'RECEITA_LIQUIDA', CMV_AQUISICAO: 'CMV', MARGEM_BRUTA: 'MARGEM_BRUTA',
+  EBITDA: 'EBITDA', RESULTADO_LIQUIDO: 'RESULTADO_LIQUIDO',
 }
 
 const STOCK_LABEL: Record<string, string> = { CMV_AQUISICAO: 'Aquisição', CMV_PREPARACAO: 'Preparação', CMV_DOCUMENTACAO: 'Documentação' }

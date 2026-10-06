@@ -14,6 +14,8 @@ import Link from 'next/link'
 import { VehicleCard } from '@/components/estoque/VehicleCard'
 import { VehicleListTable } from '@/components/estoque/VehicleListTable'
 import { canAccessModule } from '@/lib/permissions'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint, type OpsTerm } from '@/lib/glossary-ops'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -133,10 +135,12 @@ interface FilterSelectProps {
   onChange: (v: string) => void
   placeholder: string
   options: { value: string; label: string }[]
+  /** Termo do glossário operacional ou texto livre para o "?" ao lado do filtro. */
+  hint?: OpsTerm | { text: string; title: string }
 }
 
-function FilterSelect({ value, onChange, placeholder, options }: FilterSelectProps) {
-  return (
+function FilterSelect({ value, onChange, placeholder, options, hint }: FilterSelectProps) {
+  const select = (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
@@ -147,6 +151,13 @@ function FilterSelect({ value, onChange, placeholder, options }: FilterSelectPro
         <option key={o.value} value={o.value}>{o.label}</option>
       ))}
     </select>
+  )
+  if (!hint) return select
+  return (
+    <span className="inline-flex items-center gap-1">
+      {select}
+      <HelpHint {...(typeof hint === 'string' ? opsHint(hint) : hint)} />
+    </span>
   )
 }
 
@@ -397,6 +408,7 @@ export default function EstoquePage() {
             Aguardando precificação
           </button>
         )}
+        {canManage && <HelpHint {...opsHint('EM_PRECIFICACAO')} />}
 
         {/* Atualizar */}
         <button
@@ -428,6 +440,7 @@ export default function EstoquePage() {
               value={stockStatus}
               onChange={(v) => { setStockStatus(v); resetPage() }}
               placeholder="Todos os status"
+              hint={'STATUS_ESTOQUE'}
               options={STOCK_STATUS_OPTIONS}
             />
 
@@ -435,6 +448,7 @@ export default function EstoquePage() {
               value={stockLocation}
               onChange={(v) => { setStockLocation(v); resetPage() }}
               placeholder="Localização"
+              hint={'SITUACAO_ESTOQUE'}
               options={STOCK_LOCATION_OPTIONS}
             />
 
@@ -449,6 +463,7 @@ export default function EstoquePage() {
               value={stockType}
               onChange={(v) => { setStockType(v); resetPage() }}
               placeholder="Tipo de estoque"
+              hint={'CONSIGNADO'}
               options={STOCK_TYPE_OPTIONS}
             />
 
@@ -456,6 +471,7 @@ export default function EstoquePage() {
               value={conditionType}
               onChange={(v) => { setConditionType(v); resetPage() }}
               placeholder="Condição"
+              hint={{ title: 'Condição', text: '0 km: carro novo, nunca emplacado. Seminovo: usado recente e com pouca rodagem. Usado: demais carros.' }}
               options={CONDITION_OPTIONS}
             />
 
@@ -470,6 +486,7 @@ export default function EstoquePage() {
               value={cautelarStatus}
               onChange={(v) => { setCautelarStatus(v); resetPage() }}
               placeholder="Cautelar"
+              hint={'PERICIA'}
               options={CAUTELAR_OPTIONS}
             />
 
@@ -483,6 +500,7 @@ export default function EstoquePage() {
                   className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                 />
                 Incluir inativos
+                <HelpHint text="Mostra também os carros fora do estoque ativo, como vendidos, devolvidos e cancelados." title="Incluir inativos" />
               </label>
             )}
 

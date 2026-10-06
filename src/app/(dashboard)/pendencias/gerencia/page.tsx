@@ -10,6 +10,8 @@ import { RefreshCw, Search, Eye, BarChart2, AlertTriangle, Clock, CheckCircle2, 
 import { PriorityBadge, StatusBadge } from '@/components/pendencies/PendencyStatusBadge'
 import { PendencyModal } from '@/components/pendencies/PendencyModal'
 import { cn, formatDate } from '@/lib/utils'
+import { WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
 import type { PendencyWithRelations } from '@/types'
 
 interface Filters {
@@ -132,7 +134,7 @@ export default function PendenciasGerenciaPage() {
               <tr>
                 {['Prioridade','Status','Cliente','Placa','Veículo','Vendedor','Vencimento','Ações'].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 whitespace-nowrap">
-                    {h}
+                    {h === 'Prioridade' ? <WithHint text={opsText('PRIORIDADE')}>{h}</WithHint> : h}
                   </th>
                 ))}
               </tr>

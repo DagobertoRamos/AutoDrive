@@ -10,6 +10,7 @@
 import { useMemo, useState } from 'react'
 import { CheckCircle2, FileText, Loader2, Lock, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { WithHint } from '@/components/ui/help-hint'
 import { MoneyInput } from '@/components/ui/money-input'
 import { planSettlement } from '@/lib/finance/settlement-core'
 import { BatchReceipt } from './BatchReceipt'
@@ -133,7 +134,7 @@ export function BulkSettleModal({ type, targets, accounts, onClose, onChanged }:
   }
 
   return (
-    <Modal wide="xl" title={`${verb} em lote · ${targets.length} título(s)`} onClose={onClose} footer={
+    <Modal wide="xl" title={<WithHint term="BAIXA_LOTE">{`${verb} em lote · ${targets.length} título(s)`}</WithHint>} onClose={onClose} footer={
       <>
         <button type="button" onClick={onClose} className="btn-secondary text-sm">Cancelar</button>
         <button type="button" onClick={() => void submit()} disabled={busy} className="btn-primary text-sm">
@@ -171,7 +172,9 @@ export function BulkSettleModal({ type, targets, accounts, onClose, onChanged }:
             <thead className="bg-gray-50">
               <tr>
                 {['Título', 'Saldo', 'Valor da baixa', 'Juros', 'Desconto', 'Quitar restante', 'Total pago'].map((h, i) => (
-                  <th key={h} className={cn('whitespace-nowrap px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500', i === 1 || i === 6 ? 'text-right' : '', i === 5 && 'text-center')}>{h}</th>
+                  <th key={h} className={cn('whitespace-nowrap px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500', i === 1 || i === 6 ? 'text-right' : '', i === 5 && 'text-center')}>
+                    {i === 2 ? <WithHint term="BAIXA_PARCIAL">{h}</WithHint> : i === 3 ? <WithHint term="JUROS_MULTA">{h}</WithHint> : i === 4 ? <WithHint term="DESCONTO">{h}</WithHint> : i === 5 ? <WithHint term="QUITAR_DESCONTO">{h}</WithHint> : h}
+                  </th>
                 ))}
               </tr>
             </thead>

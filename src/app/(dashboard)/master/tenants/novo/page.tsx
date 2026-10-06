@@ -6,6 +6,7 @@
 // Fluxo: CNPJ → Empresa → Endereço → Sócios → Plano → Revisão → Criar
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useState, useRef, useCallback, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -122,13 +123,13 @@ function analyzePassword(pwd: string): PasswordStrength {
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const selectCls = inputCls
 
-function Field({ label, required, hint, error, children }: {
-  label: string; required?: boolean; hint?: string; error?: string; children: React.ReactNode
+function Field({ label, required, hint, help, error, children }: {
+  label: string; required?: boolean; hint?: string; help?: string; error?: string; children: React.ReactNode
 }) {
   return (
     <div className="flex flex-col gap-1">
       <label className="text-xs font-medium text-gray-600">
-        {label}{required && <RequiredMark className="ml-0.5" />}
+        {label}{help && <HelpHint className="ml-1" text={help} />}{required && <RequiredMark className="ml-0.5" />}
       </label>
       {children}
       {error && <p className="text-xs text-red-500 flex items-center gap-1"><AlertCircle className="h-3 w-3 shrink-0" />{error}</p>}
@@ -888,7 +889,7 @@ function NovoTenantForm() {
                   )}
                 </div>
               </Field>
-              <Field label="Situação Cadastral">
+              <Field label="Situação Cadastral" help="Situação do CNPJ na Receita Federal (ativa, baixada, suspensa...), preenchida pela consulta do CNPJ.">
                 <select value={situacao} onChange={e => setSituacao(e.target.value)} className={selectCls}>
                   <option value="">Não informado</option>
                   <option value="ATIVA">Ativa</option>
@@ -1103,7 +1104,7 @@ function NovoTenantForm() {
                       <option value="PROCURADOR">Procurador</option>
                     </select>
                   </Field>
-                  <Field label="% de Participação">
+                  <Field label="% de Participação" help="Parte do capital da empresa que pertence a este sócio, conforme o contrato social.">
                     <input
                       type="number"
                       value={partner.participacao}
@@ -1181,7 +1182,7 @@ function NovoTenantForm() {
         <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm flex flex-col gap-6">
           <Section title="Plano e Configurações" icon={<Package className="h-5 w-5" />}>
             <Grid cols={3}>
-              <Field label="Plano" required>
+              <Field label="Plano" required help="Pacote contratado pela loja: define os módulos, os limites de usuários e o valor mensal.">
                 <select value={tenantPlan} onChange={e => setTenantPlan(e.target.value)} className={selectCls}>
                   <option value="BASICO">Básico</option>
                   <option value="PRO">Pro</option>
@@ -1189,7 +1190,7 @@ function NovoTenantForm() {
                   <option value="CUSTOM">Custom</option>
                 </select>
               </Field>
-              <Field label="Status inicial" required>
+              <Field label="Status inicial" required help="Teste: a loja usa o sistema até a data de fim do teste. Ativo: cliente pagante. Suspenso: cadastro criado, mas os usuários ainda não conseguem entrar.">
                 <select value={tenantStatus} onChange={e => setTenantStatus(e.target.value)} className={selectCls}>
                   <option value="TESTE">Teste</option>
                   <option value="ATIVO">Ativo</option>
@@ -1206,7 +1207,7 @@ function NovoTenantForm() {
             <div className="border-t border-gray-100 pt-4">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Limites do plano</p>
               <Grid cols={3}>
-                <Field label="Máx. usuários">
+                <Field label="Máx. usuários" help="Limites da loja: quantos usuários, veículos em estoque e unidades (filiais) ela pode cadastrar.">
                   <input type="number" value={maxUsers} onChange={e => setMaxUsers(e.target.value)} min={1} className={inputCls} />
                 </Field>
                 <Field label="Máx. veículos">

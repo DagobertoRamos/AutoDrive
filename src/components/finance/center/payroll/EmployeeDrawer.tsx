@@ -7,6 +7,7 @@
 import { useState } from 'react'
 import { Ban, CheckCircle2, Pencil, Plus, Printer, Save, Undo2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 import { FieldLabel } from '@/components/ui/field'
 import { MoneyInput } from '@/components/ui/money-input'
 import { Badge, Toggle, api, brl, dateBR, iconBtn, inputClass, todayYmd } from '../config/ui'
@@ -133,7 +134,7 @@ export default function EmployeeDrawer({ employee: emp, data, onClose, onChanged
               ))}
             </div>
             <div className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
-              <div><p className="text-xs text-gray-500">Líquido a pagar</p><p className="text-xl font-bold tabular-nums">{brl(s.net)}</p></div>
+              <div><p className="flex items-center gap-1 text-xs text-gray-500">Líquido a pagar<HelpHint size={12} title="Líquido a pagar" text="Salário + benefícios + comissões do mês, menos os adiantamentos descontados." /></p><p className="text-xl font-bold tabular-nums">{brl(s.net)}</p></div>
               {s.net > 0 && <button onClick={onPay} className="btn-primary text-sm"><CheckCircle2 size={15} />Pagar</button>}
             </div>
 

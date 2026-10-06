@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Package, Plus, Pencil, Trash2, X, Save, Lock, Power } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 import { maskBRL, parseBRL, numberToBRLMask } from '@/lib/masks'
 import { RequiredMark } from '@/components/ui/field'
 
@@ -77,7 +78,7 @@ export default function FiProductsPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Package size={20} className="text-brand-600" />Produtos Agregados</h1>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Package size={20} className="text-brand-600" />Produtos Agregados<HelpHint term="AGREGADOS" /></h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} produto(s)`}</p>
         </div>
         <button onClick={openNew} className="btn-primary text-sm"><Plus size={15} />Novo produto</button>

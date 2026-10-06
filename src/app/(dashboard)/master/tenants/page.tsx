@@ -4,6 +4,8 @@
 // /master/tenants — Listagem e gestão de tenants (MASTER only)
 // =============================================================================
 
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
+import { opsHint, opsText } from '@/lib/glossary-ops'
 import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -161,7 +163,7 @@ export default function MasterTenantsPage() {
         <div className="flex items-center gap-3">
           <Building2 size={22} className="text-brand-700" />
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Tenants</h1>
+            <h1 className="text-xl font-bold text-gray-900">Tenants<HelpHint className="ml-1" {...opsHint('TENANT')} /></h1>
             <p className="text-sm text-gray-500">
               {loading
                 ? 'Carregando...'
@@ -269,8 +271,8 @@ export default function MasterTenantsPage() {
             <thead className="border-b border-gray-100 bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Empresa</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">Plano</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">Status</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500"><WithHint text={opsText('PLANO')}>Plano</WithHint></th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500"><WithHint text="Ativo e Teste entram normalmente. Suspenso, Bloqueado, Cancelado e Desativado impedem o login dos usuários da loja. Desativado conta o prazo de guarda: os dados são apagados após 5 anos.">Status</WithHint></th>
                 <th className="px-4 py-3 text-center font-medium text-gray-500">
                   <span className="flex items-center justify-center gap-1">
                     <Users size={12} /> Usuários

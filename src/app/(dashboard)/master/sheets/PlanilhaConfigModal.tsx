@@ -13,6 +13,7 @@
 // POST /api/master/sheets/[id]/configure
 // =============================================================================
 
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
 import { useState, useCallback } from 'react'
 import {
   X, Save, Loader2, CheckCircle2, AlertCircle, RefreshCw, Search,
@@ -681,7 +682,7 @@ function PlanilhaSection({
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-brand-600"
                 checked={value.active} onChange={e => set('active', e.target.checked)} />
-              <span className="text-sm text-gray-700">Importador ativo</span>
+              <span className="text-sm text-gray-700">Importador ativo</span><HelpHint className="ml-1" title="Importador ativo" text="Desligado, a planilha não é lida nem na sincronização automática nem manual." />
             </label>
           </div>
         </div>
@@ -701,7 +702,7 @@ function PlanilhaSection({
 
         <div>
           <label className={lbl}>
-            Spreadsheet ID <RequiredMark />
+            Spreadsheet ID<HelpHint className="ml-1" title="Spreadsheet ID" text="Código da planilha que aparece no endereço, entre /d/ e /edit. A planilha precisa estar compartilhada com o e-mail da Service Account." /> <RequiredMark />
           </label>
           <div className="flex gap-2">
             <input
@@ -912,7 +913,7 @@ function AbasSection({
               <div className="border-t border-gray-100 px-4 pb-4 pt-3 space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={lbl}>Nome da aba (exato) <RequiredMark /></label>
+                    <label className={lbl}>Nome da aba (exato)<HelpHint className="ml-1" title="Nome da aba" text="Nome da aba como aparece embaixo na planilha. Maiúsculas, acentos e espaços precisam ser iguais." /> <RequiredMark /></label>
                     <input className={inp} value={tab.sheetName}
                       onChange={e => updateTab(tab._key, { sheetName: e.target.value })}
                       placeholder="Ex.: Janeiro" />
@@ -927,19 +928,19 @@ function AbasSection({
 
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className={lbl}>GID numérico</label>
+                    <label className={lbl}>GID numérico<HelpHint className="ml-1" title="GID" text="Número que identifica a aba, visto no endereço da planilha após #gid=. Ajuda a achar a aba mesmo se ela for renomeada." /></label>
                     <input className={`${inp} font-mono`} value={tab.gid}
                       onChange={e => updateTab(tab._key, { gid: e.target.value })}
                       placeholder="Ex.: 107306894" />
                   </div>
                   <div>
-                    <label className={lbl}>Mês referência</label>
+                    <label className={lbl}>Mês referência<HelpHint className="ml-1" title="Mês referência" text="Mês a que os dados da aba pertencem, para planilhas com uma aba por mês." /></label>
                     <input className={inp} value={tab.monthReference}
                       onChange={e => updateTab(tab._key, { monthReference: e.target.value })}
                       placeholder="Janeiro" />
                   </div>
                   <div>
-                    <label className={lbl}>Linha do cabeçalho</label>
+                    <label className={lbl}>Linha do cabeçalho<HelpHint className="ml-1" title="Linha do cabeçalho" text="Linha onde estão os nomes das colunas. Os dados são lidos a partir da linha seguinte." /></label>
                     <input type="number" min={1} className={inp} value={tab.headerRow}
                       onChange={e => updateTab(tab._key, { headerRow: Number(e.target.value) })} />
                   </div>
@@ -1108,8 +1109,8 @@ function MapeamentoSection({
                   <tr className="border-b bg-gray-50/50 text-gray-500">
                     <th className="px-3 py-2 text-left font-medium w-14">Col.</th>
                     <th className="px-3 py-2 text-left font-medium">Cabeçalho no Sheets</th>
-                    <th className="px-3 py-2 text-left font-medium">Campo do sistema</th>
-                    <th className="px-3 py-2 text-center font-medium w-20">Obrig.</th>
+                    <th className="px-3 py-2 text-left font-medium"><WithHint text="Para qual campo do sistema vai o valor desta coluna da planilha. Colunas sem campo são ignoradas.">Campo do sistema</WithHint></th>
+                    <th className="px-3 py-2 text-center font-medium w-20"><WithHint text="Obrigatório: linhas com esta coluna vazia não são importadas e aparecem como erro.">Obrig.</WithHint></th>
                     <th className="px-3 py-2 text-center font-medium w-16">Ativo</th>
                     <th className="px-3 py-2 w-10" />
                   </tr>
@@ -1248,7 +1249,7 @@ function AutomacaoSection({
           </div>
         </div>
         <div className="rounded-xl border border-gray-200 p-4">
-          <p className="text-xs font-semibold text-gray-700 mb-3">Modo de execução</p>
+          <p className="text-xs font-semibold text-gray-700 mb-3">Modo de execução<HelpHint className="ml-1" title="Modo de execução" text="Simulação lê e valida a planilha, mostrando o que seria importado, sem gravar nada. Real grava os dados no sistema." /></p>
           <div className="flex gap-3">
             {(['SIMULATION', 'REAL'] as const).map(m => (
               <button key={m} type="button"
@@ -1273,7 +1274,7 @@ function AutomacaoSection({
 
       {/* Frequência */}
       <div className="rounded-xl border border-gray-200 p-4 space-y-3">
-        <p className="text-xs font-semibold text-gray-700">Frequência de sincronização</p>
+        <p className="text-xs font-semibold text-gray-700">Frequência de sincronização<HelpHint className="ml-1" title="Frequência" text="De quanto em quanto tempo o sistema lê a planilha automaticamente, dentro dos dias e da janela de horário definidos." /></p>
         <div className="flex flex-wrap gap-2">
           {FREQ_OPTIONS.map(opt => (
             <button key={opt.value} type="button"
@@ -1342,7 +1343,7 @@ function AutomacaoSection({
       {/* Ação e limites */}
       <div className="grid grid-cols-2 gap-4">
         <div className="rounded-xl border border-gray-200 p-4 space-y-2">
-          <p className="text-xs font-semibold text-gray-700">Ação após sincronizar</p>
+          <p className="text-xs font-semibold text-gray-700">Ação após sincronizar<HelpHint className="ml-1" title="Ação após sincronizar" text="O que fazer com as linhas novas encontradas: só validar, importar como pendências, ou importar e avisar (alerta interno, gerente ou todos)." /></p>
           {ACTION_OPTS.map(o => (
             <label key={o.value} className="flex items-center gap-2.5 cursor-pointer">
               <input type="radio" name="action" value={o.value}
@@ -1357,13 +1358,13 @@ function AutomacaoSection({
         <div className="rounded-xl border border-gray-200 p-4 space-y-3">
           <p className="text-xs font-semibold text-gray-700">Limites técnicos</p>
           <div>
-            <label className={lbl}>Máx. linhas por execução</label>
+            <label className={lbl}>Máx. linhas por execução<HelpHint className="ml-1" title="Máx. linhas" text="Quantas linhas, no máximo, são processadas em cada leitura. O restante fica para a próxima execução." /></label>
             <input type="number" min={1} max={10000} className={inp}
               value={value.maxRowsPerRun}
               onChange={e => set('maxRowsPerRun', Number(e.target.value))} />
           </div>
           <div>
-            <label className={lbl}>Timeout (segundos)</label>
+            <label className={lbl}>Timeout (segundos)<HelpHint className="ml-1" title="Timeout" text="Tempo máximo de espera pela resposta do Google. Passou disso, a execução é interrompida e registrada como erro." /></label>
             <input type="number" min={10} max={600} className={inp}
               value={value.timeoutSeconds}
               onChange={e => set('timeoutSeconds', Number(e.target.value))} />

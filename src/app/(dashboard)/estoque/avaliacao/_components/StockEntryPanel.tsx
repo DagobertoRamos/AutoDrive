@@ -10,6 +10,8 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ArrowRight, CheckCircle2, Loader2, PackageCheck, Undo2, Warehouse } from 'lucide-react'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { buildEntryPendencies, EVAL_AWAITING_STOCK, EVAL_IN_STOCK } from '@/lib/evaluation/stock-entry-core'
 
 export interface StockEntryEvaluation {
@@ -143,6 +145,7 @@ export function StockEntryPanel({ evaluation, isManagerPlus, onChanged, showToas
         <p className={`text-sm font-bold ${awaiting ? 'text-indigo-900' : 'text-emerald-900'}`}>
           {awaiting ? 'Aguardando o gestor dar entrada no estoque' : 'Entrada no estoque'}
         </p>
+        <HelpHint {...opsHint('ESTEIRA')} />
       </div>
 
       {!awaiting && (
@@ -179,7 +182,7 @@ export function StockEntryPanel({ evaluation, isManagerPlus, onChanged, showToas
         <div className="mt-2 space-y-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-700">Tipo de estoque <RequiredMark /></span>
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700">Tipo de estoque <RequiredMark /> <HelpHint {...opsHint('CONSIGNADO')} /></span>
               <select className={inputCls + ' bg-white'} value={stockType} onChange={(e) => setStockType(e.target.value)}>
                 <option value="PROPRIO">Próprio (compra)</option>
                 <option value="CONSIGNADO">Consignado</option>
@@ -200,7 +203,7 @@ export function StockEntryPanel({ evaluation, isManagerPlus, onChanged, showToas
           </div>
 
           <div className="rounded-lg border border-gray-200 bg-white p-3">
-            <p className="mb-1.5 text-xs font-semibold text-gray-700">Entra como “Pend. Preparação” com as pendências:</p>
+            <p className="mb-1.5 inline-flex items-center gap-1 text-xs font-semibold text-gray-700">Entra como “Pend. Preparação” com as pendências: <HelpHint {...opsHint('PORTAO')} /></p>
             <ul className="space-y-1.5">
               {pendencies.map((p) => (
                 <li key={p.label} className="text-xs">

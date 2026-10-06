@@ -6,6 +6,7 @@
 // CNPJ e CEP preenchem os dados. Fornecedor de veículos sai nos contratos.
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { AlertCircle, Loader2, Pencil, Plus, Save, Search, Truck, X } from 'lucide-react'
@@ -182,7 +183,7 @@ export default function FornecedoresPage() {
             </div>
             <div className="space-y-5 overflow-y-auto px-5 py-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <L label="Tipo" req><select className={inputCls} value={f.kind} onChange={(e) => set('kind', e.target.value)}><option value="">Selecione</option>{SUPPLIER_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></L>
+                <L label="Tipo" req help="Ramo do fornecedor. Use Veículos para lojas parceiras (repasse) e para quem vende ou consigna carros à loja: esse tipo pede endereço e representante."><select className={inputCls} value={f.kind} onChange={(e) => set('kind', e.target.value)}><option value="">Selecione</option>{SUPPLIER_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></L>
                 <L label="CPF/CNPJ" req hint={lookup === 'cnpj' ? 'consultando…' : pt === 'PJ' ? 'Pessoa jurídica' : pt === 'PF' ? 'Pessoa física' : undefined}>
                   <input className={inputCls} inputMode="numeric" value={fmtDoc(f.document)} onChange={(e) => void onDocument(e.target.value)} />
                 </L>
@@ -228,7 +229,7 @@ export default function FornecedoresPage() {
 
               {isVeh && (
                 <Section title="Intermediação">
-                  <div className="sm:col-span-2"><L label="Remuneração da loja"><input className={inputCls} value={f.commission} onChange={(e) => set('commission', e.target.value)} placeholder="Ex.: 8% do valor da venda" /></L></div>
+                  <div className="sm:col-span-2"><L label="Remuneração da loja" help="Quanto a loja ganha ao intermediar a venda de um carro deste fornecedor (ex.: % do valor ou valor fixo). Aparece no contrato de intermediação."><input className={inputCls} value={f.commission} onChange={(e) => set('commission', e.target.value)} placeholder="Ex.: 8% do valor da venda" /></L></div>
                 </Section>
               )}
 
@@ -254,10 +255,10 @@ export default function FornecedoresPage() {
   )
 }
 
-function L({ label, req, hint, children }: { label: string; req?: boolean; hint?: string; children: React.ReactNode }) {
+function L({ label, req, hint, help, children }: { label: string; req?: boolean; hint?: string; help?: string; children: React.ReactNode }) {
   return (
     <label className="block text-xs font-medium text-gray-700">
-      <span className="flex items-center justify-between"><span>{label}{req && <RequiredMark className="ml-0.5" />}</span><span className="ml-auto font-normal text-gray-400">{hint}</span></span>
+      <span className="flex items-center justify-between"><span className="inline-flex items-center gap-1">{label}{help && <HelpHint text={help} />}{req && <RequiredMark className="ml-0.5" />}</span><span className="ml-auto font-normal text-gray-400">{hint}</span></span>
       {children}
     </label>
   )

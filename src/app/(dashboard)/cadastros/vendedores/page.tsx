@@ -4,6 +4,8 @@
 // Cadastro de Vendedores — AutoDrive
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, User, X, Save, CheckCircle, AlertCircle, KeyRound, Search } from 'lucide-react'
 import { cn, formatPhone } from '@/lib/utils'
@@ -71,10 +73,10 @@ function inputClass(extra?: string) {
   )
 }
 
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
   return (
     <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-      <span className="text-sm font-medium text-gray-700">{label}</span>
+      <span className="flex items-center gap-1 text-sm font-medium text-gray-700">{label}{hint && <HelpHint text={hint} />}</span>
       <button
         type="button"
         role="switch"
@@ -177,7 +179,7 @@ function ModulesPicker({ positionId, userId, onChange }: { positionId: string | 
       </div>
       {needsReason && (
         <div>
-          <label className="mb-1 block text-[11px] font-semibold text-gray-700">Motivo da alteração sensível</label>
+          <label className="mb-1 block text-[11px] font-semibold text-gray-700">Motivo da alteração sensível<HelpHint className="ml-1" {...opsHint('PERMISSAO_SENSIVEL')} /></label>
           <input value={reason} onChange={(e) => setReason(e.target.value)}  className="w-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500" />
         </div>
       )}
@@ -333,7 +335,7 @@ function Modal({
               <input type="email" className={inputClass()} value={form.email} onChange={(e) => set('email', e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Unidade<RequiredMark className="ml-0.5" /></label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Unidade<HelpHint className="ml-1" {...opsHint('UNIDADE')} /><RequiredMark className="ml-0.5" /></label>
               <select className={inputClass()} value={form.unitId} onChange={(e) => set('unitId', e.target.value)}>
                 <option value="">Selecione</option>
                 {units.map((u) => (
@@ -342,7 +344,7 @@ function Modal({
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Cargo<RequiredMark className="ml-0.5" /></label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Cargo<HelpHint className="ml-1" title="Cargo" text="Função do colaborador. O cargo define o perfil de acesso e os módulos liberados por padrão; abaixo dá para liberar ou bloquear módulos só para esta pessoa." /><RequiredMark className="ml-0.5" /></label>
               <select
                 className={inputClass()}
                 value={form.positionId ?? ''}
@@ -363,12 +365,12 @@ function Modal({
 
           <div className="space-y-2">
             <Toggle label="Colaborador ativo" checked={form.active} onChange={(v) => set('active', v)} />
-            <Toggle label="Recebe cobranças" checked={form.receivesCharge} onChange={(v) => set('receivesCharge', v)} />
-            <Toggle label="Participa do ranking" checked={rankingOn} onChange={setRankingOn} />
+            <Toggle label="Recebe cobranças" hint="Ligado, o colaborador pode ser responsável por pendências e recebe os lembretes de cobrança no WhatsApp." checked={form.receivesCharge} onChange={(v) => set('receivesCharge', v)} />
+            <Toggle label="Participa do ranking" hint="Ligado, as vendas e metas deste colaborador entram no ranking da equipe." checked={rankingOn} onChange={setRankingOn} />
           </div>
 
           <div className="rounded-lg border border-gray-200 p-3">
-            <p className="mb-2 text-xs font-semibold text-gray-700">Permissões do colaborador</p>
+            <p className="mb-2 text-xs font-semibold text-gray-700">Permissões do colaborador<HelpHint className="ml-1" title="Permissões" text="Módulos que esta pessoa pode usar. Extra = liberado além do padrão do cargo; bloqueio = tirado do padrão do cargo. Mudanças em módulos sensíveis pedem um motivo e ficam registradas." /></p>
             <ModulesPicker positionId={form.positionId} userId={initial?.userId} onChange={setModuleSelection} />
           </div>
 

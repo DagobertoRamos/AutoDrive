@@ -11,6 +11,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { ShieldAlert, Lock, RefreshCw, Clock, Undo2, History } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 const MANAGER_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 
@@ -75,7 +77,7 @@ export default function PendencyPenaltiesPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><ShieldAlert size={20} className="text-red-600" />Penalidades</h1>
+        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><ShieldAlert size={20} className="text-red-600" />Penalidades<HelpHint {...opsHint('PENALIDADE')} /></h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setIncludeRemoved((v) => !v)} className="btn-secondary text-xs"><History size={14} />{includeRemoved ? 'Só ativas' : 'Ver histórico'}</button>
           <button onClick={() => load()} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={14} className={cn(loading && 'animate-spin')} />Atualizar</button>

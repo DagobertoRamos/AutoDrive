@@ -13,6 +13,8 @@ import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { X, ExternalLink, Printer, RefreshCw, FileText, Ban, Plus, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 
 interface Lanc {
@@ -168,7 +170,7 @@ export default function ExtratoDetalheModal({ entry, onClose, onChanged }: { ent
 
         <div className="max-h-[62vh] space-y-3 overflow-y-auto px-5 py-4">
           <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3"><p className="text-[11px] uppercase text-gray-500">Base</p><p className="text-base font-bold tabular-nums text-gray-900">{fmt(entry.baseValue)}</p></div>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3"><p className="flex items-center gap-1 text-[11px] uppercase text-gray-500">Base<HelpHint {...DEAL_HINTS.VALOR_BASE} /></p><p className="text-base font-bold tabular-nums text-gray-900">{fmt(entry.baseValue)}</p></div>
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3"><p className="text-[11px] uppercase text-gray-500">Lançamentos</p><p className="text-base font-bold tabular-nums text-gray-900">{loading ? '—' : rows.length}</p></div>
             <div className="rounded-lg border border-brand-200 bg-brand-50 p-3"><p className="text-[11px] uppercase text-brand-700">Total final</p><p className="text-base font-bold tabular-nums text-brand-800">{fmt(loading ? entry.finalValue : total)}</p></div>
           </div>

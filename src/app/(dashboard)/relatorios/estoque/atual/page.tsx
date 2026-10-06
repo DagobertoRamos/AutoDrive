@@ -6,6 +6,8 @@
 // Consome /api/reports/stock/current. (Padrão de relatório read-only.)
 // =============================================================================
 
+import { WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback } from 'react'
 import { Car, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -98,7 +100,7 @@ export default function EstoqueAtualPage() {
             <thead className="bg-gray-50">
               <tr>
                 {['Veículo', 'Placa', 'Ano', 'KM', 'Status', 'Venda', 'Compra', 'Dias'].map((h) => (
-                  <th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
+                  <th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h === 'Dias' ? <WithHint text={opsText('DIAS_PARADO')}>Dias</WithHint> : h}</th>
                 ))}
               </tr>
             </thead>

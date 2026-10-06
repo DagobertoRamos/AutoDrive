@@ -15,6 +15,7 @@ import { useCrmSettings } from '@/hooks/useCrmSettings'
 import { describeAction, MAX_ACTIONS_PER_RULE, type AutomationAction, type AutomationRule, type AutomationTrigger } from '@/lib/crm/automations-core'
 import type { Pipeline } from '@/lib/crm/pipelines-core'
 import { Card, SaveBar, checkCls, inputCls, useSection } from './ListsTabs'
+import { opsHint } from '@/lib/glossary-ops'
 
 const TRIGGERS: { value: AutomationTrigger; label: string; hint: string }[] = [
   { value: 'LEAD_CREATED', label: 'Lead criado', hint: 'Qualquer origem (CRM, AutoConf, fila…). Leads que chegam pelas integrações são processados em até 1 minuto.' },
@@ -88,7 +89,7 @@ export default function AutomationsTab({ canManage }: { canManage: boolean }) {
   }
 
   return (
-    <Card title="Automações" hint="Use {lead} nos textos para o nome do cliente.">
+    <Card title="Automações" help={opsHint('AUTOMACAO')} hint="Use {lead} nos textos para o nome do cliente.">
       {s.items.length === 0 && !editing && <p className="py-6 text-center text-sm text-gray-400">Nenhuma automação. Exemplo: “Entrou em Proposta → criar tarefa de retorno em 24h e avisar o gerente”.</p>}
       <ul className="space-y-2">
         {s.items.map((r) => {

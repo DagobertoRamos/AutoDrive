@@ -31,6 +31,8 @@ import {
   Check,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { GoalsPanel } from '@/components/goals/GoalsPanel'
 import { RankingPositionCard } from '@/components/ranking/RankingPositionCard'
 import { MasterDashboard } from './MasterDashboard'
@@ -409,7 +411,7 @@ function VendedorDashboard(props: DashboardRouterProps) {
 
           <div className="flex flex-wrap items-center gap-4 rounded-xl border border-gray-100 bg-gray-50/50 p-4">
             <div className="space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Fila de Atendimento</span>
+              <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Fila de Atendimento <HelpHint {...opsHint('VENDEDOR_DA_VEZ')} /></span>
               <div className="flex items-center gap-2">
                 <span className={cn("inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold", currentQueueStatus.bg)}>
                   {currentQueueStatus.label}
@@ -606,7 +608,7 @@ function VendedorDashboard(props: DashboardRouterProps) {
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="rounded-xl bg-red-50 p-3 border border-red-100">
               <p className="text-2xl font-black text-red-700 tabular-nums">{pendingIssues.criticalCount}</p>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-red-600">Críticas</p>
+              <p className="flex items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-wider text-red-600">Críticas <HelpHint text="Pendências que viraram críticas: urgentes sem resposta há muito tempo ou com prazos combinados estourados várias vezes. Resolva primeiro." /></p>
             </div>
             <div className="rounded-xl bg-amber-50 p-3 border border-amber-100">
               <p className="text-2xl font-black text-amber-700 tabular-nums">{pendingIssues.overdueCount}</p>
@@ -680,7 +682,7 @@ function VendedorDashboard(props: DashboardRouterProps) {
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500 font-medium">Sem contato recente</span>
+                <span className="inline-flex items-center gap-1 text-gray-500 font-medium">Sem contato recente <HelpHint text="Leads atribuídos a você que ainda não receberam o primeiro contato." /></span>
                 <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-bold text-gray-700 tabular-nums">
                   {leads.semContatoCount}
                 </span>
@@ -756,7 +758,7 @@ function VendedorDashboard(props: DashboardRouterProps) {
             </div>
             <div>
               <p className="text-lg font-black text-gray-900 tabular-nums">{queueAttendances.averageResponseSeconds ? `${queueAttendances.averageResponseSeconds}s` : '—'}</p>
-              <p className="text-[10px] text-gray-400">Tempo Aceite</p>
+              <p className="flex items-center gap-1 text-[10px] text-gray-400">Tempo Aceite <HelpHint text="Tempo médio entre ser chamado pela fila e aceitar o cliente." size={11} /></p>
             </div>
             <div>
               <p className="text-lg font-black text-gray-900 tabular-nums">{queueAttendances.acceptanceRate}%</p>

@@ -14,6 +14,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import Link from 'next/link'
 import { AlertCircle, Car, ExternalLink, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 
 // ── Tipos do payload ──────────────────────────────────────────────────────────
 
@@ -244,7 +246,7 @@ function DealPeekDrawer({ dealId, onClose }: { dealId: string; onClose: () => vo
               <div className="grid grid-cols-3 gap-2">
                 <Kpi label="Total" value={brl(v.total)} />
                 <Kpi label="Pago" value={brl(v.paid)} sub={v.paidPending > 0.009 ? `${brl(v.paidPending)} aguardando` : undefined} tone="text-emerald-700" />
-                <Kpi label={v.balance < -0.009 ? 'Excedente' : 'Saldo'} value={brl(Math.abs(v.balance))} sub={RECON[v.reconciliation]?.[0]} subTone={RECON[v.reconciliation]?.[1]}
+                <Kpi help={<HelpHint term="SALDO_NEGOCIACAO" size={11} />} label={v.balance < -0.009 ? 'Excedente' : 'Saldo'} value={brl(Math.abs(v.balance))} sub={RECON[v.reconciliation]?.[0]} subTone={RECON[v.reconciliation]?.[1]}
                   tone={v.balance > 0.009 ? 'text-red-600' : v.balance < -0.009 ? 'text-amber-700' : 'text-emerald-700'} />
               </div>
 
@@ -305,12 +307,12 @@ function DealPeekDrawer({ dealId, onClose }: { dealId: string; onClose: () => vo
                   <Line label="Veículo" value={brl(v.vehicles)} />
                   {v.documentation > 0 && <Line label="Documentação" value={brl(v.documentation)} />}
                   {v.services > 0 && <Line label="Serviços" value={brl(v.services)} />}
-                  {v.debts > 0 && <Line label="Débitos" value={brl(v.debts)} />}
+                  {v.debts > 0 && <Line label="Débitos" value={brl(v.debts)} help={<HelpHint {...DEAL_HINTS.DEBITOS} size={12} />} />}
                   {v.discount > 0 && <Line label="Desconto" value={`− ${brl(v.discount)}`} tone="text-red-600" />}
                   <Line label="Total" value={brl(v.total)} strong />
                   {v.trade > 0 && <Line label="Veículo na troca" value={brl(v.trade)} muted />}
                   {v.financed != null && v.financed > 0 && <Line label="Financiado" value={brl(v.financed)} muted />}
-                  <Line label="Conciliado" value={brl(v.paidConfirmed)} tone="text-emerald-700" />
+                  <Line label="Conciliado" value={brl(v.paidConfirmed)} tone="text-emerald-700" help={<HelpHint {...DEAL_HINTS.CONCILIACAO} size={12} />} />
                   {v.paidPending > 0.009 && <Line label="Aguardando conciliação" value={brl(v.paidPending)} tone="text-amber-700" />}
                   <Line label={v.balance < -0.009 ? 'Excedente' : 'Saldo'} value={brl(Math.abs(v.balance))} strong tone={v.balance > 0.009 ? 'text-red-600' : undefined} />
                   {v.change > 0 && <Line label="Troco" value={brl(v.change)} muted />}
@@ -435,19 +437,19 @@ function Info({ label, value, mono, wide }: { label: string; value: string | nul
   )
 }
 
-function Line({ label, value, strong, muted, tone }: { label: string; value: string; strong?: boolean; muted?: boolean; tone?: string }) {
+function Line({ label, value, strong, muted, tone, help }: { label: string; value: string; strong?: boolean; muted?: boolean; tone?: string; help?: ReactNode }) {
   return (
     <div className={cn('flex justify-between gap-3', strong && 'border-t border-gray-100 pt-1 font-semibold')}>
-      <dt className={cn(muted ? 'text-gray-400' : 'text-gray-600')}>{label}</dt>
+      <dt className={cn('inline-flex items-center gap-1', muted ? 'text-gray-400' : 'text-gray-600')}>{label}{help}</dt>
       <dd className={cn('tabular-nums', muted ? 'text-gray-400' : 'text-gray-900', tone)}>{value}</dd>
     </div>
   )
 }
 
-function Kpi({ label, value, sub, tone, subTone }: { label: string; value: string; sub?: string; tone?: string; subTone?: string }) {
+function Kpi({ label, value, sub, tone, subTone, help }: { label: string; value: string; sub?: string; tone?: string; subTone?: string; help?: ReactNode }) {
   return (
     <div className="min-w-0 rounded-xl border border-gray-200 bg-white px-2.5 py-2">
-      <p className="text-[10px] uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-gray-500">{label}{help}</p>
       <p className={cn('truncate text-sm font-bold tabular-nums text-gray-900 sm:text-base', tone)}>{value}</p>
       {sub && <p className={cn('truncate text-[10px] text-gray-500', subTone)}>{sub}</p>}
     </div>

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Landmark, Pencil, Plus, Power, Save } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { FieldLabel } from '@/components/ui/field'
+import { WithHint } from '@/components/ui/help-hint'
 import { MoneyInput } from '@/components/ui/money-input'
 import { Badge, ColorPicker, EmptyState, Modal, PageHeader, Toggle, api, brl, dateBR, iconBtn, inputClass } from './ui'
 
@@ -80,7 +81,7 @@ export default function AccountsManager() {
     <div className="space-y-5">
       <PageHeader
         title="Contas bancárias"
-        subtitle={loading ? 'Carregando...' : <>Saldo consolidado <span className={cn('font-semibold', consolidated < 0 ? 'text-red-600' : 'text-gray-900')}>{brl(consolidated)}</span></>}
+        subtitle={loading ? 'Carregando...' : <span className="inline-flex flex-wrap items-center gap-1"><WithHint term="SALDO_CONSOLIDADO">Saldo consolidado</WithHint> <span className={cn('font-semibold', consolidated < 0 ? 'text-red-600' : 'text-gray-900')}>{brl(consolidated)}</span></span>}
         actions={<>
           <Toggle checked={showInactive} onChange={setShowInactive} label="Mostrar inativas" />
           <button onClick={() => open()} className="btn-primary text-sm"><Plus size={15} />Nova conta</button>
@@ -150,11 +151,11 @@ export default function AccountsManager() {
               <div><FieldLabel>Agência</FieldLabel><input className={cn(inputClass, 'mt-1')} value={form.agency} onChange={(e) => setForm({ ...form, agency: e.target.value })} /></div>
               <div><FieldLabel>Conta</FieldLabel><input className={cn(inputClass, 'mt-1')} value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} /></div>
             </>}
-            <div><FieldLabel>Saldo inicial</FieldLabel><div className="mt-1"><MoneyInput className={inputClass} value={form.openingBalance} onChange={(v) => setForm({ ...form, openingBalance: v })} /></div></div>
-            <div><FieldLabel>Data do saldo inicial</FieldLabel><input type="date" className={cn(inputClass, 'mt-1')} value={form.openingDate} onChange={(e) => setForm({ ...form, openingDate: e.target.value })} /></div>
+            <div><FieldLabel helpTerm="SALDO_INICIAL">Saldo inicial</FieldLabel><div className="mt-1"><MoneyInput className={inputClass} value={form.openingBalance} onChange={(v) => setForm({ ...form, openingBalance: v })} /></div></div>
+            <div><FieldLabel helpText="Dia em que o saldo inicial foi conferido (ex.: extrato do banco). Movimentos anteriores a essa data não alteram o saldo.">Data do saldo inicial</FieldLabel><input type="date" className={cn(inputClass, 'mt-1')} value={form.openingDate} onChange={(e) => setForm({ ...form, openingDate: e.target.value })} /></div>
             <div className="sm:col-span-2"><FieldLabel>Cor</FieldLabel><div className="mt-1"><ColorPicker value={form.color} onChange={(c) => setForm({ ...form, color: c })} /></div></div>
             <div className="flex flex-wrap gap-5 sm:col-span-2">
-              <Toggle checked={form.includeInTotal} onChange={(v) => setForm({ ...form, includeInTotal: v })} label="Incluir no consolidado" />
+              <Toggle checked={form.includeInTotal} onChange={(v) => setForm({ ...form, includeInTotal: v })} label="Incluir no consolidado" helpText="Marcada: o saldo desta conta entra no saldo consolidado do painel. Desmarque para contas que não são da operação (ex.: conta pessoal, aplicação)." />
               <Toggle checked={form.active} onChange={(v) => setForm({ ...form, active: v })} label="Ativa" />
             </div>
             {error && <p className="text-sm text-red-600 sm:col-span-2">{error}</p>}

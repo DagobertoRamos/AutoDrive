@@ -25,6 +25,8 @@ import {
 } from 'lucide-react'
 import type { ExtractedVehicle, ExtractionConfidence } from '@/lib/crlv/parser'
 import { compressImage } from '@/lib/images/compress-client'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 // ── Tipos públicos ────────────────────────────────────────────────────────────
 
@@ -780,6 +782,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
       <div className="flex items-start gap-2">
         <FileText className="h-5 w-5 text-brand-600 mt-0.5" />
         <h3 className="font-semibold text-gray-800">CRLV do veículo</h3>
+        <HelpHint {...opsHint('CRLV')} className="mt-1" />
       </div>
 
       {/* ── IDLE: dropzone ── */}

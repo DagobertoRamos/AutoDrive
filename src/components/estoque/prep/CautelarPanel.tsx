@@ -10,6 +10,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, Loader2, Save, ShieldAlert } from 'lucide-react'
 import { inspectionReady } from '@/lib/stock/prep-core'
 import { VehicleFilesField, type VFile } from './VehicleFilesField'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 const OPTS = [
   ['SEM_CAUTELAR', 'Sem perícia'], ['PENDENTE', 'Pendente (laudo em andamento)'], ['APROVADA', 'Aprovada'],
@@ -69,7 +71,7 @@ export function CautelarPanel({ vehicleId, cautelarStatus, cautelarNumber, caute
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <label className="block text-xs font-medium text-gray-600">Status da perícia
+        <label className="block text-xs font-medium text-gray-600"><span className="inline-flex items-center gap-1">Status da perícia <HelpHint {...opsHint('PERICIA')} /></span>
           <select value={status} disabled={!canEdit} onChange={(e) => setStatus(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
             {OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
@@ -89,7 +91,7 @@ export function CautelarPanel({ vehicleId, cautelarStatus, cautelarNumber, caute
       )}
 
       <div className="rounded-xl border border-gray-200 p-3">
-        <p className="mb-2 text-sm font-semibold text-gray-900">Laudo cautelar</p>
+        <p className="mb-2 inline-flex items-center gap-1 text-sm font-semibold text-gray-900">Laudo cautelar <HelpHint title="Laudo cautelar" text="Arquivo (PDF ou foto) do laudo da perícia. A pendência de perícia só é resolvida com o status preenchido e pelo menos um laudo anexado." /></p>
         <VehicleFilesField vehicleId={vehicleId} kind="LAUDO_CAUTELAR" files={files} canEdit={canEdit} onChange={async () => { await loadFiles(); await onSaved() }} />
         {evaluationLaudos.length > 0 && (
           <p className="mt-2 text-xs text-gray-500">

@@ -7,6 +7,8 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, X } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { cn } from '@/lib/utils'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
+import type { GlossaryTerm } from '@/lib/glossary'
 import { COLORS, Kpi, Panel, StateBox, SortTh, fmt, fmtDate, fmtPct, fmtShort, td, tdR, th, thR, useFinanceData, useSort } from './shared'
 import type { ReportViewProps } from './types'
 import { DealPeekLink } from '@/components/deals/DealPeek'
@@ -62,15 +64,15 @@ export function ResultByCenterReport({ url, onData, registerCsv }: ReportViewPro
         <Kpi label="Receitas" value={loading ? '—' : fmt(t?.receitas ?? 0)} tone="green" />
         <Kpi label="Custos e despesas" value={loading ? '—' : fmt(t?.despesas ?? 0)} tone="red" />
         <Kpi label="Resultado geral" value={loading ? '—' : fmt(t?.resultado ?? 0)} tone={(t?.resultado ?? 0) < 0 ? 'red' : 'green'} />
-        <Kpi label="Margem" value={loading ? '—' : fmtPct(t?.margem)} />
+        <Kpi label="Margem" helpTerm="MARGEM" value={loading ? '—' : fmtPct(t?.margem)} />
       </div>
 
       {(loading || error || !data?.rows.length) && <Panel><StateBox loading={loading} error={error} empty={!data?.rows.length} /></Panel>}
 
       {!loading && !error && !!data?.rows.length && (
         <>
-          <CenterCards title="Centros de resultado" rows={resultCenters} selected={selected} onSelect={setSelected} />
-          <CenterCards title="Centros de custo" rows={costCenters} selected={selected} onSelect={setSelected} />
+          <CenterCards title="Centros de resultado" helpTerm="CENTRO_RESULTADO" rows={resultCenters} selected={selected} onSelect={setSelected} />
+          <CenterCards title="Centros de custo" helpTerm="CENTRO_CUSTO" rows={costCenters} selected={selected} onSelect={setSelected} />
 
           {selected && (
             <CenterDetailPanel loading={detail.loading} error={detail.error} detail={detail.data?.detail ?? null} onClose={() => setSelected(null)} />
@@ -98,12 +100,12 @@ export function ResultByCenterReport({ url, onData, registerCsv }: ReportViewPro
   )
 }
 
-function CenterCards({ title, rows, selected, onSelect }: { title: string; rows: CenterRow[]; selected: string | null; onSelect: (id: string) => void }) {
+function CenterCards({ title, rows, selected, onSelect, helpTerm }: { title: string; rows: CenterRow[]; selected: string | null; onSelect: (id: string) => void; helpTerm?: GlossaryTerm }) {
   if (!rows.length) return null
   return (
     <section className="space-y-2">
       <div className="flex items-baseline gap-2">
-        <h2 className="text-sm font-semibold text-gray-800">{title}</h2>
+        <h2 className="flex items-center gap-1 text-sm font-semibold text-gray-800">{title}{helpTerm && <HelpHint term={helpTerm} size={12} />}</h2>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {rows.map((r) => {
@@ -221,7 +223,7 @@ function ServiceTables({ lines, rows, totals, compact }: { lines: ServiceLine[];
     <div className="space-y-4">
       <div className="overflow-x-auto rounded-lg border border-gray-100">
         <table className="min-w-full text-sm">
-          <thead className="bg-gray-50"><tr><th className={th}>Linha de serviço</th><th className={thR}>Qtd.</th><th className={thR}>Cobrado</th><th className={thR}>Custo real</th><th className={thR}>Comissões</th><th className={thR}>Lucro</th><th className={thR}>Margem</th></tr></thead>
+          <thead className="bg-gray-50"><tr><th className={th}>Linha de serviço</th><th className={thR}>Qtd.</th><th className={thR}>Cobrado</th><th className={thR}><WithHint text="O que a loja gastou de fato com o serviço (fornecedor, peças, mão de obra), lançado no financeiro.">Custo real</WithHint></th><th className={thR}>Comissões</th><th className={thR}>Lucro</th><th className={thR}>Margem</th></tr></thead>
           <tbody className="divide-y divide-gray-100">
             {lines.map((l) => (
               <tr key={l.kind} className={cn('cursor-pointer hover:bg-gray-50', kind === l.kind && 'bg-brand-50')} onClick={() => setKind((k) => (k === l.kind ? '' : l.kind))}>
@@ -321,7 +323,7 @@ export function ServicesSoldReport({ url, onData, registerCsv }: ReportViewProps
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Cobrado dos clientes" value={loading ? '—' : fmt(t?.charged ?? 0)} tone="blue" hint={t ? `${t.count} serviço(s)` : undefined} />
+        <Kpi label="Cobrado dos clientes" helpTerm="COBRADO_CUSTO" value={loading ? '—' : fmt(t?.charged ?? 0)} tone="blue" hint={t ? `${t.count} serviço(s)` : undefined} />
         <Kpi label="Custo real" value={loading ? '—' : fmt(t?.cost ?? 0)} tone="red" />
         <Kpi label="Comissões" value={loading ? '—' : fmt(t?.commissions ?? 0)} tone="amber" />
         <Kpi label="Lucro" value={loading ? '—' : fmt(t?.profit ?? 0)} tone={(t?.profit ?? 0) < 0 ? 'red' : 'green'} hint={t ? `Margem ${fmtPct(t.margin)}` : undefined} />
@@ -394,9 +396,9 @@ export function FiRevenueReport({ url, onData, registerCsv }: ReportViewProps) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Receitas de F&I" value={loading ? '—' : fmt(data?.totals.total ?? 0)} tone="green" />
+        <Kpi label="Receitas de F&I" helpTerm="FI" value={loading ? '—' : fmt(data?.totals.total ?? 0)} tone="green" />
         <Kpi label="Recebido" value={loading ? '—' : fmt(data?.totals.recebido ?? 0)} tone="blue" />
-        <Kpi label="A receber (previsto)" value={loading ? '—' : fmt(data?.totals.previsto ?? 0)} tone="amber" />
+        <Kpi label="A receber (previsto)" helpTerm="PREVISTO" value={loading ? '—' : fmt(data?.totals.previsto ?? 0)} tone="amber" />
         <Kpi label="Contratos financiados" value={loading ? '—' : String(ct?.count ?? 0)} hint={ct ? `Financiado ${fmt(ct.financed)}` : undefined} />
       </div>
 
@@ -466,8 +468,8 @@ export function FiRevenueReport({ url, onData, registerCsv }: ReportViewProps) {
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50"><tr>
                 <th className={th}>Data</th><th className={th}>Negociação</th><th className={th}>Banco / contrato</th>
-                <th className={thR}>Financiado</th><th className={thR}>Retorno bruto</th><th className={thR}>ILA</th><th className={thR}>IOF</th><th className={thR}>IRRF</th>
-                <th className={thR}>Líquido</th><th className={thR}>PLUS</th><th className={thR}>Agregados</th><th className={thR}>Total loja</th><th className={th}>Retorno</th>
+                <th className={thR}>Financiado</th><th className={thR}><WithHint term="RETORNO_BRUTO">Retorno bruto</WithHint></th><th className={thR}><WithHint term="ILA">ILA</WithHint></th><th className={thR}><WithHint term="IOF">IOF</WithHint></th><th className={thR}><WithHint term="IRRF">IRRF</WithHint></th>
+                <th className={thR}><WithHint term="RETORNO_LIQUIDO">Líquido</WithHint></th><th className={thR}><WithHint term="PLUS">PLUS</WithHint></th><th className={thR}><WithHint text="Receita da loja com os agregados do financiamento (comissões de seguro, garantia etc.).">Agregados</WithHint></th><th className={thR}><WithHint text="Retorno líquido + PLUS + agregados: tudo o que a loja ganha com o contrato.">Total loja</WithHint></th><th className={th}><WithHint text="Situação do retorno: recebido do banco, a receber, ou ainda sem lançamento no financeiro.">Retorno</WithHint></th>
               </tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {data.contracts.map((c) => (

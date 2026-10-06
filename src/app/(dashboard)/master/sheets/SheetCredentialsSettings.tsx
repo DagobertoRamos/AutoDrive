@@ -5,6 +5,7 @@
 // Gerencia as credenciais do Google Sheets no banco de dados (Painel Master).
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useState, useEffect, useCallback } from 'react'
 import {
   KeyRound, CheckCircle2, AlertCircle, Loader2, Eye, EyeOff,
@@ -333,7 +334,7 @@ export default function SheetCredentialsSettings() {
 
           {/* ID da planilha */}
           <div>
-            <label className={labelCls}>ID da planilha principal</label>
+            <label className={labelCls}>ID da planilha principal<HelpHint className="ml-1" title="ID da planilha" text="Código da planilha que aparece no endereço, entre /d/ e /edit." /></label>
             <input
               type="text"
               value={form.masterSheetId}
@@ -348,7 +349,7 @@ export default function SheetCredentialsSettings() {
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className={`${labelCls} mb-0`}>
-                Service Account JSON
+                Service Account JSON<HelpHint className="ml-1" title="Service Account" text="Arquivo de chave de uma conta de serviço do Google Cloud, com a API do Sheets ativa. Compartilhe a planilha com o e-mail dessa conta (client_email) para o sistema conseguir ler." />
                 {!configured && <> <RequiredMark /></>}
                 {configured && !replacing && (
                   <span className="ml-2 text-[10px] font-normal text-emerald-600">(configurada)</span>

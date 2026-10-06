@@ -6,6 +6,8 @@ import { useEffect, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import type { GlossaryTerm } from '@/lib/glossary'
 
 export const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50 disabled:text-gray-500'
 export const PAYMENT_METHODS = ['PIX', 'Transferência', 'Boleto', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito', 'Débito em conta', 'Cheque', 'Outro']
@@ -20,10 +22,14 @@ export const dt = (s: string | Date | null | undefined) => {
 }
 export const todayYmd = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
 
-export function Field({ label, required, className, children }: { label: string; required?: boolean; className?: string; children: ReactNode }) {
+export function Field({ label, required, className, children, helpTerm, helpText }: {
+  label: string; required?: boolean; className?: string; children: ReactNode
+  /** "?" ao lado do rótulo (glossário ou texto livre). */
+  helpTerm?: GlossaryTerm; helpText?: string
+}) {
   return (
     <label className={cn('block', className)}>
-      <span className="mb-1 flex items-center gap-0.5 text-xs font-medium text-gray-700">{label}{required && <RequiredMark />}</span>
+      <span className="mb-1 flex items-center gap-0.5 text-xs font-medium text-gray-700">{label}{required && <RequiredMark />}{(helpTerm || helpText) && <HelpHint term={helpTerm} text={helpText} size={12} className="ml-0.5" />}</span>
       {children}
     </label>
   )

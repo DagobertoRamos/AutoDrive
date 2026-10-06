@@ -15,6 +15,8 @@ import { useCrmSettings } from '@/hooks/useCrmSettings'
 import type { ChannelCatalogItem, ChannelGroup, LeadChannel } from '@/lib/crm/channels-core'
 import { Card, checkCls, inputCls } from './ListsTabs'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 interface LogEntry { at: string; channelId: string; ok: boolean; outcome: string; message: string; leadId?: string; leadNumber?: number | null; name?: string; test?: boolean }
 interface Data { channels: LeadChannel[]; log: LogEntry[]; catalog: ChannelCatalogItem[]; groups: Record<ChannelGroup, string>; baseUrl: string }
@@ -116,7 +118,7 @@ export default function ChannelsTab({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-4">
-      <Card title="Canais de captação">
+      <Card title="Canais de captação" help={{ title: 'Canais de captação', text: 'Cada canal (Facebook, Instagram, Google, portais, formulários) recebe uma URL própria. Os leads que chegam por ela entram no CRM já com origem, funil e temperatura definidos aqui.' }}>
         {items.length === 0 && <p className="mb-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">Nenhum canal cadastrado.</p>}
 
         <ul className="space-y-3">
@@ -156,7 +158,7 @@ export default function ChannelsTab({ canManage }: { canManage: boolean }) {
                 {expanded && (
                   <div className="space-y-4 border-t border-gray-100 px-3 py-3">
                     <div>
-                      <p className="mb-1 text-xs font-semibold text-gray-700">URL de entrada</p>
+                      <p className="mb-1 flex items-center gap-1 text-xs font-semibold text-gray-700">URL de entrada <HelpHint {...opsHint('URL_ENTRADA')} /></p>
                       {url ? (
                         <div className="flex items-center gap-2">
                           <code className="min-w-0 flex-1 break-all rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] text-gray-800">{url}</code>
@@ -170,7 +172,7 @@ export default function ChannelsTab({ canManage }: { canManage: boolean }) {
                       <label className="text-xs font-medium text-gray-700">Nome do canal <RequiredMark />
                         <input className={cn(inputCls, 'mt-1')} disabled={!canManage} value={c.name} maxLength={80} onChange={(e) => update(idx, { name: e.target.value })} />
                       </label>
-                      <label className="text-xs font-medium text-gray-700">{cat?.secretLabel ?? 'Chave secreta (opcional)'}
+                      <label className="text-xs font-medium text-gray-700">{cat?.secretLabel ?? 'Chave secreta (opcional)'} <HelpHint title="Chave secreta" text="Senha combinada com a plataforma que envia os leads. Se preenchida, o sistema recusa envios que não tragam essa chave." />
                         <input className={cn(inputCls, 'mt-1')} disabled={!canManage} value={c.secret ?? ''} maxLength={200} placeholder={cat?.secretLabel ? 'Mesma chave da plataforma' : ''} onChange={(e) => update(idx, { secret: e.target.value })} />
                       </label>
                       <label className="text-xs font-medium text-gray-700">Origem no CRM
@@ -244,7 +246,7 @@ export default function ChannelsTab({ canManage }: { canManage: boolean }) {
         </Card>
       )}
 
-      <Card title="Registro de recebimentos">
+      <Card title="Registro de recebimentos" help={{ title: 'Registro de recebimentos', text: 'Últimos envios recebidos pelas URLs dos canais. Recusado = dado inválido, chave secreta errada ou canal inativo.' }}>
         {data.log.length === 0 ? <p className="text-sm text-gray-500">Nada recebido ainda.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] text-xs">

@@ -7,6 +7,8 @@
 import Link from 'next/link'
 import { AlertTriangle, Tag } from 'lucide-react'
 import { VehicleStatusBadge, CautelarBadge, ConditionBadge } from './VehicleStatusBadge'
+import { WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
 
 interface Vehicle {
   id: string
@@ -54,8 +56,8 @@ export function VehicleListTable({ vehicles }: VehicleListTableProps) {
             <th className="px-4 py-3 font-medium text-gray-600">Veículo</th>
             <th className="px-4 py-3 font-medium text-gray-600">Ano</th>
             <th className="px-4 py-3 font-medium text-gray-600">KM</th>
-            <th className="px-4 py-3 font-medium text-gray-600">Status</th>
-            <th className="px-4 py-3 font-medium text-gray-600">Cautelar</th>
+            <th className="px-4 py-3 font-medium text-gray-600"><WithHint text={opsText('STATUS_ESTOQUE')}>Status</WithHint></th>
+            <th className="px-4 py-3 font-medium text-gray-600"><WithHint text={opsText('PERICIA')}>Cautelar</WithHint></th>
             <th className="px-4 py-3 font-medium text-gray-600">Unidade</th>
             <th className="px-4 py-3 font-medium text-gray-600 text-right">Preço</th>
             <th className="px-4 py-3 font-medium text-gray-600"></th>

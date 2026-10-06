@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Printer, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
 import { Card, ErrorBox, KpiCard, brl, dateBR, inputClass } from '@/components/finance/center/dashboard/shared'
 import { CashflowChart, type CashflowBucket } from '@/components/finance/center/dashboard/CashflowChart'
 import PrintHeader from '@/components/finance/center/print/PrintHeader'
@@ -92,7 +93,7 @@ export default function CashflowPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <div className="flex items-center gap-2">
           <Link href="/financeiro" className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Voltar ao painel"><ArrowLeft size={18} /></Link>
-          <h1 className="text-xl font-bold text-gray-900">Fluxo de caixa</h1>
+          <h1 className="flex items-center gap-1.5 text-xl font-bold text-gray-900">Fluxo de caixa<HelpHint term="FLUXO_CAIXA" size={15} /></h1>
         </div>
         <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5">
           {(['day', 'month'] as const).map((g) => (
@@ -126,6 +127,7 @@ export default function CashflowPage() {
         <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
           <input type="checkbox" className="rounded border-gray-300 text-brand-700 focus:ring-brand-500" checked={includeOverdue} onChange={(e) => setIncludeOverdue(e.target.checked)} />
           Incluir vencidos{d && d.overdue.count > 0 ? ` (${d.overdue.count})` : ''}
+          <HelpHint size={12} title="Incluir vencidos" text="Contas em aberto com vencimento anterior a hoje entram no primeiro dia do fluxo, como se fossem pagas ou recebidas hoje." />
         </label>
         <button onClick={() => void load()} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Atualizar"><RefreshCw size={15} className={cn(loading && 'animate-spin')} /></button>
         <button onClick={() => window.print()} disabled={!d} className="btn-secondary ml-auto text-sm" title="Imprimir ou salvar em PDF"><Printer size={15} />Imprimir / PDF</button>
@@ -134,7 +136,7 @@ export default function CashflowPage() {
       {error && <ErrorBox message={error} onRetry={() => void load()} />}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 print:grid-cols-4 print:gap-2">
-        <KpiCard label={d?.anchored === false ? 'Saldo inicial (filtro)' : 'Saldo inicial'} loading={loading && !d} value={brl(d?.startBalance)} />
+        <KpiCard label={d?.anchored === false ? 'Saldo inicial (filtro)' : 'Saldo inicial'} helpText={d?.anchored === false ? 'Com filtro de centro de custo não há saldo de conta: o fluxo parte de zero e mostra só o acumulado do filtro.' : 'Saldo das contas no início do período escolhido.'} loading={loading && !d} value={brl(d?.startBalance)} />
         <KpiCard label="Entradas" loading={loading && !d} value={brl(d?.totals.entradas)} tone="in"
           sub={d && <>Realizadas {brl(d.totals.realizedIn)}<br />Previstas {brl(d.totals.projectedIn)}</>} />
         <KpiCard label="Saídas" loading={loading && !d} value={brl(d?.totals.saidas)} tone="out"
@@ -154,7 +156,10 @@ export default function CashflowPage() {
             <thead className="bg-gray-50">
               <tr>
                 {['Período', '', 'Entradas', 'Saídas', 'Saldo do período', 'Saldo acumulado'].map((h, i) => (
-                  <th key={i} className={cn('whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500', i >= 2 ? 'text-right' : 'text-left')}>{h}</th>
+                  <th key={i} className={cn('whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500', i >= 2 ? 'text-right' : 'text-left')}>
+                    {i === 1 ? <HelpHint size={12} title="Realizado × previsto" text={'Realizado: já pago ou recebido.\nAtual: hoje, mistura o que já aconteceu com o que vence hoje.\nPrevisto: ainda em aberto, pela data de vencimento.'} />
+                      : i === 5 ? <WithHint text="Saldo inicial mais o saldo de cada período até aquela data.">{h}</WithHint> : h}
+                  </th>
                 ))}
               </tr>
             </thead>

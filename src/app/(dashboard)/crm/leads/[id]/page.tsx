@@ -23,6 +23,8 @@ import { reasonsFor, sourceLabelOf, temperatureOf, type CloseOutcome } from '@/l
 import CloseReasonModal from '@/components/crm/CloseReasonModal'
 import type { Pipeline } from '@/lib/crm/pipelines-core'
 import { DealPeekLink } from '@/components/deals/DealPeek'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
+import { opsHint, opsText } from '@/lib/glossary-ops'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface LeadTag    { id: string; name: string; color: string | null }
@@ -297,7 +299,7 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
           <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">Dados do lead</h3>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
             {[['Cliente', lead.name],['Telefone', lead.phone],['E-mail', lead.email],['Origem', sourceLabelOf(settings, lead.source)],['Criado em', fmtDT(lead.createdAt)],['Responsável', lead.assignedToUserName],['Unidade', lead.unitName],['Cliente vinculado', relations.customer?.name]].map(([k, v]) => (
-              <div key={String(k)}><dt className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{k}</dt><dd className="text-gray-700 dark:text-gray-300 truncate">{v ?? '—'}</dd></div>
+              <div key={String(k)}><dt className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{k === 'Origem' ? <WithHint text={opsText('ORIGEM')}>{k}</WithHint> : k}</dt><dd className="text-gray-700 dark:text-gray-300 truncate">{v ?? '—'}</dd></div>
             ))}
           </dl>
           {lead.notes && <div className="mt-3 rounded-lg bg-gray-50 p-3 text-[12px] text-gray-600 dark:bg-slate-800 dark:text-gray-300">{lead.notes}</div>}
@@ -779,7 +781,7 @@ function ActionModal({ action, lead, onClose, onDone }: { action: string; lead: 
     <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-800" onClick={e => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-bold text-gray-900 dark:text-white">{titles[action] ?? action}</h3>
+          <h3 className="flex items-center gap-1.5 font-bold text-gray-900 dark:text-white">{titles[action] ?? action}{action === 'recycle' && <HelpHint title="Reciclar" text="Encerra o atendimento agora, mas guarda o lead para uma nova tentativa na data de retorno (ex.: cliente vai comprar daqui a alguns meses)." />}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
 
@@ -1255,7 +1257,7 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
                     )}
                   </>
                 )}
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Etapa</span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Etapa<HelpHint {...opsHint('FUNIL')} /></span>
                 {/* Somente gerente+/SDR podem mudar; vendedor vê badge somente-leitura */}
                 {canChangeStage && pipelineStages.length > 0 ? (
                   <select value={lead.stageId ?? ''} onChange={e => moveTo({ stageId: e.target.value })} className={selectCls} aria-label="Etapa">
@@ -1272,7 +1274,7 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
 
           {/* Temperatura */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Temp.</span>
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Temp.<HelpHint {...opsHint('TEMPERATURA')} /></span>
             <div className="flex gap-1">
               {settings.temperatures.filter(t => t.active).map(t => (
                 <button key={t.value} onClick={() => void fetch(`/api/crm/leads/${leadId}/temperature`,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({temperature:t.value})}).then(()=>load())} title={t.label}

@@ -82,6 +82,7 @@ export default function CostCenters() {
     <div className="space-y-5">
       <PageHeader
         title="Centros de custo"
+        helpTerm="CENTRO_CUSTO"
         subtitle={loading ? 'Carregando...' : `${items.filter((i) => i.active).length} ativos`}
         actions={<>
           <Toggle checked={showInactive} onChange={setShowInactive} label="Mostrar inativos" />

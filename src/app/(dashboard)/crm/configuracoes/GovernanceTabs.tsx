@@ -56,7 +56,7 @@ export function PermissionsTab() {
   const nChanged = Object.values(overrides).reduce((n, r) => n + Object.keys(r).length, 0)
 
   return (
-    <Card title="Permissões" hint="Ponto laranja = alterado em relação ao padrão.">
+    <Card title="Permissões" hint="Ponto laranja = alterado em relação ao padrão." help={{ title: 'Permissões do CRM', text: 'O que cada perfil da loja pode ver e fazer no CRM. Marque ou desmarque por perfil; o cadeado indica acesso que não pode ser retirado.' }}>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-xs">
           <thead>
@@ -153,7 +153,7 @@ export function AuditTab() {
   const selCls = cn(inputCls, 'w-auto py-1.5 text-xs')
 
   return (
-    <Card title="Auditoria">
+    <Card title="Auditoria" help={{ title: 'Auditoria', text: 'Histórico de quem criou, alterou ou excluiu leads, funis, automações e configurações, com os valores antes e depois.' }}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <select value={f.entity} onChange={(e) => set({ entity: e.target.value })} className={selCls} aria-label="Tipo">
           <option value="">Tudo</option>

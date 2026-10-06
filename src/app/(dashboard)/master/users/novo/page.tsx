@@ -4,6 +4,8 @@
 // /master/users/novo — Criar novo usuário em qualquer tenant (MASTER only)
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback } from 'react'
 import { useSession }                        from 'next-auth/react'
 import { useRouter }                         from 'next/navigation'
@@ -278,7 +280,7 @@ export default function NewUserPage() {
           </div>
 
           <div>
-            <label className={labelCls}>Papel <RequiredMark /></label>
+            <label className={labelCls}>Papel<HelpHint className="ml-1" {...opsHint('NIVEL_ACESSO')} /> <RequiredMark /></label>
             <select
               className={inputCls}
               value={role}
@@ -291,7 +293,7 @@ export default function NewUserPage() {
           </div>
 
           <div>
-            <label className={labelCls}>Cargo</label>
+            <label className={labelCls}>Cargo<HelpHint className="ml-1" title="Cargo" text="Função da pessoa na loja (vendedor, gerente, F&I...). Cada cargo tem um perfil de acesso e é usado em comissões, metas e relatórios." /></label>
             <select
               className={inputCls}
               value={selectedPositionId}
@@ -321,7 +323,7 @@ export default function NewUserPage() {
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-800">
             <Building2 size={14} className="text-brand-600" />
-            Tenant <RequiredMark />
+            Tenant<HelpHint className="ml-1" {...opsHint('TENANT')} /> <RequiredMark />
           </h2>
 
           {/* Search */}

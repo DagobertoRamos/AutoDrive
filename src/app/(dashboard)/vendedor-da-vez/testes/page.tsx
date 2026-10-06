@@ -6,6 +6,7 @@ import { Volume2, Bell, ShieldAlert, RefreshCw, Play, CheckCircle2, History, Use
 import { SOUND_OPTIONS, playSound, unlockAudio } from '@/lib/seller-queue/alert-client'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
 
 interface CallableSeller {
   sellerId: string
@@ -196,6 +197,7 @@ export default function QueueTestsPage() {
             <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
               <ShieldAlert size={18} className="text-amber-500" />
               Enviar Teste de Atenção
+              <HelpHint text="Dispara um alerta na tela do vendedor que ele precisa confirmar na hora. Serve para checar se ele está atento e se os alertas do aparelho funcionam; o tempo de resposta fica registrado." title="Teste de atenção" />
             </h2>
 
             <div className="space-y-3 pt-2">

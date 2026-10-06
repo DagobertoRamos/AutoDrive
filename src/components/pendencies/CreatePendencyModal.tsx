@@ -11,6 +11,8 @@ import { useState, useEffect } from 'react'
 import { X, BellRing, Save, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 interface Seller { id: string; fullName: string; unit?: { id: string; name: string } | null }
 interface Unit { id: string; name: string }
@@ -108,7 +110,7 @@ export function CreatePendencyModal({ onClose, onCreated }: { onClose: () => voi
             </div>
             {lookupMsg && <p className="mt-1 text-[11px] font-medium text-brand-700">{lookupMsg}</p>}
           </div>
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Prioridade</label><select className={inputCls} value={f.priority} onChange={(e) => set('priority', e.target.value)}>{PRIORITIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+          <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Prioridade <HelpHint {...opsHint('PRIORIDADE')} /></label><select className={inputCls} value={f.priority} onChange={(e) => set('priority', e.target.value)}>{PRIORITIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
           <div><label className="mb-1 block text-xs font-medium text-gray-700">Cliente / Assunto <RequiredMark /></label><input className={inputCls} value={f.customerName} onChange={(e) => set('customerName', e.target.value)} placeholder="Nome do cliente" /></div>
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-700">Tipo <RequiredMark /></label>
@@ -127,7 +129,7 @@ export function CreatePendencyModal({ onClose, onCreated }: { onClose: () => voi
 
           {/* Lembrete automático por push */}
           <div className="rounded-xl border border-brand-100 bg-brand-50/40 p-3">
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-800"><input type="checkbox" checked={remind} onChange={(e) => setRemind(e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" /><BellRing size={15} className="text-brand-600" />Lembrar o responsável por push até resolver</label>
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-800"><input type="checkbox" checked={remind} onChange={(e) => setRemind(e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" /><BellRing size={15} className="text-brand-600" />Lembrar o responsável por push até resolver <HelpHint {...opsHint('LEMBRETE')} /></label>
             {remind && (
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Frequência</label><select className={inputCls} value={remindFrequency} onChange={(e) => setRemindFrequency(e.target.value)}>{FREQS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>

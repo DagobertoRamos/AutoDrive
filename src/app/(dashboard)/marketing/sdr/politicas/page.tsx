@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { GitBranch, Plus, Pencil, Trash2, X, Save, Power, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
@@ -130,10 +131,10 @@ export default function SdrPoliciesPage() {
             <div className="space-y-3">
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome <span className="text-red-500">*</span></label><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex: Distribuição padrão" /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="mb-1 block text-xs font-medium text-gray-700">Modo</label><select className={inputCls} value={form.mode} onChange={(e) => set('mode', e.target.value)}>{MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
-                <div><label className="mb-1 block text-xs font-medium text-gray-700">Prioridade</label><input type="number" className={inputCls} value={form.priority} onChange={(e) => set('priority', e.target.value)} /></div>
+                <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Modo <HelpHint title="Modo de distribuição" text="Roleta = um lead para cada um, em ordem. Menor carga = vai para quem tem menos leads abertos. Por desempenho = quem converte mais recebe mais. Tanque = o lead fica disponível e quem pegar primeiro atende. Manual = um gestor escolhe." /></label><select className={inputCls} value={form.mode} onChange={(e) => set('mode', e.target.value)}>{MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+                <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Prioridade <HelpHint title="Prioridade da política" text="Com mais de uma política ativa, vale a de menor número (1 vem antes de 10)." /></label><input type="number" className={inputCls} value={form.priority} onChange={(e) => set('priority', e.target.value)} /></div>
               </div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Parâmetros (JSON, opcional)</label><textarea className={cn(inputCls, 'h-28 font-mono text-xs')} value={form.config} onChange={(e) => set('config', e.target.value)} placeholder='{ "slaSeconds": 300, "fallbackMode": "ROUND_ROBIN" }' /></div>
+              <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Parâmetros (JSON, opcional) <HelpHint title="Parâmetros" text="Ajustes avançados. slaSeconds = prazo, em segundos, para o SDR fazer o 1º contato antes de o lead ser redistribuído. Deixe vazio para usar o padrão." /></label><textarea className={cn(inputCls, 'h-28 font-mono text-xs')} value={form.config} onChange={(e) => set('config', e.target.value)} placeholder='{ "slaSeconds": 300, "fallbackMode": "ROUND_ROBIN" }' /></div>
               <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.active} onChange={(e) => set('active', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Ativa</label>
               {error && <p className="text-sm text-red-600">{error}</p>}
             </div>

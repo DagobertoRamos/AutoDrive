@@ -10,6 +10,8 @@
 //   • Ativar / desativar plano sem excluir
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import { useSession }                                  from 'next-auth/react'
 import { useRouter }                                   from 'next/navigation'
@@ -160,12 +162,12 @@ function formToPayload(f: FormState) {
 // ── Subcomponentes ────────────────────────────────────────────────────────────
 
 function Toggle({
-  checked, onChange, label, desc,
-}: { checked: boolean; onChange: (v: boolean) => void; label: string; desc?: string }) {
+  checked, onChange, label, desc, hint,
+}: { checked: boolean; onChange: (v: boolean) => void; label: string; desc?: string; hint?: string }) {
   return (
     <label className="flex items-center justify-between gap-3 cursor-pointer select-none py-1">
       <div>
-        <p className="text-sm font-medium text-gray-800">{label}</p>
+        <p className="flex items-center gap-1 text-sm font-medium text-gray-800">{label}{hint && <HelpHint text={hint} />}</p>
         {desc && <p className="text-xs text-gray-400">{desc}</p>}
       </div>
       <button
@@ -186,11 +188,11 @@ function Toggle({
 }
 
 function InputNum({
-  label, value, onChange, min = 0, suffix,
-}: { label: string; value: string; onChange: (v: string) => void; min?: number; suffix?: string }) {
+  label, value, onChange, min = 0, suffix, hint,
+}: { label: string; value: string; onChange: (v: string) => void; min?: number; suffix?: string; hint?: string }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+      <label className="block text-xs font-medium text-gray-600 mb-1">{label}{hint && <HelpHint className="ml-1" text={hint} />}</label>
       <div className="relative">
         <input
           type="number"
@@ -380,7 +382,7 @@ export default function MasterPlansPage() {
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Globe size={22} className="text-brand-700" />
-          <h1 className="text-xl font-bold text-gray-900">Planos da Plataforma</h1>
+          <h1 className="text-xl font-bold text-gray-900">Planos da Plataforma<HelpHint className="ml-1" {...opsHint('PLANO')} /></h1>
         </div>
         <button
           onClick={openNew}
@@ -674,6 +676,7 @@ export default function MasterPlansPage() {
                       />
                       <InputNum
                         label="Ordem de exibição"
+                        hint="Posição do plano na lista e na página de planos. Números menores aparecem primeiro."
                         value={form.sortOrder}
                         onChange={v => set('sortOrder', v)}
                         min={0}
@@ -710,6 +713,7 @@ export default function MasterPlansPage() {
                     </div>
                     <InputNum
                       label="Dias de trial"
+                      hint="Dias de uso grátis para a loja testar antes da primeira cobrança."
                       value={form.trialDays}
                       onChange={v => set('trialDays', v)}
                       suffix="dias"
@@ -726,8 +730,8 @@ export default function MasterPlansPage() {
                     <InputNum label="Usuários"    value={form.maxUsers}        onChange={v => set('maxUsers', v)}        min={1} />
                     <InputNum label="Veículos"    value={form.maxVehicles}     onChange={v => set('maxVehicles', v)}     min={1} />
                     <InputNum label="Unidades"    value={form.maxUnits}        onChange={v => set('maxUnits', v)}        min={1} />
-                    <InputNum label="Storage (MB)"value={form.maxStorageMb}    onChange={v => set('maxStorageMb', v)}    min={1} suffix="MB" />
-                    <InputNum label="WhatsApp/mês"value={form.whatsappMonthly} onChange={v => set('whatsappMonthly', v)} min={0} />
+                    <InputNum label="Storage (MB)" hint="Espaço total para arquivos da loja (fotos, documentos, anexos). 1024 MB = 1 GB." value={form.maxStorageMb}    onChange={v => set('maxStorageMb', v)}    min={1} suffix="MB" />
+                    <InputNum label="WhatsApp/mês" hint="Quantidade máxima de mensagens de WhatsApp que a loja pode enviar pelo sistema por mês. 0 = sem envio." value={form.whatsappMonthly} onChange={v => set('whatsappMonthly', v)} min={0} />
                     <InputNum label="E-mails/mês" value={form.emailMonthly}    onChange={v => set('emailMonthly', v)}    min={0} />
                   </div>
                 </section>
@@ -752,16 +756,19 @@ export default function MasterPlansPage() {
                       checked={form.allowApiAccess}
                       onChange={v => set('allowApiAccess', v)}
                       label="Acesso à API"
+                      hint="Permite que a loja conecte sistemas próprios ao AutoDrive por API (troca automática de dados)."
                     />
                     <Toggle
                       checked={form.allowWhiteLabel}
                       onChange={v => set('allowWhiteLabel', v)}
                       label="White Label"
+                      hint="A loja pode usar a própria marca (logo, cores e nome) no lugar da marca AutoDrive."
                     />
                     <Toggle
                       checked={form.allowCustomDomain}
                       onChange={v => set('allowCustomDomain', v)}
                       label="Domínio personalizado"
+                      hint="Permite usar um endereço próprio (ex.: www.sualoja.com.br) para o site da loja."
                     />
                   </div>
                 </section>
@@ -769,7 +776,7 @@ export default function MasterPlansPage() {
                 {/* ── Módulos do menu ───────────────────────────────────────── */}
                 <section className="border-t border-gray-100 pt-5">
                   <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">
-                    <LayoutGrid size={12} /> Módulos visíveis no menu <RequiredMark />
+                    <LayoutGrid size={12} /> Módulos visíveis no menu <HelpHint className="ml-1" {...opsHint('MODULO')} /> <RequiredMark />
                   </h3>
 
                   <div className="space-y-4">

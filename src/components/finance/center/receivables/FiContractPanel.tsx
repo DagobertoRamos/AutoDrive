@@ -11,6 +11,8 @@
 import { useState, type ReactNode } from 'react'
 import { Calculator, Loader2, Plus, Save, Trash2 } from 'lucide-react'
 import { MoneyInput } from '@/components/ui/money-input'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
+import type { GlossaryTerm } from '@/lib/glossary'
 import { RequiredMark } from '@/components/ui/field'
 import { computeFiNet, summarizeFiContract, FI_ADDON_KINDS, FI_ADDON_KIND_LABEL, FI_MAX_ADDONS, normalizeAddOnKind, type FiAddOn, type FiAddOnKind } from '@/lib/finance/fi-receipt-core'
 
@@ -102,8 +104,11 @@ export default function FiContractPanel({ paymentId, financed, bank, installment
   }
 
   const listId = `fi-products-${paymentId}`
-  const field = (label: string, node: ReactNode) => (
-    <label className="block text-xs text-gray-600">{label}<div className="mt-0.5">{node}</div></label>
+  const field = (label: string, node: ReactNode, term?: GlossaryTerm, text?: string) => (
+    <label className="block text-xs text-gray-600">
+      {term || text ? <span className="inline-flex items-center gap-1">{label}<HelpHint term={term} text={text} size={12} /></span> : label}
+      <div className="mt-0.5">{node}</div>
+    </label>
   )
 
   return (
@@ -116,13 +121,13 @@ export default function FiContractPanel({ paymentId, financed, bank, installment
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {field('Retorno %', <input value={pctText} disabled={!canEdit} inputMode="decimal" onChange={(e) => setPctText(e.target.value.replace(/[^\d,.]/g, ''))} className={inputCls} />)}
-        {field('Retorno bruto', <MoneyInput value={gross} onChange={setGross} disabled={!canEdit} className={inputCls} />)}
-        {field('ILA', <MoneyInput value={ila} onChange={setIla} disabled={!canEdit} className={inputCls} />)}
-        {field('IOF', <MoneyInput value={iof} onChange={setIof} disabled={!canEdit} className={inputCls} />)}
-        {field('IRRF', <MoneyInput value={irrf} onChange={setIrrf} disabled={!canEdit} className={inputCls} />)}
-        {field('Retorno líquido', <input value={net == null ? '—' : brl(net)} disabled className={`${inputCls} font-semibold`} />)}
-        {field('PLUS', <MoneyInput value={plus} onChange={setPlus} disabled={!canEdit} className={inputCls} />)}
+        {field('Retorno %', <input value={pctText} disabled={!canEdit} inputMode="decimal" onChange={(e) => setPctText(e.target.value.replace(/[^\d,.]/g, ''))} className={inputCls} />, 'RETORNO')}
+        {field('Retorno bruto', <MoneyInput value={gross} onChange={setGross} disabled={!canEdit} className={inputCls} />, 'RETORNO_BRUTO')}
+        {field('ILA', <MoneyInput value={ila} onChange={setIla} disabled={!canEdit} className={inputCls} />, 'ILA')}
+        {field('IOF', <MoneyInput value={iof} onChange={setIof} disabled={!canEdit} className={inputCls} />, 'IOF')}
+        {field('IRRF', <MoneyInput value={irrf} onChange={setIrrf} disabled={!canEdit} className={inputCls} />, 'IRRF')}
+        {field('Retorno líquido', <input value={net == null ? '—' : brl(net)} disabled className={`${inputCls} font-semibold`} />, 'RETORNO_LIQUIDO')}
+        {field('PLUS', <MoneyInput value={plus} onChange={setPlus} disabled={!canEdit} className={inputCls} />, 'PLUS')}
         {canEdit && (
           <div className="flex items-end">
             <button type="button" onClick={() => void calc()} disabled={busy !== null} className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-brand-300 bg-white px-2 py-2 font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50">
@@ -133,7 +138,7 @@ export default function FiContractPanel({ paymentId, financed, bank, installment
       </div>
 
       <div>
-        <p className="mb-1 font-semibold text-gray-700">Agregados</p>
+        <p className="mb-1 flex items-center gap-1 font-semibold text-gray-700">Agregados<HelpHint term="AGREGADOS" size={12} /></p>
         {addOns.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left">
@@ -142,8 +147,8 @@ export default function FiContractPanel({ paymentId, financed, bank, installment
                   <th className="pb-1 pr-2 font-medium">Nome<RequiredMark className="ml-0.5" /></th>
                   <th className="pb-1 pr-2 font-medium">Tipo</th>
                   <th className="pb-1 pr-2 font-medium">Valor<RequiredMark className="ml-0.5" /></th>
-                  <th className="pb-1 pr-2 font-medium">Beneficiário</th>
-                  <th className="pb-1 pr-2 font-medium">Receita da loja</th>
+                  <th className="pb-1 pr-2 font-medium"><WithHint text="Quem recebe o valor do agregado: a própria loja ou um terceiro (seguradora, empresa de garantia…), pago direto pelo banco.">Beneficiário</WithHint></th>
+                  <th className="pb-1 pr-2 font-medium"><WithHint text="Quanto a loja ganha com este agregado (comissão ou o valor inteiro, se o beneficiário for a loja).">Receita da loja</WithHint></th>
                   {canEdit && <th className="w-8" />}
                 </tr>
               </thead>
@@ -186,8 +191,8 @@ export default function FiContractPanel({ paymentId, financed, bank, installment
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-2">
         <div className="flex flex-wrap gap-4">
-          <p className="text-gray-600">Valor a receber do banco <span className="ml-1 text-sm font-semibold text-gray-900">{brl(summary.bankReceivable)}</span></p>
-          <p className="text-gray-600">Receitas da loja neste contrato <span className="ml-1 text-sm font-semibold text-green-700">{brl(summary.storeIncome)}</span></p>
+          <p className="inline-flex items-center gap-1 text-gray-600"><WithHint term="VALOR_A_RECEBER_BANCO">Valor a receber do banco</WithHint> <span className="ml-1 text-sm font-semibold text-gray-900">{brl(summary.bankReceivable)}</span></p>
+          <p className="inline-flex items-center gap-1 text-gray-600"><WithHint text="Retorno líquido + PLUS + receitas da loja com os agregados deste contrato.">Receitas da loja neste contrato</WithHint> <span className="ml-1 text-sm font-semibold text-green-700">{brl(summary.storeIncome)}</span></p>
         </div>
         {canEdit && (
           <button type="button" onClick={() => void save()} disabled={busy !== null || incomplete} className="inline-flex items-center gap-1 rounded-md bg-brand-700 px-3 py-2 font-semibold text-white hover:bg-brand-800 disabled:opacity-50">

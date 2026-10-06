@@ -11,6 +11,7 @@ import { useSession } from 'next-auth/react'
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Plus, RefreshCw, RotateCcw, Settings, Shield, ShieldCheck, Star, TrendingDown, User, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
 import Link from 'next/link'
 
 // ── Constantes de tipos disponíveis para o formulário de aplicação manual ──
@@ -126,14 +127,14 @@ function OverviewTab() {
       {/* Cards de resumo */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label:'Vendedores monitorados', value: sellers.length,           cls:'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-800 dark:bg-brand-950/30 dark:text-brand-300' },
-          { label:'Com restrições ativas',  value: withRestrictions.length,  cls:'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300' },
-          { label:'Score médio',            value: avgScore,                 cls:'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300' },
-          { label:'Eventos no período',     value: totalEvents,              cls:'border-gray-200 bg-white text-gray-700 dark:border-white/10 dark:bg-slate-800 dark:text-gray-300' },
+          { label:'Vendedores monitorados', value: sellers.length, hint: '', cls:'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-800 dark:bg-brand-950/30 dark:text-brand-300' },
+          { label:'Com restrições ativas',  value: withRestrictions.length, hint: 'Restrições aplicadas porque o score passou de um limiar: aviso, bloqueio de criar pendências, de receber leads, de abrir negociações ou retirada da fila.', cls:'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300' },
+          { label:'Score médio',            value: avgScore, hint: 'Pontuação de qualidade do vendedor no período: começa em zero e cai a cada falha registrada (pendência vencida, lead sem resposta, atendimento não finalizado). Quanto mais negativo, mais restrições.', cls:'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300' },
+          { label:'Eventos no período',     value: totalEvents, hint: 'Ocorrências que descontaram pontos do score (automáticas ou manuais) dentro da janela de análise.', cls:'border-gray-200 bg-white text-gray-700 dark:border-white/10 dark:bg-slate-800 dark:text-gray-300' },
         ].map(c => (
           <div key={c.label} className={cn('rounded-xl border p-4', c.cls)}>
             <p className="text-2xl font-black tabular-nums">{c.value}</p>
-            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider opacity-80">{c.label}</p>
+            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider opacity-80">{c.hint ? <WithHint text={c.hint}>{c.label}</WithHint> : c.label}</p>
           </div>
         ))}
       </div>
@@ -397,16 +398,16 @@ function MyScoreTab() {
               {score > 0 ? '+' : ''}{score}
             </p>
           </div>
-          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Score ({data.periodDays}d)</p>
+          <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Score ({data.periodDays}d) <HelpHint text="Pontuação de qualidade do vendedor no período: começa em zero e cai a cada falha registrada (pendência vencida, lead sem resposta, atendimento não finalizado). Quanto mais negativo, mais restrições." title="Score de qualidade" /></p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-800">
           <p className="text-3xl font-black text-gray-900 tabular-nums dark:text-white">{data.unresolvedPendencies.count}</p>
-          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Pendências abertas</p>
+          <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Pendências abertas <HelpHint text="Pendências suas ainda não resolvidas. Acima do limite configurado, você não consegue criar novas até resolver as atuais." /></p>
           {data.unresolvedPendencies.exceeded && <p className="mt-1 text-[10px] text-red-600">Limite de {data.unresolvedPendencies.max} atingido!</p>}
         </div>
         <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-800">
           <p className="text-3xl font-black text-gray-900 tabular-nums dark:text-white">{activeRestrictions.length}</p>
-          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Restrições ativas</p>
+          <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Restrições ativas <HelpHint text="Restrições aplicadas porque o score passou de um limiar: aviso, bloqueio de criar pendências, de receber leads, de abrir negociações ou retirada da fila." /></p>
         </div>
       </div>
 

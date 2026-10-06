@@ -34,6 +34,8 @@ import {
   Cpu,
   Lock,
 } from 'lucide-react'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 interface MasterDashboardData {
   platform: {
@@ -271,7 +273,7 @@ export function MasterDashboard({ firstName, greeting }: MasterDashboardProps) {
             <Building2 size={20} />
           </div>
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Tenants</h3>
+            <h3 className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-gray-400">Tenants <HelpHint {...opsHint('TENANT')} /></h3>
             <p className="text-xl font-black text-gray-950 mt-0.5">
               {data.tenants.summary.ativo} ativos
             </p>
@@ -460,6 +462,7 @@ export function MasterDashboard({ firstName, greeting }: MasterDashboardProps) {
             <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center gap-2">
               <Plug size={18} className="text-orange-500" />
               Plugins & Conexões Externas
+              <HelpHint {...opsHint('INTEGRACAO')} />
             </h2>
             <Link href="/master/integrations" className="text-xs text-brand-700 font-bold hover:underline flex items-center gap-1">
               Ver credenciais <ExternalLink size={10} />
@@ -499,6 +502,7 @@ export function MasterDashboard({ firstName, greeting }: MasterDashboardProps) {
           <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center gap-2">
             <Bell size={18} className="text-indigo-600" />
             Notificações & PWA
+            <HelpHint text="PWA é o sistema instalado como aplicativo pela tela inicial do celular ou computador. É o que permite receber notificações push mesmo com o navegador fechado." title="PWA" />
           </h2>
 
           <div className="space-y-3">

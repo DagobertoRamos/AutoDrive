@@ -10,6 +10,7 @@
 import { useMemo, useState } from 'react'
 import { CheckCircle2, Loader2, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 import { MoneyInput } from '@/components/ui/money-input'
 import { planSettlement } from '@/lib/finance/settlement-core'
 import { ErrorLine, Field, Modal, PAYMENT_METHODS, brl, dt, inputCls, postJson, todayYmd } from './ui'
@@ -127,7 +128,7 @@ export function SettleModal({ type, target, accounts, onClose, onDone }: {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Valor da baixa" required>
+          <Field label="Valor da baixa" required helpTerm="BAIXA_PARCIAL">
             {locked ? (
               <div className={cn(inputCls, 'flex items-center justify-between bg-gray-50 tabular-nums text-gray-700')} title={target.partialBlocked ?? 'Valor integral'}>
                 {brl(saldo)}<Lock size={13} className="text-gray-400" />
@@ -136,8 +137,8 @@ export function SettleModal({ type, target, accounts, onClose, onDone }: {
               <MoneyInput className={inputCls} value={principal} onChange={setPrincipal} />
             )}
           </Field>
-          <Field label="Juros / multa"><MoneyInput className={inputCls} value={interest} onChange={setInterest} disabled={target.linked} /></Field>
-          <Field label="Desconto"><MoneyInput className={inputCls} value={discount} onChange={setDiscount} disabled={target.linked} /></Field>
+          <Field label="Juros / multa" helpTerm="JUROS_MULTA"><MoneyInput className={inputCls} value={interest} onChange={setInterest} disabled={target.linked} /></Field>
+          <Field label="Desconto" helpTerm="DESCONTO"><MoneyInput className={inputCls} value={discount} onChange={setDiscount} disabled={target.linked} /></Field>
         </div>
         {locked && target.partialBlocked && <p className="text-[11px] text-gray-500">{target.partialBlocked}</p>}
 
@@ -157,7 +158,7 @@ export function SettleModal({ type, target, accounts, onClose, onDone }: {
             )}
             <label className="flex items-center gap-2">
               <input type="radio" name="remainder" checked={remainder === 'discount'} onChange={() => setRemainder('discount')} />
-              <span>Quitar o restante como desconto</span>
+              <span className="inline-flex items-center gap-1">Quitar o restante como desconto<HelpHint term="QUITAR_DESCONTO" size={12} /></span>
             </label>
           </div>
         )}

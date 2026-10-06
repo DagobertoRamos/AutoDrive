@@ -7,6 +7,7 @@
 // procurações. Usado pelo contrato, termos e procurações da negociação.
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useEffect, useState } from 'react'
 import { Loader2, Plus, Save, Trash2, Upload, UserRound } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -101,7 +102,7 @@ export default function DocumentosConfiguracoesPage() {
 
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold text-gray-900">Outorgados das procurações</h2>
+          <h2 className="flex items-center gap-1 font-semibold text-gray-900">Outorgados das procurações<HelpHint className="ml-1" title="Outorgado" text="Pessoas da loja que recebem os poderes nas procurações (o procurador), como sócio, gerente ou despachante. Os ativos aparecem automaticamente nas procurações geradas." /></h2>
           {canEdit && <button type="button" onClick={() => set('outorgados', [...s.outorgados, newOutorgado()])} className="btn-secondary px-3 py-1.5 text-xs"><Plus size={13} />Adicionar outorgado</button>}
         </div>
         {!s.outorgados.length && <p className="rounded-lg border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">Nenhum outorgado cadastrado: as procurações sairão com o procurador em branco.</p>}
@@ -136,10 +137,10 @@ export default function DocumentosConfiguracoesPage() {
 
       <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-5">
         <h2 className="font-semibold text-gray-900">Procurações</h2>
-        <label className="block max-w-xs text-xs font-medium text-gray-600">Validade da procuração do comprador (dias)
+        <label className="block max-w-xs text-xs font-medium text-gray-600">Validade da procuração do comprador (dias)<HelpHint className="ml-1" title="Validade" text="Por quantos dias a procuração assinada pelo comprador vale, contados da data de emissão." />
           <input disabled={!canEdit} type="number" min={30} max={730} className={inputCls} value={s.validadeProcuracaoDias} onChange={(e) => set('validadeProcuracaoDias', Number(e.target.value) || 180)} />
         </label>
-        <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" disabled={!canEdit} checked={s.exigirFirmaReconhecida} onChange={(e) => set('exigirFirmaReconhecida', e.target.checked)} />Incluir o aviso de reconhecimento de firma (exigido pelo DETRAN para procuração particular)</label>
+        <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" disabled={!canEdit} checked={s.exigirFirmaReconhecida} onChange={(e) => set('exigirFirmaReconhecida', e.target.checked)} />Incluir o aviso de reconhecimento de firma (exigido pelo DETRAN para procuração particular)<HelpHint className="ml-1" title="Reconhecimento de firma" text="Reconhecer firma é o cartório confirmar que a assinatura é mesmo da pessoa. Marcado, a procuração sai com o aviso de que a firma deve ser reconhecida." /></label>
       </section>
 
       {canEdit && (

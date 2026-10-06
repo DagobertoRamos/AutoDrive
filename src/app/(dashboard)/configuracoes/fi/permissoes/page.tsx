@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { ShieldCheck, Save, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 
 const CONFIG_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO']
 const ROLES = [
@@ -98,7 +99,7 @@ export default function FiPermissionsPage() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Papel</th>
-                  {CAPS.map((c) => (<th key={c.key} className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500" title={c.hint}>{c.label}</th>))}
+                  {CAPS.map((c) => (<th key={c.key} className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500"><span className="inline-flex items-center gap-1">{c.label}<HelpHint text={c.hint} title={c.label} /></span></th>))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">

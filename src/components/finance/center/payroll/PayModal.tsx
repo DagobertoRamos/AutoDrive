@@ -6,6 +6,7 @@
 import { useMemo, useState } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { WithHint } from '@/components/ui/help-hint'
 import { FieldLabel } from '@/components/ui/field'
 import { Modal, Toggle, api, brl, dateBR, inputClass, todayYmd } from '../config/ui'
 import type { PayrollEmployee, PayrollMonthData } from './types'
@@ -127,7 +128,7 @@ export default function PayModal({ employee, month, accounts, onClose, onPaid }:
 
         {advances.length > 0 && (
           <div className="rounded-lg bg-amber-50 px-3 py-2.5">
-            <Toggle checked={discount} onChange={setDiscount} label={`Descontar adiantamentos no salário (${brl(advances.reduce((s, a) => s + a.amount, 0))})`} />
+            <Toggle checked={discount} onChange={setDiscount} label={`Descontar adiantamentos no salário (${brl(advances.reduce((s, a) => s + a.amount, 0))})`} helpText="Vales e adiantamentos já pagos ao colaborador que ainda não foram abatidos. Na hora de pagar, saem do salário (os mais antigos primeiro)." />
           </div>
         )}
 
@@ -137,7 +138,7 @@ export default function PayModal({ employee, month, accounts, onClose, onPaid }:
           <div className="flex justify-between"><span className="text-gray-600">Salário e benefícios</span><span className="tabular-nums">{brl(preview.entriesTotal)}</span></div>
           <div className="flex justify-between"><span className="text-gray-600">Comissões</span><span className="tabular-nums">{brl(preview.comTotal)}</span></div>
           {preview.disc > 0 && <div className="flex justify-between"><span className="text-gray-600">Adiantamentos descontados</span><span className="tabular-nums text-red-600">− {brl(preview.disc)}</span></div>}
-          <div className="flex justify-between border-t border-gray-200 pt-1 font-semibold"><span>Líquido a pagar</span><span className="tabular-nums">{brl(preview.net)}</span></div>
+          <div className="flex justify-between border-t border-gray-200 pt-1 font-semibold"><WithHint text="Salário + benefícios + comissões do mês, menos os adiantamentos descontados.">Líquido a pagar</WithHint><span className="tabular-nums">{brl(preview.net)}</span></div>
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>

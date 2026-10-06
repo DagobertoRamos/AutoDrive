@@ -16,6 +16,8 @@ import ClienteNaLojaPanel from '@/components/seller-queue/ClienteNaLojaPanel'
 import RequestAttendanceAuth from '@/components/seller-queue/RequestAttendanceAuth'
 import CustomerLookup, { type CustomerMatch } from '@/components/seller-queue/CustomerLookup'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 import { unlockAudio, ensureNotifyPermission, stopCriticalAlert, criticalAlert } from '@/lib/seller-queue/alert-client'
 
@@ -199,7 +201,7 @@ export default function MinhaVezPanel() {
       {/* Pós-vendas — pausado, pede para voltar à fila (autorização do gestor) */}
       {data?.myPosVenda && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
-          <p className="font-semibold text-amber-800">Você está em pós-vendas (pausado na fila)</p>
+          <p className="flex items-center gap-1 font-semibold text-amber-800">Você está em pós-vendas (pausado na fila) <HelpHint text="Durante o pós-venda você fica pausado e não recebe clientes da fila. Ao terminar, peça para voltar: você retorna na mesma posição." /></p>
           {data.myPosVenda.status === 'RETURN_REQUESTED' ? (
             <p className="mt-1 text-amber-700">Retorno solicitado — aguardando autorização do gestor.</p>
           ) : (
@@ -222,7 +224,7 @@ export default function MinhaVezPanel() {
       {/* Chamado — aceitar/recusar */}
       {att?.status === 'CALLED' && (
         <div className="rounded-2xl border-2 border-brand-400 bg-brand-50 p-5 text-center">
-          <p className="text-sm font-semibold uppercase tracking-wide text-brand-700">Você é o vendedor da vez</p>
+          <p className="flex items-center gap-1 text-sm font-semibold uppercase tracking-wide text-brand-700">Você é o vendedor da vez <HelpHint {...opsHint('TEMPO_ACEITE')} /></p>
           <p className="mt-1 text-gray-700">Cliente presencial aguardando{att.arrival?.customerName ? `: ${att.arrival.customerName}` : ''}.{att.arrival?.recurring ? ' (recorrente)' : ''}</p>
           {secsLeft != null && <p className="mt-2 inline-flex items-center gap-1 text-2xl font-bold tabular-nums text-brand-700"><Clock size={20} />{secsLeft}s</p>}
           <div className="mt-4 grid gap-2 sm:grid-cols-2">

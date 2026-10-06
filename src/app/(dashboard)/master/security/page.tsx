@@ -4,6 +4,8 @@
 // /master/security — Política de segurança global (MASTER only)
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect } from 'react'
 import { useSession }          from 'next-auth/react'
 import { useRouter }           from 'next/navigation'
@@ -137,7 +139,7 @@ export default function SecurityPage() {
               />
             </div>
             <div>
-              <label className={labelCls}>Expiração (dias, 0 = nunca)</label>
+              <label className={labelCls}>Expiração (dias, 0 = nunca)<HelpHint className="ml-1" title="Expiração da senha" text="Depois desse número de dias o usuário precisa trocar a senha. 0 desliga a troca obrigatória." /></label>
               <input type="number" min={0} max={365} className={inputCls}
                 value={policy.passwordExpiryDays ?? 0}
                 onChange={setNum('passwordExpiryDays')}
@@ -168,7 +170,7 @@ export default function SecurityPage() {
           <h2 className="flex items-center gap-2 font-semibold text-gray-800 text-sm"><Clock size={14} className="text-slate-600" />Sessão</h2>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Tempo logado / janela de inatividade (segundos)</label>
+              <label className={labelCls}>Tempo logado / janela de inatividade (segundos)<HelpHint className="ml-1" {...opsHint('SESSAO')} /></label>
               <input type="number" min={900} max={604800} className={inputCls}
                 value={policy.sessionMaxAgeSecs ?? 28800}
                 onChange={setNum('sessionMaxAgeSecs')}
@@ -178,14 +180,14 @@ export default function SecurityPage() {
               </p>
             </div>
             <div>
-              <label className={labelCls}>Timeout por inatividade (seg, 0 = sem timeout)</label>
+              <label className={labelCls}>Timeout por inatividade (seg, 0 = sem timeout)<HelpHint className="ml-1" title="Timeout por inatividade" text="Encerra a sessão quando a tela fica parada esse tempo, mesmo dentro da duração da sessão. 0 desliga. Cuidado com o painel da fila, que precisa ficar logado." /></label>
               <input type="number" min={0} max={86400} className={inputCls}
                 value={policy.inactivityTimeoutSecs ?? 0}
                 onChange={setNum('inactivityTimeoutSecs')}
               />
             </div>
             <div>
-              <label className={labelCls}>Máximo de sessões simultâneas</label>
+              <label className={labelCls}>Máximo de sessões simultâneas<HelpHint className="ml-1" title="Sessões simultâneas" text="Quantos aparelhos/navegadores o mesmo usuário pode manter logados ao mesmo tempo." /></label>
               <input type="number" min={1} max={50} className={inputCls}
                 value={policy.maxActiveSessions ?? 5}
                 onChange={setNum('maxActiveSessions')}
@@ -206,7 +208,7 @@ export default function SecurityPage() {
               />
             </div>
             <div>
-              <label className={labelCls}>Duração do bloqueio (minutos)</label>
+              <label className={labelCls}>Duração do bloqueio (minutos)<HelpHint className="ml-1" title="Bloqueio por tentativas" text="Depois de errar a senha o número máximo de vezes, o login do usuário fica travado por esse tempo." /></label>
               <input type="number" min={1} max={1440} className={inputCls}
                 value={policy.lockoutDurationMins ?? 15}
                 onChange={setNum('lockoutDurationMins')}
@@ -217,7 +219,7 @@ export default function SecurityPage() {
 
         {/* 2FA */}
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
-          <h2 className="flex items-center gap-2 font-semibold text-gray-800 text-sm"><Key size={14} className="text-slate-600" />Autenticação 2FA</h2>
+          <h2 className="flex items-center gap-2 font-semibold text-gray-800 text-sm"><Key size={14} className="text-slate-600" />Autenticação 2FA<HelpHint className="ml-1" title="2FA" text="Verificação em duas etapas: além da senha, o login pede um código temporário do aplicativo autenticador no celular." /></h2>
           <div className="space-y-3">
             <Toggle
               checked={policy.require2FAForMaster ?? true}
@@ -234,7 +236,7 @@ export default function SecurityPage() {
 
         {/* IP Allowlist */}
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
-          <h2 className="flex items-center gap-2 font-semibold text-gray-800 text-sm"><Globe size={14} className="text-slate-600" />IP Allowlist para MASTER</h2>
+          <h2 className="flex items-center gap-2 font-semibold text-gray-800 text-sm"><Globe size={14} className="text-slate-600" />IP Allowlist para MASTER<HelpHint className="ml-1" title="IP Allowlist" text="Lista de endereços de internet (IP) de onde o MASTER pode entrar. Aceita IP único ou faixa (ex.: 192.168.1.0/24). Vazio libera qualquer IP." /></h2>
           <div>
             <label className={labelCls}>IPs permitidos (um por linha, vazio = todos os IPs)</label>
             <textarea
@@ -251,7 +253,7 @@ export default function SecurityPage() {
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
           <h2 className="font-semibold text-gray-800 text-sm">Retenção de Dados</h2>
           <div className="max-w-[200px]">
-            <label className={labelCls}>Retenção de logs de auditoria (dias)</label>
+            <label className={labelCls}>Retenção de logs de auditoria (dias)<HelpHint className="ml-1" title="Retenção de logs" text="Por quantos dias o histórico de quem fez o quê no sistema é guardado. Registros mais antigos são apagados." /></label>
             <input type="number" min={30} max={3650} className={inputCls}
               value={policy.dataRetentionDays ?? 365}
               onChange={setNum('dataRetentionDays')}

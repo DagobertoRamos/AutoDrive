@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
 import Link from 'next/link'
 
 type TabId = 'overview' | 'occurrences' | 'penalties' | 'restrictions' | 'my'
@@ -130,14 +131,14 @@ function OverviewTab({ isManager, onComplianceStatus }: { isManager: boolean; on
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label:'Ocorrências pendentes', value: occ?.pending ?? 0, cls:'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300' },
-          { label:'Confirmadas no período', value: occ?.confirmed ?? 0, cls:'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300' },
-          { label:'Penalidades ativas', value: pen?.active ?? 0, cls:'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950/30 dark:text-orange-300' },
-          { label:'Pontos ativos (total)', value: pen?.totalActivePoints ?? 0, cls:'border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-800 dark:bg-purple-950/30 dark:text-purple-300' },
+          { label:'Ocorrências pendentes', value: occ?.pending ?? 0, hint: 'Suspeitas de irregularidade na fila (favorecimento, manipulação da vez, fraude) aguardando análise da gestão.', cls:'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300' },
+          { label:'Confirmadas no período', value: occ?.confirmed ?? 0, hint: 'Ocorrências que a gestão analisou e confirmou como irregularidade no período.', cls:'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300' },
+          { label:'Penalidades ativas', value: pen?.active ?? 0, hint: 'Penalidades em vigor, aplicadas por ocorrências confirmadas. Os pontos são descontados no ranking da fila.', cls:'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950/30 dark:text-orange-300' },
+          { label:'Pontos ativos (total)', value: pen?.totalActivePoints ?? 0, hint: 'Soma dos pontos de todas as penalidades em vigor.', cls:'border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-800 dark:bg-purple-950/30 dark:text-purple-300' },
         ].map(c => (
           <div key={c.label} className={cn('rounded-xl border p-4', c.cls)}>
             <p className="text-2xl font-black tabular-nums">{c.value}</p>
-            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider opacity-80">{c.label}</p>
+            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider opacity-80"><WithHint text={c.hint}>{c.label}</WithHint></p>
           </div>
         ))}
       </div>
@@ -496,7 +497,7 @@ function MyTab() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className={cn('rounded-xl border p-4', pts > 0 ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400' : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400')}>
           <p className="text-3xl font-black tabular-nums">{pts}</p>
-          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider">Pontos ativos</p>
+          <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider">Pontos ativos <HelpHint text="Soma dos pontos das suas penalidades em vigor, descontados no ranking da fila. Se discordar, você pode recorrer." /></p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-800">
           <p className="text-3xl font-black text-gray-900 tabular-nums dark:text-white">{data?.penalties?.filter(p => p.active).length ?? 0}</p>
@@ -504,7 +505,7 @@ function MyTab() {
         </div>
         <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-800">
           <p className="text-3xl font-black text-gray-900 tabular-nums dark:text-white">{data?.occurrences?.filter(o => o.status === 'OPEN').length ?? 0}</p>
-          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Ocorrências pendentes</p>
+          <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Ocorrências pendentes <HelpHint text="Suspeitas de irregularidade na fila (favorecimento, manipulação da vez, fraude) aguardando análise da gestão." /></p>
         </div>
       </div>
 

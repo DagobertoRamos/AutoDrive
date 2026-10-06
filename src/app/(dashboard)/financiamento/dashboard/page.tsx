@@ -10,6 +10,8 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { LayoutDashboard, RefreshCw, Filter, Landmark, FileText, Users, Calculator, Percent, FolderOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 
 interface Summary { total: number; simulacoes: number; enviadas: number; aprovadas: number; recusadas: number; taxaAprovacao: number; valorAprovado: number }
 interface Funnel { simulacoes: number; fichas: number; enviadas: number; aprovadas: number }
@@ -74,13 +76,13 @@ export default function FinancingDashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        {cards.map((c) => (<div key={c.label} className={cn('rounded-xl border p-4', c.cls)}><p className="text-xs font-medium uppercase tracking-wide opacity-80">{c.label}</p><p className="mt-1 text-xl font-bold tabular-nums">{loading ? '—' : c.value}</p></div>))}
+        {cards.map((c) => (<div key={c.label} className={cn('rounded-xl border p-4', c.cls)}><p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide opacity-80">{c.label}{c.label === 'Taxa de aprovação' && <HelpHint {...DEAL_HINTS.TAXA_APROVACAO} />}</p><p className="mt-1 text-xl font-bold tabular-nums">{loading ? '—' : c.value}</p></div>))}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Funil */}
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-800"><Filter size={15} className="text-brand-600" />Funil</div>
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-800"><Filter size={15} className="text-brand-600" />Funil<HelpHint {...DEAL_HINTS.FUNIL_FI} /></div>
           {funnel ? (
             <div className="space-y-2">{STAGES.map((st) => { const v = funnel[st.key]; return (
               <div key={st.key} className="flex items-center gap-3">

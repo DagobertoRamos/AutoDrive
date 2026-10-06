@@ -12,6 +12,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Plus, Pencil, Trash2, X, Save, KeyRound, Lock, ShieldAlert, Plug } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { RequiredMark } from '@/components/ui/field'
 
 const CONFIG_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO']
@@ -184,7 +186,7 @@ export default function FiCredentialsPage() {
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editingId ? 'Editar credencial' : 'Nova credencial'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Banco <RequiredMark /></label><select className={inputCls} value={form.bankId} onChange={(e) => set('bankId', e.target.value)}><option value="">Selecione...</option>{banks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}{editingId && form.bankId && !banks.some((b) => b.id === form.bankId) && <option value={form.bankId}>Banco atual</option>}</select></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Ambiente</label><select className={inputCls} value={form.environment} onChange={(e) => set('environment', e.target.value as Env)}><option value="HOMOLOGACAO">Homologação</option><option value="PRODUCAO">Produção</option></select></div>
+              <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Ambiente<HelpHint {...DEAL_HINTS.AMBIENTE_BANCO} size={12} /></label><select className={inputCls} value={form.environment} onChange={(e) => set('environment', e.target.value as Env)}><option value="HOMOLOGACAO">Homologação</option><option value="PRODUCAO">Produção</option></select></div>
               <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Identificação</label><input className={inputCls} value={form.label} onChange={(e) => set('label', e.target.value)} placeholder="Ex.: Conta principal" /></div>
 
               <div className="col-span-2 mt-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400"><span>Segredos</span><span className="h-px flex-1 bg-gray-100" /></div>

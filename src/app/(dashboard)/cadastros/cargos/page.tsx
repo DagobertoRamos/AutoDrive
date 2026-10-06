@@ -4,6 +4,8 @@
 // Cadastro de Cargos — EasyCar
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -163,7 +165,7 @@ function Modal({
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Perfil de acesso<RequiredMark className="ml-0.5" /></label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Perfil de acesso<HelpHint className="ml-1" {...opsHint('NIVEL_ACESSO')} /><RequiredMark className="ml-0.5" /></label>
               <select
                 className={inputClass()}
                 value={form.baseRole}
@@ -177,7 +179,7 @@ function Modal({
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Ordem</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Ordem<HelpHint className="ml-1" title="Ordem" text="Posição do cargo nas listas. Números menores aparecem primeiro." /></label>
               <input
                 type="number"
                 min={0}

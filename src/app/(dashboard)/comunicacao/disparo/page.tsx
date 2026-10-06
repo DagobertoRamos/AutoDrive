@@ -5,6 +5,7 @@
 // Busca clientes/pendências e envia mensagem avulsa via WhatsApp
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useState, useCallback } from 'react'
 import {
   Search, Send, Phone, User, Car, MessageSquare,
@@ -211,7 +212,7 @@ export default function DisparoManualPage() {
 
             {/* Mensagem customizada */}
             <div>
-              <label className="label">Mensagem personalizada</label>
+              <label className="label">Mensagem personalizada<HelpHint className="ml-1" title="Mensagem personalizada" text="Texto livre para este envio. Em branco, o sistema usa o template padrão da pendência." /></label>
               <textarea
                 value={customMsg}
                 onChange={(e) => setCustomMsg(e.target.value)}

@@ -6,6 +6,8 @@
 // Desligar esconde do menu E bloqueia a API (requireModule). Default = ligado.
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Package, RefreshCw, Lock } from 'lucide-react'
@@ -69,7 +71,7 @@ export default function MasterModulesPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Package size={20} className="text-brand-600" />Funcionalidades por Loja</h1>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Package size={20} className="text-brand-600" />Funcionalidades por Loja<HelpHint className="ml-1" {...opsHint('MODULO')} /></h1>
         </div>
         <div className="flex items-center gap-2">
           <select value={sel} onChange={(e) => setSel(e.target.value)} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">

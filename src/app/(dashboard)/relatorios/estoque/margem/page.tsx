@@ -5,6 +5,7 @@
 // Margem = venda − compra. Consome /api/reports/stock/margin.
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useState, useEffect, useCallback } from 'react'
 import { Car, RefreshCw, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -47,7 +48,7 @@ export default function MargemPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Margem por Veículo</h1>
+          <h1 className="flex items-center gap-1 text-xl font-bold text-gray-900">Margem por Veículo<HelpHint className="ml-1" title="Margem por veículo" text="Diferença entre o valor de venda e o custo de cada carro vendido, em reais e em % sobre o valor de compra." /></h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${summary?.count ?? 0} veículos em estoque com preços`}</p>
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>

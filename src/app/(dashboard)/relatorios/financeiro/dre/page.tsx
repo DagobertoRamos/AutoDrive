@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint, WithHint } from '@/components/ui/help-hint'
 import PeriodFilter from '@/components/reports/PeriodFilter'
 
 interface CatRow { categoria: string; total: number }
@@ -59,8 +60,8 @@ export default function DreReportPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">DRE — Demonstrativo de Resultado</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : 'Por categoria (competência)'}</p>
+          <h1 className="flex items-center gap-1.5 text-xl font-bold text-gray-900">DRE — Demonstrativo de Resultado<HelpHint term="DRE" size={15} /></h1>
+          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : <WithHint term="COMPETENCIA">Por categoria (competência)</WithHint>}</p>
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
@@ -73,7 +74,7 @@ export default function DreReportPage() {
       </div>
 
       <div className={cn('rounded-xl border p-5 text-center', resultado >= 0 ? 'border-brand-200 bg-brand-50' : 'border-orange-200 bg-orange-50')}>
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-600">Resultado do período</p>
+        <p className="flex items-center justify-center gap-1 text-xs font-medium uppercase tracking-wide text-gray-600">Resultado do período<HelpHint term="RESULTADO_LIQUIDO" size={12} /></p>
         <p className={cn('mt-1 text-3xl font-bold tabular-nums', resultado >= 0 ? 'text-brand-800' : 'text-orange-700')}>{loading ? '—' : fmt(resultado)}</p>
       </div>
     </div>

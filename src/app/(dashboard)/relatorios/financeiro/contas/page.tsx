@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Landmark, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { WithHint } from '@/components/ui/help-hint'
 
 interface Row { id: string; name: string; type: string; openingBalance: number; recebido: number; pago: number; saldo: number; active: boolean }
 const fmt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -42,7 +43,7 @@ export default function ContasReportPage() {
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50"><tr>{['Conta', 'Tipo', 'Saldo inicial', 'Recebido', 'Pago', 'Saldo atual'].map((h) => (<th key={h} className={cn('whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500', h === 'Conta' || h === 'Tipo' ? 'text-left' : 'text-right')}>{h}</th>))}</tr></thead>
+            <thead className="bg-gray-50"><tr>{['Conta', 'Tipo', 'Saldo inicial', 'Recebido', 'Pago', 'Saldo atual'].map((h) => (<th key={h} className={cn('whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500', h === 'Conta' || h === 'Tipo' ? 'text-left' : 'text-right')}>{h === 'Saldo inicial' ? <WithHint term="SALDO_INICIAL">{h}</WithHint> : h}</th>))}</tr></thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 Array.from({ length: 4 }).map((_, i) => (<tr key={i}>{Array.from({ length: 6 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))

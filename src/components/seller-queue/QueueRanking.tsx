@@ -9,6 +9,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Trophy, RefreshCw, Medal, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { WithHint } from '@/components/ui/help-hint'
+
+const RANK_HINTS: Record<string, string> = {
+  Qualidade: '% dos atendimentos finalizados com o cadastro do cliente completo.',
+  'Reversões': 'Atendimentos cancelados ou recusados depois de chamados. Cada um tira pontos.',
+  'Pós-vendas': 'Atendimentos do tipo pós-venda (cliente que já comprou voltando à loja).',
+  'Conversões': 'Atendimentos que viraram venda no período.',
+  Pontos: 'Pontuação do ranking: atendimentos finalizados + conversões + pós-vendas + bônus de cadastro completo, menos reversões e chamadas perdidas por tempo.',
+}
 
 interface Row {
   sellerId: string; sellerName: string; finished: number; called: number; reversoes: number;
@@ -114,7 +123,7 @@ export default function QueueRanking() {
           {/* Desktop: full table (md+) */}
           <div className="hidden overflow-x-auto border-t border-gray-100 md:block">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50"><tr>{['#', 'Vendedor', 'Atend.', 'Qualidade', 'Reversões', 'Pós-vendas', 'Conversões', 'Pontos'].map((h) => (<th key={h} className="whitespace-nowrap px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+              <thead className="bg-gray-50"><tr>{['#', 'Vendedor', 'Atend.', 'Qualidade', 'Reversões', 'Pós-vendas', 'Conversões', 'Pontos'].map((h) => (<th key={h} className="whitespace-nowrap px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">{RANK_HINTS[h] ? <WithHint text={RANK_HINTS[h]}>{h}</WithHint> : h}</th>))}</tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map((r, i) => (
                   <tr key={r.sellerId} className={cn('qr-rise hover:bg-gray-50', i === 0 && 'bg-amber-50/40')} style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>

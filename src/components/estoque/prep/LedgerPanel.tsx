@@ -17,6 +17,18 @@ import { EXPENSE_CATEGORIES, parseMoneyInput, REVENUE_CATEGORIES } from '@/lib/s
 import { VehicleFilesField, type VFile } from './VehicleFilesField'
 import { EntryDrawer } from '@/components/finance/EntryDrawer'
 import { RequiredMark } from '@/components/ui/field'
+import { WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
+import type { GlossaryTerm } from '@/lib/glossary'
+
+/** "?" dos cards de resultado do veículo (por rótulo). */
+const KPI_HINT: Record<string, { term?: GlossaryTerm; text?: string }> = {
+  Repasse: { text: 'Carro consignado: valor combinado a pagar ao dono depois da venda, no lugar do preço de compra.' },
+  'Preparação e custos': { text: opsText('PREPARACAO') },
+  Lucro: { term: 'LUCRO_VEICULO' },
+  Margem: { term: 'MARGEM' },
+  'A pagar': { text: 'Lançamentos deste carro que ainda não foram pagos (custos previstos).' },
+}
 
 interface Line {
   id: string; origin: 'ENTRY' | 'SALE' | 'COMMISSION' | 'TRADE'; entryId: string | null; type: 'RECEITA' | 'DESPESA'; category: string; categoryLabel: string
@@ -86,7 +98,7 @@ export function LedgerPanel({ vehicleId }: { vehicleId: string }) {
           ['A pagar', brl(r.toPay), r.toPay > 0 ? 'text-amber-700' : ''],
         ] as Array<[string, string, string]>).map(([l, v, c]) => (
           <div key={l} className="rounded-lg border border-gray-200 bg-white px-2.5 py-2">
-            <p className="text-[10px] uppercase tracking-wide text-gray-500">{l}</p>
+            <p className="text-[10px] uppercase tracking-wide text-gray-500">{KPI_HINT[l] ? <WithHint {...KPI_HINT[l]}>{l}</WithHint> : l}</p>
             <p className={cn('text-sm font-bold tabular-nums text-gray-900', c)}>{v}</p>
           </div>
         ))}
@@ -221,7 +233,7 @@ function NewEntryModal({ vehicleId, accounts, onClose, onSaved }: { vehicleId: s
 function DocCard({ doc }: { doc: DocSummary }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-3">
-      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500"><FileText size={13} />Documentação / despachante</div>
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500"><FileText size={13} /><WithHint term="DOCUMENTACAO_COBRADA">Documentação / despachante</WithHint></div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         {([
           ['Cobrado do cliente', brl(doc.charged), ''],

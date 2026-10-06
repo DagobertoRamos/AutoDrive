@@ -5,6 +5,7 @@
 import { useState } from 'react'
 import { ArrowRightLeft, Loader2 } from 'lucide-react'
 import { MoneyInput } from '@/components/ui/money-input'
+import { WithHint } from '@/components/ui/help-hint'
 import { ErrorLine, Field, Modal, inputCls, postJson, todayYmd } from './ui'
 import type { RefAccount } from './useFinanceRefs'
 
@@ -29,7 +30,7 @@ export function TransferModal({ accounts, onClose, onDone }: { accounts: RefAcco
   }
 
   return (
-    <Modal title="Transferência entre contas" onClose={onClose} footer={
+    <Modal title={<WithHint term="TRANSFERENCIA">Transferência entre contas</WithHint>} onClose={onClose} footer={
       <>
         <button type="button" onClick={onClose} className="btn-secondary text-sm">Cancelar</button>
         <button type="button" onClick={() => void submit()} disabled={busy} className="btn-primary text-sm">{busy ? <Loader2 size={15} className="animate-spin" /> : <ArrowRightLeft size={15} />}Transferir</button>

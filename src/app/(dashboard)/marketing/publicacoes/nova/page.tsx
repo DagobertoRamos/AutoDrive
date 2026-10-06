@@ -27,6 +27,7 @@ import { utcToLocalInput } from '@/lib/publications/schedule-core'
 import { DEFAULT_POSTING, KIND_LABEL, kindOf, type PostingRules } from '@/lib/publications/social/cadence-core'
 import { VehiclePhotosManager, type VehiclePhotoItem } from '@/components/estoque/VehiclePhotosManager'
 import { isSocialChannel } from '@/lib/publications/channels'
+import { HelpHint } from '@/components/ui/help-hint'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 interface Veh { id: string; title: string; plate: string | null; year: number | null; modelYear: number | null; km: number | null; cover: string | null; photos: number; price: number | null; publishable: boolean; preparable?: boolean; stockStatus: string | null; photosStatus: string; mediaApproved: boolean; mediaPending: boolean; channels: Array<{ channel: string; status: string }>; unit: string | null }
@@ -351,7 +352,7 @@ function StepContent({ vehicleId }: { vehicleId: string }) {
           <textarea rows={8} className={inputCls} value={c.description} placeholder={data.suggestions.description} onChange={(e) => set({ description: e.target.value })} />
           <span className="text-[11px] text-gray-400">Vazio = texto gerado só com a ficha do estoque. Não inclua opcionais, garantia ou financiamento que não existam.</span>
         </label>
-        <label className="block text-xs font-medium text-gray-600">Condições comerciais<textarea rows={3} className={inputCls} value={c.conditions} placeholder="Vazio = condições padrão da loja (configuradas em Canais conectados)." onChange={(e) => set({ conditions: e.target.value })} maxLength={1000} /></label>
+        <label className="block text-xs font-medium text-gray-600">Condições comerciais <HelpHint title="Condições comerciais" text="Formas de pagamento e vantagens mostradas no anúncio (à vista, financiamento, troca, garantia). Vazio = usa as condições padrão da loja." /><textarea rows={3} className={inputCls} value={c.conditions} placeholder="Vazio = condições padrão da loja (configuradas em Canais conectados)." onChange={(e) => set({ conditions: e.target.value })} maxLength={1000} /></label>
         <label className="block text-xs font-medium text-gray-600">Vídeo do carro (link)
           <input className={inputCls} value={c.videoUrl} placeholder="https://youtu.be/… ou link do Google Drive / Dropbox / .mp4" onChange={(e) => set({ videoUrl: e.target.value })} />
           <VideoLinkHint url={c.videoUrl} />
@@ -379,7 +380,7 @@ function StepChannels({ conns, channels, targets, setTargets, campaign, setCampa
   const toggle = (id: string) => { const n = new Set(targets); if (n.has(id)) n.delete(id); else n.add(id); setTargets(n) }
   return (
     <section className="space-y-3">
-      <p className="text-sm text-gray-600">Escolha os destinos. Só aparecem contas conectadas da sua loja.</p>
+      <p className="flex items-center gap-1 text-sm text-gray-600">Escolha os destinos. Só aparecem contas conectadas da sua loja. <HelpHint title="Destinos" text="Site da loja, portais (OLX, Webmotors, Mercado Livre…) e redes sociais conectados em Canais. 'Aguardando homologação' = integração pronta, mas o portal ainda não liberou o acesso." /></p>
       <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {usable.map((c) => {
           const ch = channels[c.channel]

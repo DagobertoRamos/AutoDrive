@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { ClipboardCheck, Plus, RefreshCw } from 'lucide-react'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 interface Props {
   total?:        number
@@ -18,7 +20,7 @@ export function EvaluationHeader({ total, loading, onRefresh, newHref = '/estoqu
           <ClipboardCheck size={20} />
         </div>
         <div className="min-w-0">
-          <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Avaliações</h1>
+          <h1 className="inline-flex items-center gap-1.5 text-xl font-bold text-gray-900 sm:text-2xl">Avaliações <HelpHint {...opsHint('AVALIACAO')} size={15} /></h1>
           {typeof total === 'number' && !loading && (
             <p className="text-sm text-gray-500">
               {total} {total === 1 ? 'avaliação' : 'avaliações'} no período

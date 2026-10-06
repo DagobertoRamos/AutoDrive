@@ -8,6 +8,8 @@
 import { useState } from 'react'
 import { Calculator, Loader2, CheckCircle2, AlertCircle, DollarSign } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { RequiredMark } from '@/components/ui/field'
 
 interface CalcResult {
@@ -148,7 +150,7 @@ export default function CalculoComissoesPage() {
               <thead className="bg-gray-50">
                 <tr>
                   {['Vendedor','Valor Base','Ajustes','Total Final'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500"><span className="inline-flex items-center gap-1">{h}{h === 'Valor Base' && <HelpHint {...DEAL_HINTS.VALOR_BASE} />}{h === 'Ajustes' && <HelpHint {...DEAL_HINTS.AJUSTES} />}</span></th>
                   ))}
                 </tr>
               </thead>

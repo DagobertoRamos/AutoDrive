@@ -29,6 +29,8 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 import { canAccessModule } from '@/lib/permissions'
 import AlertSetup from '@/components/seller-queue/AlertSetup'
 import EscalationConfigCard from '@/components/seller-queue/EscalationConfigCard'
@@ -422,10 +424,12 @@ function SettingRow({
   scope,
   control,
   children,
+  hint,
 }: {
   icon?: ReactNode
   title: string
   description: string
+  hint?: ReactNode
   status?: string
   statusTone?: StatusTone
   scope?: string
@@ -438,7 +442,7 @@ function SettingRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             {icon && <span className="text-gray-400">{icon}</span>}
-            <p className="text-sm font-semibold text-gray-900">{title}</p>
+            <p className="inline-flex items-center gap-1 text-sm font-semibold text-gray-900">{title}{hint}</p>
             {scope && <ScopeBadge>{scope}</ScopeBadge>}
           </div>
           <p className="mt-1 max-w-2xl text-sm text-gray-500">{description}</p>
@@ -459,9 +463,11 @@ function SettingsSection({
   scope,
   children,
   action,
+  hint,
 }: {
   title: string
   description?: string
+  hint?: ReactNode
   scope?: string
   children: ReactNode
   action?: ReactNode
@@ -471,7 +477,7 @@ function SettingsSection({
       <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+            <h2 className="inline-flex items-center gap-1 text-base font-semibold text-gray-900">{title}{hint}</h2>
             {scope && <ScopeBadge>{scope}</ScopeBadge>}
           </div>
           {description && <p className="mt-1 max-w-3xl text-sm text-gray-500">{description}</p>}
@@ -1201,6 +1207,7 @@ export default function ConfiguracoesFilaPage() {
 
             <SettingRow
               title="Notificações do navegador"
+              hint={<HelpHint text="Mostra o aviso do sistema (notificação) mesmo com a aba minimizada ou o celular bloqueado. Cada aparelho precisa permitir as notificações." />}
               description="Alerta com a aba minimizada."
               status={cfg.alertBrowserPush ? 'Ativado' : 'Desativado'}
               statusTone={cfg.alertBrowserPush ? 'success' : 'neutral'}
@@ -1239,6 +1246,7 @@ export default function ConfiguracoesFilaPage() {
 
             <SettingRow
               title="WhatsApp da gestão"
+              hint={<HelpHint text="Avisa os gestores por WhatsApp quando a chamada expira sem aceite ou quando não há vendedor disponível. Nesse caso o gerente é acionado para atender, pois não entra no rodízio." />}
               description="Sem vendedor disponível ou chamada expirada."
               status={cfg.alertWhatsappManagers ? 'Ativado' : 'Desativado'}
               statusTone={cfg.alertWhatsappManagers ? 'success' : 'neutral'}
@@ -1273,6 +1281,7 @@ export default function ConfiguracoesFilaPage() {
           <SettingRow
             icon={<Palmtree size={16} />}
             title="Afastamento temporário da fila"
+            hint={<HelpHint text="Enquanto ativo, você fica fora do rodízio desta unidade e não recebe chamadas. Desative ao voltar para entrar na fila de novo." title="Modo férias" />}
             description={onVacation ? 'Você está fora da fila.' : 'Sai da fila e não recebe chamadas.'}
             status={onVacation ? 'Modo férias ativo' : 'Disponível'}
             statusTone={onVacation ? 'warning' : 'success'}
@@ -1317,6 +1326,7 @@ export default function ConfiguracoesFilaPage() {
               <SettingRow
                 icon={<Clock size={16} />}
                 title="Abrir e fechar a fila por horário"
+                hint={<HelpHint text="A fila abre e fecha sozinha nos horários e dias marcados. Fora desse horário ninguém é chamado." />}
                 description="Segue o horário da unidade."
                 status={cfg.autoSchedule ? 'Ativado' : 'Desativado'}
                 statusTone={cfg.autoSchedule ? 'success' : 'neutral'}
@@ -1373,6 +1383,7 @@ export default function ConfiguracoesFilaPage() {
 
               <SettingRow
                 title="Saída automática por pausa ou ausência"
+                hint={<HelpHint text="Quem ficar pausado ou ausente além do tempo máximo é retirado da fila e precisa entrar de novo. Use 0 para desligar." />}
                 description="Remove quem ficar pausado ou ausente por muito tempo."
                 status={cfg.maxPauseMinutes > 0 ? `${cfg.maxPauseMinutes} min` : 'Desativado'}
                 statusTone={cfg.maxPauseMinutes > 0 ? 'warning' : 'neutral'}
@@ -1408,6 +1419,7 @@ export default function ConfiguracoesFilaPage() {
           <SettingRow
             icon={<MapPin size={16} />}
             title="Exigir validação de presença nesta unidade"
+            hint={<HelpHint text="O vendedor só entra na fila se comprovar que está na loja por um dos métodos marcados: GPS dentro do raio da loja, leitura do QR da loja ou aparelho autorizado." title="Validação de presença" />}
             description="Desativado, os métodos abaixo não são exigidos."
             status={cfg.active ? 'Ativada' : 'Desativada'}
             statusTone={cfg.active ? 'success' : 'neutral'}
@@ -1465,7 +1477,7 @@ export default function ConfiguracoesFilaPage() {
 
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-700">Tempo de aceite da chamada <RequiredMark /></label>
+                  <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Tempo de aceite da chamada <RequiredMark /> <HelpHint {...opsHint('TEMPO_ACEITE')} /></label>
                   <input
                     type="number"
                     min={10}
@@ -1485,13 +1497,14 @@ export default function ConfiguracoesFilaPage() {
                       className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                     />
                     Revalidar presença no aceite da chamada
+                    <HelpHint text="Ao aceitar o cliente, o vendedor precisa validar a presença de novo (GPS/QR), para não aceitar de fora da loja." />
                   </label>
                 </div>
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-700">Cliente recorrente</label>
+                  <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Cliente recorrente <HelpHint text="Quando um cliente já atendido volta à loja: chamar o vendedor responsável por ele (carteira) ou seguir o rodízio com o vendedor da vez." /></label>
                   <select className={inputCls} value={cfg.recurringCustomerRule} onChange={(e) => set('recurringCustomerRule', e.target.value)}>
                     <option value="RESPONSIBLE">Chamar o responsável</option>
                     <option value="QUEUE">Sempre o vendedor da vez</option>
@@ -1506,6 +1519,7 @@ export default function ConfiguracoesFilaPage() {
                       className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                     />
                     Pedido por nome exige aprovação
+                    <HelpHint text="Quando o cliente chega pedindo um vendedor pelo nome, o atendimento fora da vez só vale depois que a gestão aprovar." />
                   </label>
                 </div>
               </div>
@@ -1549,7 +1563,7 @@ export default function ConfiguracoesFilaPage() {
                 {geoErrors.lng && <p id="geo-lng-error" className="mt-1 text-xs text-red-600">{geoErrors.lng}</p>}
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Raio permitido <RequiredMark /></label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Raio permitido <RequiredMark /> <HelpHint text="Geofence: área em volta da loja, com centro na latitude/longitude e este raio em metros. O GPS do celular precisa estar dentro dela para validar a presença." title="Raio da geofence" /></label>
                 <input
                   type="number"
                   min={10}
@@ -1565,7 +1579,7 @@ export default function ConfiguracoesFilaPage() {
             </div>
             <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Segredo do QR da unidade</label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Segredo do QR da unidade <HelpHint text="Código fixo gravado no QR impresso da loja. Se trocar o segredo, o QR antigo deixa de valer e é preciso imprimir um novo." /></label>
                 <input
                   className={inputCls}
                   value={cfg.qrSecret ?? ''}
@@ -1596,6 +1610,7 @@ export default function ConfiguracoesFilaPage() {
           <SettingRow
             icon={<BellRing size={16} />}
             title="Lembretes automáticos"
+            hint={<HelpHint text="Enquanto um atendimento fica aberto, o vendedor recebe lembretes perguntando se ainda está atendendo: o primeiro após os minutos definidos e depois a cada intervalo, até o máximo." />}
             description="Cobra atendimentos abertos há muito tempo."
             status={cfg.attendanceReminder.enabled ? 'Ativado' : 'Desativado'}
             statusTone={cfg.attendanceReminder.enabled ? 'success' : 'neutral'}
@@ -1630,6 +1645,7 @@ export default function ConfiguracoesFilaPage() {
                   className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                 />
                 Abrir finalização ao responder “não”
+                <HelpHint text="Se o vendedor responder que não está mais atendendo, já abre a tela para finalizar o atendimento com o resultado." />
               </label>
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input
@@ -1688,7 +1704,7 @@ export default function ConfiguracoesFilaPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Escalar após <RequiredMark /></label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Escalar após <RequiredMark /> <HelpHint text="Quantos lembretes sem resposta até a gestão ser avisada (vale se “Escalar para a gestão sem resposta” estiver ligado)." /></label>
                 <input
                   type="number"
                   min={limits.attendanceEscalateAfter.min}
@@ -1709,6 +1725,7 @@ export default function ConfiguracoesFilaPage() {
           <SettingRow
             icon={<Bell size={16} />}
             title="Enviar push complementar"
+            hint={<HelpHint text="Notificação extra no celular (push), além do alarme do app, repetida para a chamada da fila não passar despercebida." title="Push complementar" />}
             description="Reforço da chamada da fila."
             status={cfg.queuePush.enabled ? 'Ativado' : 'Desativado'}
             statusTone={cfg.queuePush.enabled ? 'success' : 'neutral'}
@@ -1759,7 +1776,7 @@ export default function ConfiguracoesFilaPage() {
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Intervalo mínimo <RequiredMark /></label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Intervalo mínimo <RequiredMark /> <HelpHint text="Tempo mínimo entre um push e o próximo da mesma chamada." /></label>
                 <input
                   type="number"
                   min={limits.queuePushIntervalSeconds.min}
@@ -1818,7 +1835,7 @@ export default function ConfiguracoesFilaPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Janela anti-spam <RequiredMark /></label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Janela anti-spam <RequiredMark /> <HelpHint text="Proteção contra excesso de notificações: dentro desta janela, cada vendedor, cada atendimento e a fila inteira recebem no máximo a quantidade definida nos limites ao lado." title="Anti-spam" /></label>
                 <input
                   type="number"
                   min={limits.queuePushAntiSpamWindowMinutes.min}
@@ -1833,7 +1850,7 @@ export default function ConfiguracoesFilaPage() {
 
             <div className="mt-4 grid gap-3 md:grid-cols-4">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Início permitido</label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Início permitido <HelpHint text="Faixa de horário em que o push complementar pode ser enviado. Em branco, sem restrição de horário." /></label>
                 <input
                   type="time"
                   className={inputCls}
@@ -1851,14 +1868,14 @@ export default function ConfiguracoesFilaPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Urgência</label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Urgência <HelpHint text="Alta pede ao celular para entregar na hora, mesmo em economia de bateria. Normal pode chegar com atraso." /></label>
                 <select className={inputCls} value={cfg.queuePush.urgency} onChange={(e) => set('queuePush', { ...cfg.queuePush, urgency: e.target.value })}>
                   <option value="HIGH">Alta</option>
                   <option value="NORMAL">Normal</option>
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Reenviar até</label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Reenviar até <HelpHint text="Até quando repetir o push: até o vendedor confirmar a chamada, até finalizar o atendimento ou até atingir o máximo de tentativas." /></label>
                 <select className={inputCls} value={cfg.queuePush.resendUntil} onChange={(e) => set('queuePush', { ...cfg.queuePush, resendUntil: e.target.value })}>
                   <option value="ACKNOWLEDGED">Confirmação</option>
                   <option value="FINISHED">Finalização</option>
@@ -1878,13 +1895,13 @@ export default function ConfiguracoesFilaPage() {
               {[
                 ['enabled', 'Ativar som do painel'],
                 ['repeatUntilAccepted', 'Tocar enquanto o vendedor não aceitar'],
-                ['onlyStorePanel', 'Tocar somente no painel da loja'],
+                ['onlyStorePanel', 'Tocar somente no painel da loja', 'O som da chamada toca apenas na tela do painel da loja (TV/monitor), não nos computadores da equipe.'],
                 ['playOnDashboard', 'Tocar também no dashboard da fila'],
                 ['muteOutsideHours', 'Silenciar fora do horário da loja'],
-                ['requireManualActivation', 'Exigir ativação manual do som'],
-                ['wakeLock', 'Usar Wake Lock quando disponível'],
-                ['showHiddenWarning', 'Avisar se o painel estiver em segundo plano'],
-              ].map(([key, label]) => (
+                ['requireManualActivation', 'Exigir ativação manual do som', 'Os navegadores só liberam som depois de um clique. Ao abrir o painel, alguém precisa tocar em ativar o som.'],
+                ['wakeLock', 'Usar Wake Lock quando disponível', 'Impede que a tela do aparelho do painel apague ou entre em descanso enquanto o painel estiver aberto (se o navegador suportar).'],
+                ['showHiddenWarning', 'Avisar se o painel estiver em segundo plano', 'Mostra um aviso quando o painel está em outra aba ou minimizado, porque o navegador pode silenciar o som.'],
+              ].map(([key, label, help]) => (
                 <label key={key} className="flex items-center gap-2 rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-700">
                   <input
                     type="checkbox"
@@ -1893,6 +1910,7 @@ export default function ConfiguracoesFilaPage() {
                     className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                   />
                   {label}
+                  {help && <HelpHint text={help} />}
                 </label>
               ))}
             </div>
@@ -1921,7 +1939,7 @@ export default function ConfiguracoesFilaPage() {
                 <p className="mt-1 text-[11px] text-gray-400">Em segundos.</p>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Atualizar painel <RequiredMark /></label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Atualizar painel <RequiredMark /> <HelpHint text="De quantos em quantos segundos o painel busca a situação atual da fila." /></label>
                 <input
                   type="number"
                   min={3}
@@ -1957,7 +1975,7 @@ export default function ConfiguracoesFilaPage() {
         >
           <div className="space-y-4">
             <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-700">Permitir aguardar na fila com atendimento ativo?</label>
+              <label className="mb-1 flex items-center gap-1 text-xs font-semibold text-gray-700">Permitir aguardar na fila com atendimento ativo? <HelpHint text="Se o vendedor pode voltar para a fila enquanto ainda tem um atendimento aberto. “Apenas em informação rápida” libera só nesse tipo de atendimento." /></label>
               <select value={cfg.allowWaitWithOpenAttendance} onChange={(e) => set('allowWaitWithOpenAttendance', e.target.value)} className={inputCls}>
                 <option value="NO">Não</option>
                 <option value="YES">Sim</option>
@@ -1966,7 +1984,7 @@ export default function ConfiguracoesFilaPage() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-700">Atendimento de informação rápida consome a vez?</label>
+              <label className="mb-1 flex items-center gap-1 text-xs font-semibold text-gray-700">Atendimento de informação rápida consome a vez? <HelpHint text="Informação rápida é um atendimento curto (ex.: tirar uma dúvida). Define se ele manda o vendedor para o fim da fila; com limite, só consome a vez se passar do tempo abaixo." title="Informação rápida" /></label>
               <select value={cfg.infoRapidaConsumesTurn} onChange={(e) => set('infoRapidaConsumesTurn', e.target.value)} className={inputCls}>
                 <option value="NO">Não</option>
                 <option value="YES">Sim</option>
@@ -2008,6 +2026,7 @@ export default function ConfiguracoesFilaPage() {
                 className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
               />
               Gestão pode escolher o vendedor manualmente
+              <HelpHint text="Permite à gestão direcionar um cliente para um vendedor específico, fora da ordem do rodízio." />
             </label>
             <label className="flex items-center gap-2 rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-700">
               <input
@@ -2023,6 +2042,7 @@ export default function ConfiguracoesFilaPage() {
 
         <SettingsSection
           title="Responsáveis extras pela fila"
+          hint={<HelpHint text="Colaboradores marcados aqui ganham, nesta unidade, as ações de gestão da fila: chamar o vendedor da vez, enviar alerta para todos e ver o histórico e as filas individuais." />}
           scope="Somente administradores"
         >
           <div className="grid max-h-56 gap-2 overflow-y-auto rounded-2xl border border-gray-100 bg-gray-50/60 p-3 md:grid-cols-2">
@@ -2053,6 +2073,7 @@ export default function ConfiguracoesFilaPage() {
 
         <SettingsSection
           title="Conformidade operacional"
+          hint={<HelpHint {...opsHint('CONFORMIDADE')} />}
           scope="Somente administradores"
         >
           <div className="grid gap-3 md:grid-cols-2">
@@ -2064,6 +2085,7 @@ export default function ConfiguracoesFilaPage() {
                 className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
               />
               Ativar piloto de conformidade
+              <HelpHint text="Liga a contagem de pontos de conformidade: chamadas que expiraram sem aceite (timeout) e fraudes na fila descontam pontos no ranking." title="Piloto de conformidade" />
             </label>
             <label className="flex items-center gap-2 rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-700">
               <input
@@ -2091,12 +2113,13 @@ export default function ConfiguracoesFilaPage() {
                 className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
               />
               Descontar no ranking só após fraude confirmada
+              <HelpHint text="Suspeitas de fraude ainda em análise não descontam pontos; só as confirmadas pela gestão. Desligado, a suspeita já desconta." />
             </label>
           </div>
 
           <div className={cn('mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4', !cfg.compliancePilot.enabled && 'pointer-events-none opacity-50')}>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Pontos por timeout <RequiredMark /></label>
+              <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Pontos por timeout <RequiredMark /> <HelpHint text="Pontos descontados no ranking a cada chamada que expirou sem o vendedor aceitar." title="Timeout" /></label>
               <input
                 type="number"
                 min={limits.complianceTimeoutPoints.min}
@@ -2129,7 +2152,7 @@ export default function ConfiguracoesFilaPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Janela de revisão <RequiredMark /></label>
+              <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Janela de revisão <RequiredMark /> <HelpHint text="Quantos dias para trás o sistema olha suspeitas de fraude ainda não resolvidas, para avisar a gestão e abrir pendência." /></label>
               <input
                 type="number"
                 min={limits.complianceReviewWindowDays.min}
@@ -2145,6 +2168,7 @@ export default function ConfiguracoesFilaPage() {
 
         <SettingsSection
           title="Score de qualidade"
+          hint={<HelpHint text="Pontuação de cada colaborador que começa em zero e cai a cada falha (pendência vencida, lead sem resposta, atendimento não finalizado). Ao atingir os limiares, o sistema aplica restrições." />}
           scope="Somente administradores"
           action={
             <a
@@ -2176,9 +2200,10 @@ export default function ConfiguracoesFilaPage() {
                   className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                 />
                 Descontar automaticamente
+                <HelpHint text="O sistema verifica a cada minuto e desconta os pontos sozinho quando ocorre um dos eventos abaixo. Desligado, só valem os descontos manuais." />
               </label>
               <div className="md:col-span-1">
-                <label className="mb-1 block text-xs font-medium text-gray-700">Janela de análise <RequiredMark /></label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Janela de análise <RequiredMark /> <HelpHint text="Período, em dias, somado no score. Eventos mais antigos que isso deixam de contar." /></label>
                 <input
                   type="number"
                   min={7}
@@ -2193,7 +2218,7 @@ export default function ConfiguracoesFilaPage() {
 
             <div className={cn('space-y-4', !cfg.quality.enabled && 'pointer-events-none opacity-50')}>
               <div>
-                <p className="border-t border-gray-100 pt-4 text-sm font-semibold text-gray-900">Limiares de restrição</p>
+                <p className="flex items-center gap-1 border-t border-gray-100 pt-4 text-sm font-semibold text-gray-900">Limiares de restrição <HelpHint text="Quando o score chega a cada valor, a restrição é aplicada: aviso em pop-up, destaque em vermelho, bloqueio de criar pendências, de receber leads, de abrir negociações e, no limite, retirada da fila." /></p>
                 <p className="mt-1 text-[11px] text-gray-400">Valores negativos. Quanto menor o score, mais severa a restrição.</p>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Pop-up de aviso <RequiredMark /></label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.popupAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, popupAt: Number(e.target.value) || -5 } })} /></div>
@@ -2202,12 +2227,12 @@ export default function ConfiguracoesFilaPage() {
                   <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Bloquear leads <RequiredMark /></label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockLeadsAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockLeadsAt: Number(e.target.value) || -30 } })} /></div>
                   <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Bloquear negociações <RequiredMark /></label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockNewSalesAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockNewSalesAt: Number(e.target.value) || -35 } })} /></div>
                   <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Retirar da fila <RequiredMark /></label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockQueueAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockQueueAt: Number(e.target.value) || -50 } })} /></div>
-                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Máx. pendências abertas <RequiredMark /></label><input type="number" min={1} max={100} className={inputCls} value={cfg.quality.thresholds.maxUnresolvedPendencies} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, maxUnresolvedPendencies: Number(e.target.value) || 8 } })} /></div>
+                  <div><label className="mb-1 flex items-center gap-1 text-[11px] font-medium text-gray-700">Máx. pendências abertas <RequiredMark /> <HelpHint text="Com mais pendências abertas do que isso, o colaborador não consegue criar novas até resolver as atuais." /></label><input type="number" min={1} max={100} className={inputCls} value={cfg.quality.thresholds.maxUnresolvedPendencies} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, maxUnresolvedPendencies: Number(e.target.value) || 8 } })} /></div>
                 </div>
               </div>
 
               <div>
-                <p className="border-t border-gray-100 pt-4 text-sm font-semibold text-gray-900">Custo de pontos por evento</p>
+                <p className="flex items-center gap-1 border-t border-gray-100 pt-4 text-sm font-semibold text-gray-900">Custo de pontos por evento <HelpHint text="Quantos pontos cada ocorrência desconta do score de qualidade. 0 = o evento não desconta." /></p>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                   {([
                     ['pendency_sla_breach', 'Pendência vencida'],
@@ -2246,6 +2271,7 @@ export default function ConfiguracoesFilaPage() {
           <SettingRow
             icon={<ShieldAlert size={16} />}
             title="Ativar alertas de perdas"
+            hint={<HelpHint {...opsHint('PERDA_VEZ')} />}
             description="Avisa o vendedor a cada perda e alerta a gerência nos limites. Ninguém sai da fila."
             status={cfg.autoBlock.enabled ? 'Ativado' : 'Desativado'}
             statusTone={cfg.autoBlock.enabled ? 'warning' : 'neutral'}
@@ -2264,7 +2290,7 @@ export default function ConfiguracoesFilaPage() {
           >
             <div className={cn('grid gap-3 md:grid-cols-2', !cfg.autoBlock.enabled && 'pointer-events-none opacity-50')}>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Perdas para o 1º alerta à gerência <RequiredMark /></label>
+                <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Perdas para o 1º alerta à gerência <RequiredMark /> <HelpHint text="Quantidade de perdas da vez no mesmo dia que dispara o primeiro aviso à gerência. O vendedor continua na fila." /></label>
                 <input
                   type="number"
                   min={1}
@@ -2296,7 +2322,7 @@ export default function ConfiguracoesFilaPage() {
           <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50/60 p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-sm font-semibold text-gray-900">Vendedores bloqueados</p>
+                <p className="flex items-center gap-1 text-sm font-semibold text-gray-900">Vendedores bloqueados <HelpHint text="Bloqueios ativos na fila (temporário, diário ou manual). Liberar devolve o vendedor à fila na hora." /></p>
 
               </div>
               <div className="flex flex-wrap items-center gap-2">

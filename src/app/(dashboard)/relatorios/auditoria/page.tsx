@@ -5,6 +5,7 @@
 // Log de ações realizadas no sistema por usuários
 // =============================================================================
 
+import { HelpHint } from '@/components/ui/help-hint'
 import { useState, useEffect, useCallback } from 'react'
 import { Search, RefreshCw, Shield, ChevronDown, ChevronUp } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
@@ -86,7 +87,7 @@ export default function AuditoriaPage() {
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Log de Auditoria</h1>
+          <h1 className="flex items-center gap-1 text-xl font-bold text-gray-900">Log de Auditoria<HelpHint className="ml-1" title="Auditoria" text="Histórico de quem fez o quê no sistema e quando (criação, alteração, exclusão, login). Os registros são guardados pelo prazo definido em MASTER, Segurança." /></h1>
           <p className="mt-0.5 text-sm text-gray-500">
             {loading ? 'Carregando...' : `${meta.total} registros encontrados`}
           </p>

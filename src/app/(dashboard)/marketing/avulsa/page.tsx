@@ -21,6 +21,8 @@ import { PostPreview, type PreviewFormat, type PreviewMedia } from '@/components
 import { AVULSA_FORMATS, AVULSA_LABEL, avulsaAccepts, MAX_BLOB_VIDEO_BYTES, MAX_VIDEO_BYTES, PART_BYTES, validateAvulsa, type AvulsaFormat, type AvulsaMedia, isBrandMark, type BrandMark } from '@/lib/publications/social/avulsa-core'
 import { classifyVideo, VIDEO_HINT } from '@/lib/publications/social/video-core'
 import { isSocialChannel, socialName, socialNetwork, type SocialNetwork } from '@/lib/publications/channels'
+import { HelpHint } from '@/components/ui/help-hint'
+import { opsHint } from '@/lib/glossary-ops'
 
 interface Conn { id: string; channel: string; label: string; status: string }
 interface Item { key: string; media: AvulsaMedia | null; preview: string; kind: 'image' | 'video'; name: string; progress: number; error?: string; /** Tamanho do vídeo (para a prévia da marca). */ vw?: number; vh?: number }
@@ -617,7 +619,7 @@ export default function PostAvulsoPage() {
             <div className="flex flex-wrap items-end gap-2 rounded-lg border border-gray-200 px-2 py-1.5">
               <fieldset className="space-y-0.5 text-xs text-gray-700">
                 <legend className="sr-only">Quando agendar</legend>
-                <label className="flex items-center gap-1.5"><input type="radio" name="quando" checked={whenMode === 'AUTO'} onChange={() => setWhenMode('AUTO')} /><b>Automático</b> — melhor horário livre no horário de disparo da loja</label>
+                <label className="flex items-center gap-1.5"><input type="radio" name="quando" checked={whenMode === 'AUTO'} onChange={() => setWhenMode('AUTO')} /><b>Automático</b> — melhor horário livre no horário de disparo da loja <HelpHint {...opsHint('JANELA_PUBLICACAO')} /></label>
                 <label className="flex items-center gap-1.5"><input type="radio" name="quando" checked={whenMode === 'MANUAL'} onChange={() => setWhenMode('MANUAL')} />Escolher dia e hora</label>
               </fieldset>
               {whenMode === 'MANUAL' && <input type="datetime-local" aria-label={`Dia e hora (${tz.replace('_', ' ')})`} className={cn(inputCls, 'w-auto')} value={when} onChange={(e) => setWhen(e.target.value)} />}
@@ -641,7 +643,7 @@ export default function PostAvulsoPage() {
       {(batch.length > 0 || batchResult) && (
         <section className="space-y-3 rounded-xl border border-brand-200 bg-brand-50/30 p-4" aria-label="Lote de posts">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="flex items-center gap-1.5 text-sm font-semibold text-gray-900"><Layers size={15} className="text-brand-700" />Lote de posts {batch.length > 0 && <span className="rounded-full bg-brand-700 px-2 py-0.5 text-[11px] text-white">{batch.length}</span>}</h2>
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold text-gray-900"><Layers size={15} className="text-brand-700" />Lote de posts <HelpHint title="Lote de posts" text="Junte vários posts e agende todos de uma vez. Cada um recebe um horário diferente dentro da janela de disparo, respeitando o intervalo e o limite por dia." /> {batch.length > 0 && <span className="rounded-full bg-brand-700 px-2 py-0.5 text-[11px] text-white">{batch.length}</span>}</h2>
             <span className="text-[11px] text-gray-500">Contas: {selConns.map((c) => socialName(c.channel)).join(' + ') || 'escolha acima'}</span>
           </div>
           {batch.length > 0 && (

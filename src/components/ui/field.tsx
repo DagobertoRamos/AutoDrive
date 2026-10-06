@@ -13,6 +13,8 @@
 // =============================================================================
 
 import type { ReactNode } from 'react'
+import type { GlossaryTerm } from '@/lib/glossary'
+import { HelpHint } from './help-hint'
 
 export function RequiredMark({ className = '' }: { className?: string }) {
   return (
@@ -36,6 +38,9 @@ interface FieldLabelProps {
   htmlFor?:  string
   /** Texto auxiliar exibido abaixo do rótulo (ex.: "Mínimo de 1 foto."). */
   hint?:     ReactNode
+  /** "?" com explicação: termo do glossário ou texto livre. */
+  helpTerm?: GlossaryTerm
+  helpText?: string
   className?: string
 }
 
@@ -43,12 +48,13 @@ interface FieldLabelProps {
  * Rótulo padrão. `required` é a ÚNICA forma de marcar obrigatoriedade —
  * a UI nunca deduz isso do nome do campo.
  */
-export function FieldLabel({ children, required, htmlFor, hint, className = '' }: FieldLabelProps) {
+export function FieldLabel({ children, required, htmlFor, hint, helpTerm, helpText, className = '' }: FieldLabelProps) {
   return (
     <span className={`flex flex-col gap-0.5 ${className}`}>
       <label htmlFor={htmlFor} className="text-xs font-medium text-gray-600 flex items-center gap-1">
         {children}
         {required && <RequiredMark />}
+        {(helpTerm || helpText) && <HelpHint term={helpTerm} text={helpText} size={12} />}
       </label>
       {hint && <span className="text-[10px] text-gray-500">{hint}</span>}
     </span>

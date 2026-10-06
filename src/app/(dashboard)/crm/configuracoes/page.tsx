@@ -16,6 +16,7 @@ import { DistributionTab, RequiredFieldsTab, SlaTab } from './RulesTabs'
 import AutomationsTab from './AutomationsTab'
 import ChannelsTab from './ChannelsTab'
 import { AuditTab, PermissionsTab } from './GovernanceTabs'
+import { WithHint } from '@/components/ui/help-hint'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 
@@ -102,7 +103,7 @@ function DuplicatesTab() {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900">Duplicidades para revisar</h2>
+        <h2 className="text-sm font-semibold text-gray-900"><WithHint text="Leads com o mesmo telefone ou e-mail. Revise e unifique para não ter dois vendedores atendendo o mesmo cliente.">Duplicidades para revisar</WithHint></h2>
         <button onClick={load} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
       {loading ? <div className="space-y-2">{[0, 1, 2].map((i) => <div key={i} className="h-16 animate-pulse rounded-lg bg-gray-100" />)}</div> : items.length === 0 ? (

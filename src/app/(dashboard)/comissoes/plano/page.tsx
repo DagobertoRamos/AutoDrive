@@ -13,6 +13,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { SlidersHorizontal, RefreshCw, Save, Trash2, ExternalLink, CheckCircle2, AlertCircle, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 import DocumentoConfigCard from '@/components/comissoes/DocumentoConfigCard'
 import GarantiaConfigCard from '@/components/comissoes/GarantiaConfigCard'
 import BonusPeriodoCard from '@/components/comissoes/BonusPeriodoCard'
@@ -91,7 +93,7 @@ export default function PlanoComissaoPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><SlidersHorizontal size={20} className="text-brand-600" />Plano de Comissão</h1>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><SlidersHorizontal size={20} className="text-brand-600" />Plano de Comissão<HelpHint {...DEAL_HINTS.PLANO_COMISSAO} /></h1>
         </div>
         <Link href="/comissoes/regras" className="btn-secondary text-xs"><ExternalLink size={13} />Cadastro completo de regras</Link>
       </div>
@@ -138,7 +140,7 @@ function OverviewTab({ rules, loading, error, onReload }: { rules: Rule[]; loadi
           <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900"><Layers size={15} className="text-brand-600" />{cargo}</h3>
           <div className="mt-3 overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50"><tr>{['Tipo', 'Faixa / condição', 'Valor', 'Status'].map((h) => <th key={h} className="px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>)}</tr></thead>
+              <thead className="bg-gray-50"><tr>{['Tipo', 'Faixa / condição', 'Valor', 'Status'].map((h) => <th key={h} className="px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span className="inline-flex items-center gap-1">{h}{h === 'Faixa / condição' && <HelpHint {...DEAL_HINTS.FAIXAS} />}</span></th>)}</tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {rs.sort((a, b) => (a.ruleType.localeCompare(b.ruleType)) || (a.fromQuantity ?? 0) - (b.fromQuantity ?? 0)).map((r) => (
                   <tr key={r.id} className={cn(!r.active && 'opacity-40')}>
@@ -225,7 +227,7 @@ function RulesTab({ rules, loading, onReload }: { rules: Rule[]; loading: boolea
           <h3 className="text-sm font-semibold text-gray-900">{cargo}</h3>
           <div className="mt-3 overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50"><tr>{['Regra', 'Tipo', 'Faixa', 'Valor', 'Ativa', ''].map((h) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>)}</tr></thead>
+              <thead className="bg-gray-50"><tr>{['Regra', 'Tipo', 'Faixa', 'Valor', 'Ativa', ''].map((h) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span className="inline-flex items-center gap-1">{h}{h === 'Faixa' && <HelpHint {...DEAL_HINTS.FAIXAS} />}{h === 'Tipo' && <HelpHint {...DEAL_HINTS.TIPO_REGRA} />}</span></th>)}</tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {rs.map((r) => {
                   const isPct = r.commissionType === 'PERCENTUAL' || (r.commissionType === 'ESCALONADA' && !!r.percentage)

@@ -5,6 +5,8 @@
 
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { HelpHint } from '@/components/ui/help-hint'
+import type { GlossaryTerm } from '@/lib/glossary'
 
 export const inputClass = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50 disabled:text-gray-500'
 export const smallInputClass = 'w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
@@ -34,11 +36,11 @@ export async function api<T = unknown>(url: string, init?: { method?: string; bo
   }
 }
 
-export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
+export function PageHeader({ title, subtitle, actions, helpTerm, helpText }: { title: string; subtitle?: ReactNode; actions?: ReactNode; helpTerm?: GlossaryTerm; helpText?: string }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-xl font-bold text-gray-900">{title}</h1>
+        <h1 className="flex items-center gap-1.5 text-xl font-bold text-gray-900">{title}{(helpTerm || helpText) && <HelpHint term={helpTerm} text={helpText} size={15} />}</h1>
         {subtitle && <p className="mt-0.5 text-sm text-gray-500">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -64,11 +66,12 @@ export function Modal({ title, onClose, children, footer, wide }: { title: strin
   )
 }
 
-export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+export function Toggle({ checked, onChange, label, helpTerm, helpText }: { checked: boolean; onChange: (v: boolean) => void; label: string; helpTerm?: GlossaryTerm; helpText?: string }) {
   return (
     <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
       <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       {label}
+      {(helpTerm || helpText) && <HelpHint term={helpTerm} text={helpText} size={12} />}
     </label>
   )
 }

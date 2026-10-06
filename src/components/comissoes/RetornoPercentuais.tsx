@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Percent, Save, Trash2, Plus, RefreshCw, X, Check, User, Briefcase } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 
 const ROLE_LABELS: Record<string, string> = {
   VENDEDOR: 'Vendedor', VENDEDOR_LIDER: 'Vendedor líder', GERENTE: 'Gerente',
@@ -97,7 +98,7 @@ export default function RetornoPercentuais() {
     <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Percent size={17} className="text-brand-600" />Percentual de comissão do retorno</h2>
+          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Percent size={17} className="text-brand-600" />Percentual de comissão do retorno<HelpHint term="COMISSAO_RETORNO" /></h2>
         </div>
         <button onClick={load} className="rounded p-1.5 text-gray-400 hover:bg-gray-100" title="Atualizar"><RefreshCw size={14} /></button>
       </div>

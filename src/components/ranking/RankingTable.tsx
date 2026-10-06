@@ -9,6 +9,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Trophy } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 
 export interface RankingMetrics {
   sales: number; purchases: number; returns: number; documentations: number
@@ -83,11 +85,11 @@ export function RankingTable({ period, unitId = '', highlightUserId, reloadKey =
               <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                 <th className="px-4 py-3">#</th>
                 <th className="px-4 py-3">Vendedor</th>
-                {COLS.map((c) => <th key={c.key} className="px-3 py-3 text-right">{c.label}</th>)}
-                <th className="px-3 py-3 text-right">Qualidade</th>
-                <th className="px-3 py-3 text-right" title="Pontuação de qualidade da fila de atendimento (somada nos pontos)">Fila</th>
-                <th className="px-3 py-3 text-right" title="Ajuste do piloto de conformidade operacional (somado nos pontos)">Conform.</th>
-                <th className="px-4 py-3 text-right">Pontos</th>
+                {COLS.map((c) => <th key={c.key} className="px-3 py-3 text-right"><span className="inline-flex items-center gap-1">{c.label}{c.key === 'overduePendencies' && <HelpHint {...DEAL_HINTS.RANKING_VENCIDAS} />}</span></th>)}
+                <th className="px-3 py-3 text-right"><span className="inline-flex items-center gap-1">Qualidade<HelpHint {...DEAL_HINTS.RANKING_QUALIDADE} /></span></th>
+                <th className="px-3 py-3 text-right"><span className="inline-flex items-center gap-1">Fila<HelpHint {...DEAL_HINTS.RANKING_FILA} /></span></th>
+                <th className="px-3 py-3 text-right"><span className="inline-flex items-center gap-1">Conform.<HelpHint {...DEAL_HINTS.RANKING_CONFORMIDADE} /></span></th>
+                <th className="px-4 py-3 text-right"><span className="inline-flex items-center gap-1">Pontos<HelpHint {...DEAL_HINTS.RANKING_PONTUACAO} /></span></th>
               </tr>
             </thead>
             <tbody>

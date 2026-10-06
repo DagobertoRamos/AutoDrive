@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Handshake, Loader2, Paperclip, Save, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { HelpHint } from '@/components/ui/help-hint'
 import { MoneyInput } from '@/components/ui/money-input'
 import { CategorySelect } from './CategorySelect'
 import { ATTACH_ACCEPT, uploadEntryAttachment } from './AttachmentsPanel'
@@ -166,14 +167,14 @@ export function EntryForm({ type, refs, initial, editId, onClose, onSaved }: {
         <Field label={mode === 'parcelada' ? '1º vencimento' : mode === 'mensal' ? 'Primeiro vencimento' : 'Vencimento'} required className="sm:col-span-2">
           <input type="date" className={inputCls} value={v.dueDate} onChange={(e) => set('dueDate', e.target.value)} />
         </Field>
-        <Field label="Competência" className="sm:col-span-2">
+        <Field label="Competência" helpTerm="COMPETENCIA" className="sm:col-span-2">
           <input type="date" className={inputCls} value={v.competenceDate} placeholder={v.dueDate} onChange={(e) => set('competenceDate', e.target.value)} disabled={mode === 'mensal'} />
         </Field>
 
         <Field label="Categoria" className="sm:col-span-3">
           <CategorySelect className={inputCls} categories={refs.categories} kind={v.type} value={v.categoryId} onChange={(id) => set('categoryId', id)} />
         </Field>
-        <Field label="Centro de custo" className="sm:col-span-3">
+        <Field label="Centro de custo" helpTerm="CENTRO_CUSTO" className="sm:col-span-3">
           <select className={inputCls} value={v.costCenterId} onChange={(e) => set('costCenterId', e.target.value)}>
             <option value="">—</option>
             {refs.costCenters.map((c) => <option key={c.id} value={c.id}>{c.code ? `${c.code} ` : ''}{c.name}</option>)}
@@ -222,6 +223,7 @@ export function EntryForm({ type, refs, initial, editId, onClose, onSaved }: {
                 <button key={k} type="button" onClick={() => { setMode(k); if (k === 'mensal') setPaid(false) }}
                   className={cn('rounded-full border px-3 py-1 text-xs font-medium', mode === k ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300')}>{l}</button>
               ))}
+              <HelpHint className="ml-0.5" title="Única, parcelada ou fixa" text={'Única: uma conta só.\nParcelada: divide o valor total em parcelas mensais com vencimentos seguidos.\nRepetir todo mês: despesa ou receita fixa (aluguel, internet); o sistema gera as próximas automaticamente.'} />
             </div>
             {mode === 'parcelada' && (
               <div className="mt-3 grid gap-3 sm:grid-cols-3">

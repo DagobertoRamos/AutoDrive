@@ -10,6 +10,8 @@ import { RefreshCw, Plus, Edit2, Trash2, Percent, X, Save, AlertCircle, Settings
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import { RequiredMark } from '@/components/ui/field'
+import { HelpHint } from '@/components/ui/help-hint'
+import { DEAL_HINTS } from '@/lib/glossary-deals'
 
 // Papéis que podem recalcular um período (espelha commissions.recalc no back-end).
 const RECALC_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'FINANCEIRO']
@@ -197,10 +199,10 @@ const ROLE_LABELS: Record<string, string> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function Field({ label, required, children, help }: { label: string; required?: boolean; children: React.ReactNode; help?: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-gray-700">{label}{required && <RequiredMark className="ml-0.5" />}</label>
+      <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">{label}{required && <RequiredMark />}{help}</label>
       {children}
     </div>
   )
@@ -564,7 +566,7 @@ function RuleModal({
                   autoFocus
                 />
               </Field>
-              <Field label="Prioridade">
+              <Field label="Prioridade" help={<HelpHint {...DEAL_HINTS.PRIORIDADE_REGRA} size={12} />}>
                 <input
                   type="number" min={0}
                   className={inputCls()}
@@ -585,10 +587,10 @@ function RuleModal({
 
           <section className="space-y-3 border-t border-gray-100 pt-4">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              <Building2 size={14} /> Aplicação
+              <Building2 size={14} /> Aplicação<HelpHint {...DEAL_HINTS.APLICACAO_REGRA} size={12} />
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <Field label="Operação" required>
+              <Field label="Operação" required help={<HelpHint {...DEAL_HINTS.OPERACAO_REGRA} size={12} />}>
                 <select
                   className={inputCls()}
                   value={form.ruleType}
@@ -668,7 +670,7 @@ function RuleModal({
                   </select>
                 </Field>
               </div>
-              <Field label="Vigência inicial">
+              <Field label="Vigência inicial" help={<HelpHint {...DEAL_HINTS.VIGENCIA} size={12} />}>
                 <input
                   type="date"
                   className={inputCls()}
@@ -690,6 +692,7 @@ function RuleModal({
           <section className="space-y-3 border-t border-gray-100 pt-4">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
               <Percent size={14} /> {isDecendBonus ? 'Configuração do Bônus Dezenal' : 'Valor e faixas'}
+              <HelpHint {...(isDecendBonus ? DEAL_HINTS.BONUS_DEZENAL : DEAL_HINTS.FAIXAS)} size={12} />
             </div>
 
             {isDecendBonus ? (
@@ -752,7 +755,7 @@ function RuleModal({
             ) : (
               <>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <Field label="Tipo de comissão" required>
+                  <Field label="Tipo de comissão" required help={<HelpHint {...DEAL_HINTS.TIPO_REGRA} size={12} />}>
                     <select
                       className={inputCls()}
                       value={form.commissionType}
@@ -1003,6 +1006,7 @@ function RecalcModal({ units, onClose }: { units: UnitLite[]; onClose: () => voi
           <div className="flex items-center gap-2">
             <Calculator size={18} className="text-brand-600" />
             <h2 className="text-base font-semibold text-gray-900">Recalcular comissões do período</h2>
+            <HelpHint {...DEAL_HINTS.RECALCULO} />
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={16} /></button>
         </div>
@@ -1199,6 +1203,7 @@ function RetornoConfigModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-2">
             <Percent size={18} className="text-brand-600" />
             <h2 className="text-base font-semibold text-gray-900">Cadastro de retorno (ILA / IOF)</h2>
+            <HelpHint {...DEAL_HINTS.RETORNO_IMPORTACAO} />
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={16} /></button>
         </div>
@@ -1215,15 +1220,15 @@ function RetornoConfigModal({ onClose }: { onClose: () => void }) {
               </label>
 
               <div className="grid gap-3 md:grid-cols-2">
-                <Field label="ILA (%)" required={cfg.active}>
+                <Field label="ILA (%)" required={cfg.active} help={<HelpHint term="ILA" size={12} />}>
                   <input inputMode="decimal" className={inputCls()} value={text.ila}
                     onChange={(e) => setField('ila', e.target.value)} />
                 </Field>
-                <Field label="IOF (%)" required={cfg.active}>
+                <Field label="IOF (%)" required={cfg.active} help={<HelpHint term="IOF" size={12} />}>
                   <input inputMode="decimal" className={inputCls()} value={text.iof}
                     onChange={(e) => setField('iof', e.target.value)} />
                 </Field>
-                <Field label="Retorno mínimo (%)" required={cfg.active}>
+                <Field label="Retorno mínimo (%)" required={cfg.active} help={<HelpHint {...DEAL_HINTS.FAIXA_RETORNO} size={12} />}>
                   <input inputMode="decimal" className={inputCls()} value={text.min}
                     onChange={(e) => setField('min', e.target.value)} />
                 </Field>
@@ -1424,7 +1429,7 @@ export default function RegrasComissoesPage() {
 
         <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-card md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Comissão gerencial em venda própria</h2>
+            <h2 className="flex items-center gap-1 text-sm font-semibold text-gray-900">Comissão gerencial em venda própria<HelpHint {...DEAL_HINTS.COMISSAO_DUPLICADA} /></h2>
           </div>
           <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
             <input
@@ -1508,7 +1513,13 @@ export default function RegrasComissoesPage() {
                   <tr>
                     {['Nome', 'Operação', 'Aplicação', 'Comissão', 'Faixa', 'Prioridade', 'Unidade', 'Status', 'Ações'].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 whitespace-nowrap">
-                        {h}
+                        <span className="inline-flex items-center gap-1">
+                          {h}
+                          {h === 'Aplicação' && <HelpHint {...DEAL_HINTS.APLICACAO_REGRA} />}
+                          {h === 'Comissão' && <HelpHint {...DEAL_HINTS.TIPO_REGRA} />}
+                          {h === 'Faixa' && <HelpHint {...DEAL_HINTS.FAIXAS} />}
+                          {h === 'Prioridade' && <HelpHint {...DEAL_HINTS.PRIORIDADE_REGRA} />}
+                        </span>
                       </th>
                     ))}
                   </tr>

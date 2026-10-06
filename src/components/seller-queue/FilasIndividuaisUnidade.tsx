@@ -9,6 +9,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
+import { HelpHint } from '@/components/ui/help-hint'
 import { ListChecks, PlayCircle, ArrowRightLeft, X, RefreshCw, Clock, ChevronUp, ChevronDown, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -74,7 +75,7 @@ export default function FilasIndividuaisUnidade({ onChanged, readOnly = false }:
   return (
     <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
       <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5">
-        <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-700"><ListChecks size={15} className="text-brand-600" />Filas individuais da unidade ({items.length})</p>
+        <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-700"><ListChecks size={15} className="text-brand-600" />Filas individuais da unidade ({items.length})<HelpHint text="Agendamentos, retornos e pós-vendas que chegaram para um colaborador enquanto ele atendia outro cliente. Ficam esperando na fila pessoal dele, fora do rodízio geral." title="Fila individual" /></p>
         <button onClick={load} className="rounded p-1 text-gray-400 hover:bg-gray-100" title="Atualizar"><RefreshCw size={13} /></button>
       </div>
       {error && <div className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}

@@ -21,6 +21,8 @@ import { leadTypeOf, sourceLabelOf, temperatureOf } from '@/lib/crm/settings-cor
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
 import { isValidPhone, maskPhoneInput } from '@/lib/br-docs/phone'
+import { WithHint } from '@/components/ui/help-hint'
+import { opsText } from '@/lib/glossary-ops'
 
 interface LeadTag { id: string; name: string; color: string | null }
 interface LeadRow {
@@ -48,6 +50,13 @@ const PRIORITY_OPTIONS = [
 ]
 
 // ─ Chip de filtro rápido ─────────────────────────────────────────────────────
+const LEAD_COL_HINT: Record<string, string> = {
+  Origem: opsText('ORIGEM'),
+  Etapa: opsText('FUNIL'),
+  'Temp.': opsText('TEMPERATURA'),
+  'Último contato': 'Data do último contato registrado com o cliente. Lead parado há muito tempo entra como atrasado no SLA.',
+}
+
 function Chip({ label, active, color, onClick }: { label: string; active: boolean; color?: string; onClick: () => void }) {
   return (
     <button
@@ -318,7 +327,7 @@ export default function CrmLeadsPage() {
 
               {/* Prioridade */}
               <div>
-                <p className="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">Prioridade</p>
+                <p className="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-400"><WithHint text={opsText('PRIORIDADE')}>Prioridade</WithHint></p>
                 <div className="flex flex-wrap gap-1">
                   {PRIORITY_OPTIONS.map(o => (
                     <button key={o.value} onClick={() => setFPriority(v => v === o.value ? '' : o.value)}
@@ -418,7 +427,7 @@ export default function CrmLeadsPage() {
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/80 dark:border-white/5 dark:bg-slate-800/60">
                 {['Cliente', 'Contato / Veículo', 'Origem', 'Etapa', 'Temp.', ...(canFilterSeller ? ['Responsável'] : []), 'Último contato', ''].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{LEAD_COL_HINT[h] ? <WithHint text={LEAD_COL_HINT[h]}>{h}</WithHint> : h}</th>
                 ))}
               </tr>
             </thead>
