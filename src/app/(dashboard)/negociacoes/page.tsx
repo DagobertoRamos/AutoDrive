@@ -37,6 +37,7 @@ import {
 import { canAccessModule } from '@/lib/permissions'
 import { DealDraftsPanel } from '@/components/negotiations/DealDraftsPanel'
 import { dealMainVehicle, dealVehiclePrice } from '@/lib/negotiation-value'
+import CancelDealModal, { type CancelDealPayload } from '@/components/deals/CancelDealModal'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -237,7 +238,8 @@ function ActionsMenu({ deal, role, onAction }: ActionsMenuProps) {
 
   const canSubmit  = ['RASCUNHO', 'EM_PREENCHIMENTO', 'DEVOLVIDA_PARA_CORRECAO'].includes(deal.status)
   const canApprove = isManager && ['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO'].includes(deal.status)
-  const canCancel  = !['FINALIZADA', 'CANCELADA'].includes(deal.status)
+  // Finalizada: só ADM/MASTER cancelam (desfaz a venda).
+  const canCancel  = deal.status !== 'CANCELADA' && (deal.status !== 'FINALIZADA' || isAdm)
   const canReopen  = isAdm && deal.status === 'CANCELADA'
 
   return (
@@ -515,16 +517,41 @@ export default function NegociacoesPage() {
 
   const showToast = (msg: string, ok = true) => setToast({ msg, ok })
 
-  const handleAction = async (action: string, dealId: string) => {
+  // Ações que pedem motivo (cancelar, rejeitar, reabrir) abrem o modal antes.
+  const [asking, setAsking] = useState<{ action: 'cancel' | 'reject' | 'reopen'; deal: Deal } | null>(null)
+  const [acting, setActing] = useState(false)
+
+  const runAction = async (action: string, dealId: string, payload?: Record<string, unknown>) => {
+    setActing(true)
     try {
-      const res = await fetch(`/api/negotiations/${dealId}/${action}`, { method: 'POST' })
-      const data = await res.json()
+      const res = await fetch(`/api/negotiations/${dealId}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload ? JSON.stringify(payload) : undefined,
+      })
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error ?? 'Erro')
-      showToast('Ação realizada com sucesso!')
+      showToast(action === 'cancel' ? 'Negociação cancelada. Valores recebidos ficam na conta até o estorno.' : 'Ação realizada com sucesso!')
+      setAsking(null)
       load()
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : 'Erro inesperado', false)
+    } finally {
+      setActing(false)
     }
+  }
+
+  const handleAction = (action: string, dealId: string) => {
+    if (action === 'cancel' || action === 'reject' || action === 'reopen') {
+      const deal = deals.find((d) => d.id === dealId)
+      if (deal) { setAsking({ action, deal }); return }
+    }
+    void runAction(action, dealId)
+  }
+
+  const confirmAsked = (p: CancelDealPayload) => {
+    if (!asking) return
+    void runAction(asking.action, asking.deal.id, asking.action === 'cancel' ? { reason: p.reason, returnEntering: p.returnEntering } : { reason: p.reason })
   }
 
   const summaryCards = [
@@ -552,6 +579,19 @@ export default function NegociacoesPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {asking && (
+        <CancelDealModal
+          title={asking.action === 'cancel' ? 'Cancelar negociação' : asking.action === 'reject' ? 'Rejeitar negociação' : 'Reabrir negociação'}
+          dealNumber={asking.deal.dealNumber}
+          dealType={asking.deal.type}
+          status={asking.deal.status}
+          reasonOnly={asking.action !== 'cancel'}
+          minLength={asking.action === 'reopen' ? 10 : 3}
+          loading={acting}
+          onConfirm={confirmAsked}
+          onClose={() => !acting && setAsking(null)}
+        />
+      )}
       {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium shadow-lg transition-all ${

@@ -481,6 +481,51 @@ export async function onVehicleStockChanged(tenantId: string, vehicleId: string,
   return { action: act.kind, affected }
 }
 
+/**
+ * Venda cancelada: o carro voltou ao estoque → volta ao ar no site e em todos os
+ * portais em que estava (pausados pela venda ou já arquivados como Vendido).
+ * Ignora "resumeOnCancel": o cancelamento é uma ordem explícita de devolver o carro.
+ */
+export async function resumeAfterSaleCancelled(tenantId: string, vehicleId: string, actor: Actor = SYSTEM_ACTOR): Promise<number> {
+  const v = await prisma.vehicle.findFirst({ where: { id: vehicleId, tenantId }, select: { stockStatus: true, active: true } })
+  if (!v || !isPublishableStock(v.stockStatus, v.active)) return 0
+  const pubs = await prisma.publication.findMany({
+    where: {
+      tenantId, vehicleId, desiredState: { not: 'PUBLICADO' },
+      OR: [{ pausedReason: 'VENDA_EM_ANDAMENTO' }, { archiveReason: 'VENDIDO' }],
+    },
+    orderBy: { updatedAt: 'desc' },
+  })
+  // Uma por canal/conta/campanha (a mais recente).
+  const seen = new Set<string>()
+  let affected = 0
+  for (const p of pubs) {
+    const key = `${p.channel}:${p.connectionKey}:${p.campaignKey}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const r = await applyIntent(tenantId, p.id, 'RETOMAR', actor, { reason: 'VENDA_CANCELADA' }).catch((e) => { console.error('[publications] retomar após cancelamento', p.id, e); return { ok: false } })
+    if (r.ok) affected++
+  }
+  if (affected) await logEvent(prisma, { tenantId, vehicleId, type: 'VENDA', message: `Venda cancelada: anúncios de volta ao ar (${affected}).`, actor })
+  return affected
+}
+
+/** Cancelamento: reativa os anúncios dos carros devolvidos ao estoque (em segundo plano). */
+export function notifySaleCancelled(tenantId: string | null | undefined, vehicleIds: Array<string | null | undefined>, actor?: Actor): void {
+  if (!tenantId) return
+  const ids = [...new Set(vehicleIds.filter((x): x is string => !!x))]
+  if (!ids.length) return
+  const work = async () => {
+    let touched = 0
+    for (const id of ids) touched += await resumeAfterSaleCancelled(tenantId, id, actor ?? SYSTEM_ACTOR).catch((e) => { console.error('[publications] venda cancelada', id, e); return 0 })
+    if (touched) {
+      const { runWorker } = await import('./worker')
+      await runWorker({ maxJobs: 20, deadlineMs: 45_000 }).catch((e) => console.error('[publications] worker (cancelamento)', e))
+    }
+  }
+  try { after(work) } catch { void work() }
+}
+
 /** Versão tolerante para ganchos de outras rotas: nunca derruba a operação principal. */
 export function notifyStockChanged(tenantId: string | null | undefined, vehicleIds: Array<string | null | undefined>, actor?: Actor): void {
   if (!tenantId) return

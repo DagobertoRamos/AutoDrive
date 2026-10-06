@@ -16,6 +16,7 @@ import {
   FI_REVENUE_TYPES, SERVICE_KINDS, SERVICE_KIND_BY_KEY, aggregateByCenter, aggregateServiceLines,
   fiRevenueType, isChargedDocDebt, serviceKindOf, serviceProfit,
 } from './result-centers-core'
+import { loadDealRefundLines } from './deal-refunds'
 import { SALE_DEAL_TYPES, loadAllocated, loadFinanceRefs, monthBounds, type EntryFilters, type FinanceRefs } from './dre'
 import {
   AGING_BUCKETS, addMonths, agingBucket, agingSummary, aggregateProfit, budgetVsActual, buildCategoryTree, daysBetweenSP,
@@ -26,7 +27,7 @@ import {
 export const REPORT_VIEWS = [
   'resultado-centros', 'servicos', 'receitas-fi',
   'despesas-categoria', 'centro-custo', 'fornecedores', 'lucratividade-veiculo', 'lucratividade-vendedor',
-  'lucratividade-unidade', 'comparativo-mensal', 'orcado-realizado', 'aging',
+  'lucratividade-unidade', 'comparativo-mensal', 'orcado-realizado', 'aging', 'cancelamentos',
 ] as const
 export type ReportView = (typeof REPORT_VIEWS)[number]
 export const isReportView = (v: string | null): v is ReportView => !!v && (REPORT_VIEWS as readonly string[]).includes(v)
@@ -79,6 +80,7 @@ export async function getReport(p: ReportParams) {
     case 'comparativo-mensal': return { ...base, ...(await monthlyComparison(p, refs)) }
     case 'orcado-realizado': return { ...base, regime: 'competencia' as Regime, ...(await budgetReport(p, refs)) }
     case 'aging': return { ...base, ...(await aging(p)) }
+    case 'cancelamentos': return { ...base, ...(await cancellations(p)) }
   }
 }
 
@@ -708,5 +710,59 @@ async function aging(p: ReportParams) {
     pagar: summary.pagar, receber: summary.receber,
     totals: { pagar: total(summary.pagar), receber: total(summary.receber) },
     overdue,
+  }
+}
+
+// ── Cancelamentos e estornos ─────────────────────────────────────────────────
+// Negociações canceladas no período (data do cancelamento) com o que entrou,
+// o que já foi estornado e o que segue retido na conta da loja.
+const DEAL_TYPE_LABEL: Record<string, string> = { VENDA: 'Venda', TROCA: 'Troca', COMPRA: 'Compra', CONSIGNACAO: 'Consignação' }
+
+async function cancellations(p: ReportParams) {
+  const { start, end } = monthBounds(p.periods[0], p.periods[p.periods.length - 1])
+  const deals = await prisma.deal.findMany({
+    where: {
+      tenantId: p.tenantId, status: 'CANCELADA', cancelledAt: { gte: start, lte: end },
+      ...(p.unitId ? { unitId: p.unitId } : {}), ...(p.sellerId ? { sellerId: p.sellerId } : {}),
+    },
+    select: {
+      id: true, dealNumber: true, type: true, cancelledAt: true, cancelledReason: true,
+      customer: { select: { name: true } }, person: { select: { nomeCompleto: true } },
+      seller: { select: { fullName: true, shortName: true } }, cancelledById: true,
+      vehicles: { select: { role: true, plate: true, brand: true, model: true } },
+    },
+    orderBy: { cancelledAt: 'desc' },
+    take: 500,
+  })
+  const userIds = [...new Set(deals.map((d) => d.cancelledById).filter((x): x is string => !!x))]
+  const userName = new Map((userIds.length ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : []).map((u) => [u.id, u.name]))
+  const rows = [] as Array<{
+    dealId: string; dealNumber: string | null; type: string; cancelledAt: Date | null; reason: string | null; cancelledBy: string | null
+    customer: string | null; seller: string | null; vehicle: string | null
+    received: number; refunded: number; retained: number; ownerPaid: number; ownerReturned: number; lastRefundAt: string | null
+  }>
+  for (const d of deals) {
+    const lines = await loadDealRefundLines(d.id)
+    const sum = (kind: string, f: (l: (typeof lines)[number]) => number) => r2(lines.filter((l) => l.kind === kind).reduce((s, l) => s + f(l), 0))
+    const v = d.vehicles.find((x) => x.role === 'VENDIDO') ?? d.vehicles[0]
+    const dates = lines.map((l) => l.refund?.date).filter((x): x is string => !!x).sort()
+    rows.push({
+      dealId: d.id, dealNumber: d.dealNumber, type: DEAL_TYPE_LABEL[d.type] ?? d.type, cancelledAt: d.cancelledAt, reason: d.cancelledReason,
+      cancelledBy: d.cancelledById ? userName.get(d.cancelledById) ?? null : null,
+      customer: d.person?.nomeCompleto ?? d.customer?.name ?? null, seller: d.seller ? d.seller.shortName || d.seller.fullName : null,
+      vehicle: v ? [v.plate, [v.brand, v.model].filter(Boolean).join(' ')].filter(Boolean).join(' · ') : null,
+      received: sum('ESTORNO_CLIENTE', (l) => l.moved), refunded: sum('ESTORNO_CLIENTE', (l) => l.refunded), retained: sum('ESTORNO_CLIENTE', (l) => l.pending),
+      ownerPaid: sum('DEVOLUCAO_PROPRIETARIO', (l) => l.moved), ownerReturned: sum('DEVOLUCAO_PROPRIETARIO', (l) => l.refunded),
+      lastRefundAt: dates[dates.length - 1] ?? null,
+    })
+  }
+  const tot = (k: 'received' | 'refunded' | 'retained' | 'ownerPaid' | 'ownerReturned') => r2(rows.reduce((s, r) => s + r[k], 0))
+  return {
+    rows,
+    totals: {
+      count: rows.length, received: tot('received'), refunded: tot('refunded'), retained: tot('retained'),
+      ownerPending: r2(tot('ownerPaid') - tot('ownerReturned')),
+      withRetained: rows.filter((r) => r.retained > 0.009).length,
+    },
   }
 }

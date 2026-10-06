@@ -232,7 +232,7 @@ export default function DealSummary({
               <Edit size={14} /> Editar
             </button>
           )}
-          {onCancelDeal && !['FINALIZADA', 'CANCELADA'].includes(deal.status) && (
+          {onCancelDeal && deal.status !== 'CANCELADA' && (deal.status !== 'FINALIZADA' || ['ADM', 'MASTER'].includes(actor.role)) && (
             <button onClick={onCancelDeal} className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">
               <Ban size={14} /> Cancelar
             </button>

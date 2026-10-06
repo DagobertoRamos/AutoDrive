@@ -41,6 +41,8 @@ export function sourceLabel(source: string | null) {
   if (source.startsWith(FI_PLUS_SOURCE_PREFIX)) return 'PLUS do financiamento'
   if (source.startsWith(FI_ADDON_SOURCE_PREFIX)) return 'Agregado do financiamento'
   if (source.startsWith('VEICULO_')) return 'Custo do veículo'
+  if (source.startsWith('NEG_ESTORNO_')) return 'Estorno de negociação cancelada'
+  if (source.startsWith('NEG_DEVOLUCAO_')) return 'Devolução de compra cancelada'
   return ({ VENDA: 'Venda', COMISSAO: 'Comissão', RETORNO: 'Comissão — retorno', GARANTIA: 'Comissão — garantia' } as Record<string, string>)[source] ?? source
 }
 

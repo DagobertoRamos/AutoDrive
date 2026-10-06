@@ -44,6 +44,8 @@ import ReturnPanel from './_components/ReturnPanel'
 import WarrantySalesPanel from './_components/WarrantySalesPanel'
 import FinancingPanel from './_components/FinancingPanel'
 import DealSummary from './_components/DealSummary'
+import CancelDealModal from '@/components/deals/CancelDealModal'
+import CancellationPanel from './_components/CancellationPanel'
 import DealHistory, { useDealHistory } from './_components/DealHistory'
 import AttachmentUploader, { type Attachment } from './_components/AttachmentUploader'
 import ContractsTab from './_components/ContractsTab'
@@ -1020,7 +1022,8 @@ function ActionsDropdown({ deal, role, onAction, onOpenModal, activeTab, setTab,
   const canFinalize = actions.canFinalizeNow
   const showForce   = actions.canForceFinalize && !actions.canFinalizeNow && actions.isFinalizable && !actions.isLocked
   const canReopen   = actions.canReopenNow
-  const canCancel  = !['FINALIZADA', 'CANCELADA'].includes(deal.status)
+  // Finalizada: só ADM/MASTER cancelam (desfaz a venda).
+  const canCancel  = deal.status !== 'CANCELADA' && (deal.status !== 'FINALIZADA' || ['ADM', 'MASTER'].includes(role ?? ''))
 
   const item = (onClick: () => void, icon: React.ReactNode, label: string, cls = 'text-gray-700 hover:bg-gray-50') => (
     <button onClick={() => { onClick(); setOpen(false) }} className={`flex w-full items-center gap-2.5 px-3 py-2 text-sm ${cls}`}>
@@ -1353,10 +1356,12 @@ export default function NegociacaoDetailPage() {
         />
       )}
       {modal === 'cancel' && (
-        <MotiveModal
-          title="Cancelar Negociação"
-          onConfirm={(reason) => handleAction('cancel', { reason })}
-          onCancel={() => setModal(null)}
+        <CancelDealModal
+          dealNumber={deal.dealNumber}
+          dealType={deal.type}
+          status={deal.status}
+          onConfirm={(p) => handleAction('cancel', { reason: p.reason, returnEntering: p.returnEntering })}
+          onClose={() => setModal(null)}
           loading={acting}
         />
       )}
@@ -1534,6 +1539,7 @@ export default function NegociacaoDetailPage() {
               Se precisar reativar, descomente os blocos antigos. */}
 
           {/* ── Valores Detalhados (clean, read-only) ── */}
+          {deal.status === 'CANCELADA' && <CancellationPanel dealId={deal.id} onToast={showToast} />}
           <DealValuesCard deal={deal} />
 
           {/* Editor de pagamentos / débitos / troco / descontos — movido pra

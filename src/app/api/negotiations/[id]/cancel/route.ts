@@ -1,5 +1,14 @@
 // =============================================================================
 // POST /api/negotiations/[id]/cancel — Cancelar negociação
+//   body: { reason, returnEntering? }
+//   • Carro vendido volta ao estoque (Disponível) e aos anúncios: site e portais
+//     em que estava (pausados pela venda ou arquivados como Vendido).
+//   • Carro de entrada (troca/compra/consignação): returnEntering=true → devolvido
+//     ao proprietário (sai do estoque e dos anúncios); senão volta a pedir a
+//     negociação de entrada na esteira.
+//   • Dinheiro: o que já entrou continua na conta (RECEBIDO); o que estava
+//     previsto é cancelado. O estorno é marcado depois (deal-refunds).
+//   • Finalizada: só ADM/MASTER cancelam (desfaz a venda).
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server'
@@ -7,14 +16,14 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { canCancelDeal } from '@/lib/negotiation-permissions'
+import { canCancelDeal, canReopenDeal } from '@/lib/negotiation-permissions'
 import { createDealAudit, createStatusHistory } from '@/lib/negotiation-service'
-import { releaseStock } from '@/lib/negotiation/deal-children'
+import { OPEN_DEAL_STATUSES, releaseStock } from '@/lib/negotiation/deal-children'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { cancelCommissionsForDeal } from '@/lib/commission/sync'
 import { reopenNegotiationGate } from '@/lib/stock/intake'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
-import { notifyStockChanged } from '@/lib/publications/service'
+import { notifySaleCancelled, notifyStockChanged } from '@/lib/publications/service'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 import { syncTenantFinance } from '@/lib/finance/finance-sync'
 
@@ -32,7 +41,7 @@ export async function POST(
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
 
-  let body: { reason?: string } = {}
+  let body: { reason?: string; returnEntering?: boolean } = {}
   try {
     body = await req.json()
   } catch { /* ignore */ }
@@ -47,9 +56,10 @@ export async function POST(
   })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
 
-  // Finalizada: reabrir antes (o carro já foi vendido). Cancelada: nada a fazer.
-  if (deal.status === 'FINALIZADA' || deal.status === 'CANCELADA') {
-    return NextResponse.json({ error: deal.status === 'FINALIZADA' ? 'Negociação finalizada. Reabra antes de cancelar.' : 'Negociação já está cancelada.' }, { status: 409 })
+  if (deal.status === 'CANCELADA') return NextResponse.json({ error: 'Negociação já está cancelada.' }, { status: 409 })
+  // Finalizada: desfazer a venda é decisão da administração.
+  if (deal.status === 'FINALIZADA' && !canReopenDeal(session.user.role)) {
+    return NextResponse.json({ error: 'Negociação finalizada: só ADM/MASTER podem cancelar.' }, { status: 403 })
   }
 
   if (!canCancelDeal(session.user.role, deal.status)) {
@@ -67,6 +77,8 @@ export async function POST(
     }
   }
 
+  const returnEntering = body.returnEntering === true
+  const returned: string[] = []
   try {
     const updated = await prisma.$transaction(async (tx) => {
       const d = await tx.deal.update({
@@ -79,10 +91,41 @@ export async function POST(
         },
       })
 
-      // Devolve ao estoque só o carro que esta venda segurava (em negociação/reservado)
-      // e que nenhuma outra venda ativa segura. Carro comprado/consignado não muda.
+      // Devolve ao estoque o carro que esta venda segurava (em negociação/reservado
+      // ou já vendido, se finalizada) e que nenhuma outra venda segura.
       for (const dv of deal.vehicles) {
-        if (dv.vehicleId && dv.role === 'VENDIDO') await releaseStock(tx, dv.vehicleId, params.id)
+        if (!dv.vehicleId) continue
+        if (dv.role === 'VENDIDO') {
+          if (await releaseStock(tx, dv.vehicleId, params.id)) continue
+          const other = await tx.dealVehicle.findFirst({
+            where: { vehicleId: dv.vehicleId, role: 'VENDIDO', deal: { id: { not: params.id }, status: { in: [...OPEN_DEAL_STATUSES, 'FINALIZADA'] as never[] } } },
+            select: { id: true },
+          })
+          if (!other) {
+            await tx.vehicle.updateMany({
+              where: { id: dv.vehicleId, stockStatus: 'VENDIDO' as never },
+              data:  { stockStatus: 'DISPONIVEL' as never, active: true, isAvailableForSale: true, exitDate: null },
+            })
+          }
+        } else if (returnEntering && ['TROCA', 'COMPRADO', 'CONSIGNADO'].includes(dv.role)) {
+          // Carro de entrada devolvido ao proprietário — se ainda não foi vendido
+          // e nenhuma outra negociação ativa o trouxe.
+          const other = await tx.dealVehicle.findFirst({
+            where: { vehicleId: dv.vehicleId, role: { in: ['TROCA', 'COMPRADO', 'CONSIGNADO'] }, deal: { id: { not: params.id }, status: { notIn: ['CANCELADA', 'RECUSADA', 'DESAPROVADA'] as never[] } } },
+            select: { id: true },
+          })
+          if (other) continue
+          const r = await tx.vehicle.updateMany({
+            where: { id: dv.vehicleId, stockStatus: { notIn: ['VENDIDO', 'RESERVADO', 'EM_NEGOCIACAO'] as never[] } },
+            data:  { stockStatus: 'DEVOLVIDO' as never, active: false, isAvailableForSale: false, exitDate: new Date() },
+          })
+          if (r.count) returned.push(dv.vehicleId)
+          // Compra/repasse ainda não pago ao proprietário: não é mais devido.
+          await tx.financialEntry.updateMany({
+            where: { vehicleId: dv.vehicleId, status: 'PREVISTO', source: { in: ['VEICULO_COMPRA_VEICULO', 'VEICULO_REPASSE'] } },
+            data:  { status: 'CANCELADO', notes: `Cancelado com a negociação ${deal.dealNumber ?? params.id}.` },
+          })
+        }
       }
 
       await createStatusHistory(tx as any, params.id, deal.status, 'CANCELADA', session.user.id, body.reason)
@@ -119,8 +162,11 @@ export async function POST(
       return d
     })
 
-    // Central de Publicações: venda cancelada → reativa o que a venda pausou.
-    notifyStockChanged(deal.tenantId, deal.vehicles.map((dv) => (dv.role === 'VENDIDO' ? dv.vehicleId : null)), { id: session.user.id, name: session.user.name ?? null })
+    // Central de Publicações: venda cancelada → o carro volta ao site e aos portais;
+    // carro de entrada devolvido → sai dos anúncios.
+    const actor = { id: session.user.id, name: session.user.name ?? null }
+    notifySaleCancelled(deal.tenantId, deal.vehicles.map((dv) => (dv.role === 'VENDIDO' ? dv.vehicleId : null)), actor)
+    notifyStockChanged(deal.tenantId, returned, actor)
 
     let commissionCancelResult: Awaited<ReturnType<typeof cancelCommissionsForDeal>> | null = null
     try {
@@ -138,8 +184,9 @@ export async function POST(
       })
     }
 
-    // Esteira de entrada: carro que entraria por esta negociação volta a pedir a negociação de entrada.
-    await reopenNegotiationGate(params.id, { id: session.user.id, name: session.user.name ?? null, role: session.user.role })
+    // Esteira de entrada: carro que entraria por esta negociação (e não foi devolvido)
+    // volta a pedir a negociação de entrada.
+    if (!returnEntering) await reopenNegotiationGate(params.id, { id: session.user.id, name: session.user.name ?? null, role: session.user.role })
       .catch((e) => console.error('[esteira] reabrir portão de negociação', e))
 
     await syncDealFinanceSafe(params.id)

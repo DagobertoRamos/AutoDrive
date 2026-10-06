@@ -4,18 +4,19 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { BarChart3, Building2, CalendarClock, CarFront, Landmark, PieChart, Scale, Target, Truck, Users, Wrench } from 'lucide-react'
+import { Ban, BarChart3, Building2, CalendarClock, CarFront, Landmark, PieChart, Scale, Target, Truck, Users, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MonthInput, RegimeToggle, SelectInput, Toolbar, currentMonth, downloadCsv, monthLabel, monthsBack, qs, type Option } from './shared'
 import { ExpensesByCategoryReport, SuppliersReport } from './CategoryReports'
 import { FiRevenueReport, ResultByCenterReport, ServicesSoldReport } from './CenterReports'
 import { GroupProfitReport, VehicleProfitReport } from './ProfitReports'
 import { AgingReport, BudgetReport, MonthlyComparisonReport } from './PeriodReports'
+import { CancellationReport } from './CancellationReport'
 import type { CsvSpec } from './types'
 
 type View =
   | 'resultado-centros' | 'servicos' | 'receitas-fi' | 'despesas-categoria' | 'fornecedores' | 'lucratividade-veiculo' | 'lucratividade-vendedor'
-  | 'lucratividade-unidade' | 'comparativo-mensal' | 'orcado-realizado' | 'aging'
+  | 'lucratividade-unidade' | 'comparativo-mensal' | 'orcado-realizado' | 'aging' | 'cancelamentos'
 
 type Filter = 'range' | 'to' | 'regime' | 'costCenter' | 'unit' | 'seller'
 
@@ -31,6 +32,7 @@ const REPORTS: { key: View; label: string; icon: typeof PieChart; filters: Filte
   { key: 'comparativo-mensal', label: 'Comparativo mensal', icon: BarChart3, filters: ['to', 'regime', 'costCenter', 'unit'] },
   { key: 'orcado-realizado', label: 'Orçado × realizado', icon: Target, filters: ['range', 'costCenter', 'unit'] },
   { key: 'aging', label: 'Aging', icon: CalendarClock, filters: ['costCenter', 'unit'] },
+  { key: 'cancelamentos', label: 'Cancelamentos e estornos', icon: Ban, filters: ['range', 'unit', 'seller'] },
 ]
 
 interface FilterLists { costCenters: Option[]; units: Option[]; sellers: Option[] }
@@ -120,6 +122,7 @@ export default function ReportsHub() {
       {view === 'comparativo-mensal' && <MonthlyComparisonReport key={view} {...props} />}
       {view === 'orcado-realizado' && <BudgetReport key={view} {...props} />}
       {view === 'aging' && <AgingReport key={view} {...props} />}
+      {view === 'cancelamentos' && <CancellationReport key={view} {...props} />}
     </div>
   )
 }

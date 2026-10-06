@@ -80,7 +80,8 @@ async function categoryId(tenantId: string | null, def: { name: string; kind: 'R
 
 const FI_DEAL_CANCEL_MARK = '[cancelado com a negociação]'
 
-const paymentStatus = (s: string | null) => (s === 'CONFIRMADO' ? 'RECEBIDO' : s === 'CANCELADO' ? 'CANCELADO' : 'PREVISTO') as 'RECEBIDO' | 'CANCELADO' | 'PREVISTO'
+// ESTORNADO: o dinheiro entrou (fica RECEBIDO); a saída é o lançamento do estorno (deal-refunds).
+const paymentStatus = (s: string | null) => (s === 'CONFIRMADO' || s === 'ESTORNADO' ? 'RECEBIDO' : s === 'CANCELADO' ? 'CANCELADO' : 'PREVISTO') as 'RECEBIDO' | 'CANCELADO' | 'PREVISTO'
 
 /** Sincroniza os lançamentos de UMA negociação. Seguro chamar a qualquer momento. */
 export async function syncDealFinance(dealId: string, cache: Map<string, string> = new Map()): Promise<void> {
@@ -143,7 +144,8 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
       const kind = PAYMENT_LABEL[p.type] ?? p.type
       const how = p.method ? ` (${PAYMENT_LABEL[p.method] ?? p.method})` : p.bank ? ` (${p.bank})` : ''
       const plate = p.vehiclePlate ?? plateOf('VENDIDO')
-      const status = dead && p.status !== 'CONFIRMADO' ? 'CANCELADO' : paymentStatus(p.status)
+      // Cancelada: o que já entrou continua recebido (fica na conta até o estorno).
+      const status = dead && paymentStatus(p.status) !== 'RECEBIDO' ? 'CANCELADO' : paymentStatus(p.status)
       // Financiamento: o banco paga; demais: o cliente da negociação.
       const party = p.type === 'FINANCIAMENTO' && p.bank ? p.bank : customerName
       const data = {
