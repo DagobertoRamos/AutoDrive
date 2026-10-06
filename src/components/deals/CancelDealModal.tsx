@@ -28,7 +28,6 @@ export default function CancelDealModal({ title, dealNumber, dealType, status, r
   const [suggestions, setSuggestions] = useState<string[]>([])
   const type = String(dealType ?? '').toUpperCase()
   const hasEntering = type === 'TROCA' || type === 'COMPRA' || type === 'CONSIGNACAO'
-  const sells = type === 'VENDA' || type === 'TROCA'
   const [returnEntering, setReturnEntering] = useState(true)
 
   // Motivos cadastrados em Configurações da Fila › Negociação (opção rápida).
@@ -56,14 +55,7 @@ export default function CancelDealModal({ title, dealNumber, dealType, status, r
           {title ?? 'Cancelar negociação'}{dealNumber ? <span className="text-gray-400">· {dealNumber}</span> : null}
         </h3>
 
-        {!reasonOnly && (
-          <ul className="mt-3 space-y-1 rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
-            {sells && <li>• O carro vendido volta ao estoque e aos anúncios (site e portais conectados).</li>}
-            <li>• Valores já recebidos ficam na conta até o financeiro marcar o estorno.</li>
-            <li>• Valores previstos e comissões são cancelados.</li>
-            {status === 'FINALIZADA' && <li className="font-medium text-red-700">• Negociação finalizada: a venda será desfeita.</li>}
-          </ul>
-        )}
+        {!reasonOnly && status === 'FINALIZADA' && <p className="mt-2 text-sm text-red-700">A venda será desfeita.</p>}
 
         {suggestions.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
@@ -78,15 +70,14 @@ export default function CancelDealModal({ title, dealNumber, dealType, status, r
           Motivo <span className="text-red-500">*</span>
           <textarea autoFocus
             className="mt-1 min-h-24 w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-            placeholder="Descreva o motivo"
+           
             value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
-          {minLength > 3 && reason.trim().length < minLength && <span className="mt-0.5 block text-[11px] text-gray-400">Mínimo de {minLength} caracteres.</span>}
         </label>
 
         {!reasonOnly && hasEntering && (
           <label className="mt-3 flex items-start gap-2 text-sm text-gray-700">
             <input type="checkbox" className="mt-0.5" checked={returnEntering} onChange={(e) => setReturnEntering(e.target.checked)} />
-            <span>{enteringLabel}<span className="block text-xs text-gray-500">Sai do estoque e dos anúncios. Desmarcado, o carro fica na esteira aguardando nova negociação.</span></span>
+            <span>{enteringLabel}</span>
           </label>
         )}
 

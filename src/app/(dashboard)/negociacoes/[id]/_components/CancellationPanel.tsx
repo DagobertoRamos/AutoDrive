@@ -62,7 +62,7 @@ export default function CancellationPanel({ dealId, onToast }: { dealId: string;
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-red-100 bg-red-50 px-4 py-3">
         <div className="flex items-center gap-2">
           <Wallet size={15} className="text-red-600" />
-          <h3 className="font-semibold text-gray-800">Valores da negociação cancelada</h3>
+          <h3 className="font-semibold text-gray-800">Estornos</h3>
         </div>
         <div className="flex gap-2 text-[11px] font-semibold">
           {pending > 0 && <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-amber-800">Retido: {brl(pending)}</span>}
@@ -97,7 +97,6 @@ export default function CancellationPanel({ dealId, onToast }: { dealId: string;
           </li>
         ))}
       </ul>
-      {!data.canRefund && pending > 0 && <p className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">O estorno é marcado pelo financeiro.</p>}
       {editing && <RefundModal dealId={dealId} line={editing} accounts={data.accounts} onClose={() => setEditing(null)} onDone={() => { setEditing(null); onToast('Estorno registrado no financeiro.'); void load() }} onError={(m) => onToast(m, false)} />}
     </div>
   )
@@ -135,7 +134,7 @@ function RefundModal({ dealId, line, accounts, onClose, onDone, onError }: {
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && !saving) onClose() }}>
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true">
         <h3 className="text-lg font-semibold text-gray-900">{owner ? 'Devolução do proprietário' : 'Estorno ao cliente'}</h3>
-        <p className="mt-1 text-xs text-gray-500">{line.label} · {line.party ?? '—'} · {owner ? 'pago' : 'recebido'} {brl(line.moved)}</p>
+        <p className="mt-1 text-xs text-gray-500">{line.label} · {line.party ?? '—'}</p>
         <div className="mt-4 grid grid-cols-2 gap-3">
           <label className="text-xs font-medium text-gray-600">Valor <span className="text-red-500">*</span>
             <input className={input} inputMode="decimal" value={amount} onChange={(e) => setAmount(maskBRL(e.target.value))} />

@@ -34,10 +34,10 @@ export function CancellationReport({ url, onData, registerCsv }: ReportViewProps
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Cancelamentos" value={loading ? '—' : String(t?.count ?? 0)} hint={t?.withRetained ? `${t.withRetained} com valor retido` : undefined} />
+        <Kpi label="Cancelamentos" value={loading ? '—' : String(t?.count ?? 0)} />
         <Kpi label="Recebido" value={loading ? '—' : fmt(t?.received ?? 0)} tone="green" />
         <Kpi label="Estornado" value={loading ? '—' : fmt(t?.refunded ?? 0)} tone="red" />
-        <Kpi label="Retido a estornar" value={loading ? '—' : fmt(t?.retained ?? 0)} tone="amber" hint={t?.ownerPending ? `Proprietários a devolver: ${fmt(t.ownerPending)}` : undefined} />
+        <Kpi label="Retido" value={loading ? '—' : fmt(t?.retained ?? 0)} tone="amber" />
       </div>
       <Panel title="Negociações canceladas" actions={
         <div className="inline-flex rounded-lg border border-gray-300 bg-white p-0.5 print:hidden">
@@ -48,7 +48,7 @@ export function CancellationReport({ url, onData, registerCsv }: ReportViewProps
           ))}
         </div>
       }>
-        <StateBox loading={loading} error={error} empty={!rows.length} emptyText="Nenhuma negociação cancelada no período." />
+        <StateBox loading={loading} error={error} empty={!rows.length} emptyText="Nenhum cancelamento no período." />
         {!loading && !error && rows.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
