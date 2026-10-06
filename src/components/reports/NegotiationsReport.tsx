@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Handshake, RefreshCw } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { DealPeekLink } from '@/components/deals/DealPeek'
 
 type DealType = 'VENDA' | 'TROCA' | 'COMPRA' | 'CONSIGNACAO'
 
@@ -90,7 +91,7 @@ export default function NegotiationsReport({
               ) : (
                 rows.map((d) => (
                   <tr key={d.id} className="hover:bg-gray-50">
-                    <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-500">{d.dealNumber ?? '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-500"><DealPeekLink dealId={d.id} className="font-medium text-brand-700 hover:underline">{d.dealNumber ?? '—'}</DealPeekLink></td>
                     <td className="px-4 py-3 font-medium text-gray-900">{d.vehicle}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-600">{d.plate ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{d.customer}</td>

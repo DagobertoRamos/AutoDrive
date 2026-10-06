@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { DollarSign, RefreshCw, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import LancamentoManualModal from '@/components/comissoes/LancamentoManualModal'
+import { DealPeekLink } from '@/components/deals/DealPeek'
 
 interface Row {
   id: string
@@ -204,7 +205,7 @@ export default function LancamentosComissaoPage() {
                     <td className="whitespace-nowrap px-4 py-3">
                       <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{r.commissionScopeLabel ?? 'Principal'}</span>
                     </td>
-                    <td className="max-w-xs truncate px-4 py-3 text-gray-600" title={r.description}>{r.description}</td>
+                    <td className="max-w-xs truncate px-4 py-3 text-gray-600" title={r.description}>{r.dealId ? <DealPeekLink dealId={r.dealId} className="text-brand-700 hover:underline">{r.description}</DealPeekLink> : r.description}</td>
                     <td className="whitespace-nowrap px-4 py-3 tabular-nums text-gray-600">{fmt(r.baseValue)}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-bold tabular-nums text-brand-700">{fmt(r.commissionValue)}</td>
                     <td className="px-4 py-3">

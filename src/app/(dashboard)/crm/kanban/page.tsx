@@ -10,6 +10,7 @@ import CloseReasonModal from '@/components/crm/CloseReasonModal'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
 import type { Pipeline, PipelineStage } from '@/lib/crm/pipelines-core'
+import { DealPeekLink } from '@/components/deals/DealPeek'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface LeadTag { id: string; name: string; color: string | null }
@@ -322,12 +323,12 @@ function LeadCard({ row, settings, canDelete, onRefresh, moving, moveTargets, on
           Ver detalhes
         </Link>
         {row.deal && (
-          <Link href={`/negociacoes/${row.deal.id}`}
+          <DealPeekLink dealId={row.deal.id}
             className="flex-1 rounded-lg border border-emerald-200 bg-emerald-50 py-1.5 text-center text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
             title={`Negociação ${row.deal.dealNumber ?? ''}`}
           >
             {row.deal.dealNumber ? `${row.deal.dealNumber}` : 'Ver negociação'}
-          </Link>
+          </DealPeekLink>
         )}
       </div>
     </div>

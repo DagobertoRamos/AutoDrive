@@ -33,6 +33,7 @@ import { CautelarPanel } from '@/components/estoque/prep/CautelarPanel'
 import { ReceptionPanel } from '@/components/estoque/prep/ReceptionPanel'
 import { ServicesPanel } from '@/components/estoque/prep/ServicesPanel'
 import { LedgerPanel } from '@/components/estoque/prep/LedgerPanel'
+import { DealPeekLink } from '@/components/deals/DealPeek'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -316,12 +317,12 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
             </p>
           </div>
           {vehicle.openNegotiationId && (
-            <Link
-              href={`/negociacoes/${vehicle.openNegotiationId}`}
+            <DealPeekLink
+              dealId={vehicle.openNegotiationId}
               className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
             >
               Ver negociação
-            </Link>
+            </DealPeekLink>
           )}
         </div>
       )}

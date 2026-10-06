@@ -305,6 +305,8 @@ export interface Pendency {
   plate:           string | null
   vehicle:         string | null
   negotiation:     string | null
+  /** Negociação vinculada (Deal.id), quando houver. */
+  dealId?:         string | null
   description:     string | null
   lead:            string | null
   priority:        PendencyPriority

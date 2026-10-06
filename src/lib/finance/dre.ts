@@ -136,6 +136,8 @@ async function dealAccrualEntries(tenantId: string, start: Date, end: Date, f: E
       debts: { select: { id: true, type: true, value: true, responsavel: true } },
       services: { select: { id: true, value: true, kind: true, name: true, supplier: true } },
       discountRequests: { select: { status: true, approvedValue: true, requestedValue: true } },
+      warrantyPaidBy: true,
+      warrantySales: { select: { id: true, finalPrice: true, status: true } },
     },
   })
   if (!deals.length) return []

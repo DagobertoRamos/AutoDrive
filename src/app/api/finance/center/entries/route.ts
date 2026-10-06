@@ -9,7 +9,9 @@
 //   POST : finance.manage — lançamento único ou parcelado (atômico).
 //          { type, description, amount, dueDate, competenceDate?, accountId?, categoryId?,
 //            costCenterId?, supplierId?, counterparty?, documentNumber?, paymentMethod?, notes?,
-//            vehicleId?, employeeUserId?, installments? (1–120), paid?: { paidDate, accountId? } }
+//            vehicleId?, employeeUserId?, dealId?, installments? (1–120), paid?: { paidDate, accountId? } }
+//          dealId: vincula à negociação (source MANUAL_NEG_<uuid>); sem contraparte/veículo,
+//          herda o cliente (Person ?? Customer) e o carro vendido.
 //          Parcelado: N lançamentos mensais, valores iguais (centavos na última), "(k/N)",
 //          mesmo installmentGroupId. `paid` baixa só a 1ª parcela.
 // =============================================================================
@@ -28,7 +30,7 @@ import { buildInstallmentPlan } from '@/lib/finance/installments-core'
 import { noonUtc, todaySpYmd } from '@/lib/finance/recurrence-core'
 import { spDayEnd, spDayStart } from '@/lib/dashboard/tz'
 import {
-  bad, canManage, canPayroll, categoryKindError, centerRefError, isDeletableSource, payrollFilter, supplierName,
+  MANUAL_DEAL_SOURCE_PREFIX, bad, canManage, canPayroll, categoryKindError, centerRefError, dealForEntry, isDeletableSource, payrollFilter, supplierName,
 } from './_lib/shared'
 
 export const dynamic = 'force-dynamic'
@@ -117,11 +119,14 @@ export async function GET(req: Request) {
     ])
     const vehicleIds = [...new Set(rows.map((r) => r.vehicleId).filter((v): v is string => !!v))]
     const supplierIds = [...new Set(rows.map((r) => r.supplierId).filter((v): v is string => !!v))]
-    const [vehicles, suppliers] = await Promise.all([
+    const dealIds = [...new Set(rows.map((r) => r.dealId).filter((v): v is string => !!v))]
+    const [vehicles, suppliers, deals] = await Promise.all([
       vehicleIds.length ? prisma.vehicle.findMany({ where: { id: { in: vehicleIds } }, select: { id: true, plate: true, brand: true, model: true } }) : [],
       supplierIds.length ? prisma.supplier.findMany({ where: { id: { in: supplierIds } }, select: { id: true, name: true } }) : [],
+      dealIds.length ? prisma.deal.findMany({ where: { id: { in: dealIds } }, select: { id: true, dealNumber: true, person: { select: { nomeCompleto: true } }, customer: { select: { name: true } } } }) : [],
     ])
     const vMap = new Map(vehicles.map((v) => [v.id, v])); const sMap = new Map(suppliers.map((s) => [s.id, s.name]))
+    const dMap = new Map(deals.map((d) => [d.id, { id: d.id, dealNumber: d.dealNumber, customer: d.person?.nomeCompleto ?? d.customer?.name ?? null }]))
 
     const data = rows.map((e) => ({
       id: e.id, type: e.type, status: e.status,
@@ -129,7 +134,8 @@ export async function GET(req: Request) {
       description: e.description, amount: Number(e.amount),
       dueDate: e.dueDate, paidDate: e.paidDate, competenceDate: e.competenceDate,
       account: e.account, category: e.category, costCenter: e.costCenter,
-      counterparty: e.counterparty ?? (e.supplierId ? sMap.get(e.supplierId) ?? null : null),
+      counterparty: e.counterparty ?? (e.supplierId ? sMap.get(e.supplierId) ?? null : null) ?? (e.dealId ? dMap.get(e.dealId)?.customer ?? null : null),
+      deal: e.dealId ? dMap.get(e.dealId) ?? null : null,
       supplierId: e.supplierId, documentNumber: e.documentNumber, paymentMethod: e.paymentMethod, notes: e.notes,
       source: e.source, deletable: isDeletableSource(e.source),
       linked: !!e.commissionCalculationId || !!e.vehicleServiceId,
@@ -161,7 +167,7 @@ const createSchema = z.object({
   amount: z.coerce.number().positive('Informe o valor.').max(100_000_000),
   dueDate: ymd,
   competenceDate: ymd.nullable().optional(),
-  accountId: optId, categoryId: optId, costCenterId: optId, supplierId: optId, vehicleId: optId, employeeUserId: optId,
+  accountId: optId, categoryId: optId, costCenterId: optId, supplierId: optId, vehicleId: optId, employeeUserId: optId, dealId: optId,
   counterparty: optText(160), documentNumber: optText(80), paymentMethod: optText(60), notes: optText(2000),
   installments: z.coerce.number().int().min(1).max(120).optional(),
   paid: z.object({ paidDate: ymd, accountId: optId }).nullable().optional(),
@@ -180,7 +186,10 @@ export async function POST(req: Request) {
     if (refErr) return bad(refErr)
     if (d.vehicleId && !(await prisma.vehicle.findFirst({ where: { id: d.vehicleId, tenantId }, select: { id: true } }))) return bad('Veículo inválido.')
 
-    const counterparty = d.counterparty || (await supplierName(d.supplierId))
+    const deal = d.dealId ? await dealForEntry(tenantId, d.dealId) : null
+    if (d.dealId && !deal) return bad('Negociação inválida.')
+    const counterparty = d.counterparty || (await supplierName(d.supplierId)) || deal?.customer || null
+    const vehicleId = d.vehicleId || deal?.vehicleId || null
     const n = d.installments ?? 1
     const plan = buildInstallmentPlan({ description: d.description, total: d.amount, count: n, firstDueDate: d.dueDate })
     const groupId = n > 1 ? randomUUID() : null
@@ -198,11 +207,11 @@ export async function POST(req: Request) {
           paidDate: paidNow ? noonUtc(d.paid!.paidDate) : null,
           accountId: (paidNow ? d.paid!.accountId : null) || d.accountId || null,
           categoryId: d.categoryId || null, costCenterId: d.costCenterId || null, supplierId: d.supplierId || null,
-          vehicleId: d.vehicleId || null, employeeUserId: d.employeeUserId || null,
+          vehicleId, employeeUserId: d.employeeUserId || null, dealId: deal?.id ?? null,
           counterparty: counterparty || null, documentNumber: d.documentNumber || null,
           paymentMethod: d.paymentMethod || null, notes: d.notes || null,
           installmentGroupId: groupId, installmentNumber: n > 1 ? p.number : null, installmentTotal: n > 1 ? n : null,
-          source: 'MANUAL', createdById: user.id,
+          source: deal ? `${MANUAL_DEAL_SOURCE_PREFIX}${randomUUID()}` : 'MANUAL', createdById: user.id,
         },
         select: { id: true, description: true, amount: true, dueDate: true, status: true },
       })

@@ -35,3 +35,12 @@ describe('result-centers-core', () => {
     expect(legacyCenterKey('Loja Centro')).toBeNull()
   })
 })
+
+describe('garantia como receita da área', () => {
+  it('vendida por 2.350 entra como receita de Garantias; cortesia da loja não', async () => {
+    const { dealRevenueComponents } = await import('./result-centers-core')
+    const comps = dealRevenueComponents({ saleAmount: 50000, warrantyPaidBy: 'CLIENTE', warrantySales: [{ id: 'w1', finalPrice: 2350, status: 'ATIVA' }] })
+    expect(comps.find((c) => c.key === 'GAR_w1')).toMatchObject({ center: 'GARANTIAS', amount: 2350, revenueCode: '4.1' })
+    expect(dealRevenueComponents({ saleAmount: 50000, warrantyPaidBy: 'LOJA', warrantySales: [{ id: 'w1', finalPrice: 2350, status: 'ATIVA' }] }).some((c) => c.key === 'GAR_w1')).toBe(false)
+  })
+})

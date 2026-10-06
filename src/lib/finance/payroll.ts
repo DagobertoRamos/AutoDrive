@@ -47,9 +47,17 @@ export interface PayrollEntryRow {
   status: string; date: string | null; paidDate: string | null; notes: string | null
   discountedMonth: string | null; accountId: string | null; recurrenceId: string | null; categoryId: string | null
 }
+/** dealId gravado no ruleDetails da comissão. */
+function dealIdOf(details: unknown): string | null {
+  const v = details && typeof details === 'object' ? (details as Record<string, unknown>).dealId : null
+  return typeof v === 'string' && v ? v : null
+}
+
 export interface PayrollCommissionRow {
   id: string; ruleType: string; label: string; description: string; value: number; status: string
   entryId: string | null; entryStatus: string | null; paid: boolean; createdAt: string
+  /** Negociação de origem (ruleDetails.dealId). */
+  dealId?: string | null
 }
 export interface PayrollRecurrenceRow {
   id: string; description: string; amount: number; dayOfMonth: number; active: boolean
@@ -147,7 +155,7 @@ export async function loadPayrollMonth(tenantId: string, month: string, onlyUser
           tenantId, period: month, status: { not: 'CANCELADO' },
           OR: [{ sellerId: { in: [...sellerToUser.keys()] } }, { managerId: { in: [...managerToUser.keys()] } }],
         },
-        select: { id: true, sellerId: true, managerId: true, ruleType: true, description: true, commissionValue: true, status: true, createdAt: true },
+        select: { id: true, sellerId: true, managerId: true, ruleType: true, description: true, commissionValue: true, status: true, createdAt: true, ruleDetails: true },
         orderBy: { createdAt: 'asc' },
       })
     : []
@@ -167,7 +175,7 @@ export async function loadPayrollMonth(tenantId: string, month: string, onlyUser
       .filter((c) => (c.sellerId && sellerToUser.get(c.sellerId) === r.userId) || (!(c.sellerId && sellerToUser.has(c.sellerId)) && c.managerId && managerToUser.get(c.managerId) === r.userId))
       .map((c) => {
         const fe = entryByCom.get(c.id)
-        const row = { id: c.id, ruleType: c.ruleType, label: COMMISSION_TYPE_LABEL[c.ruleType] ?? c.ruleType, description: c.description, value: num(c.commissionValue), status: c.status, entryId: fe?.id ?? null, entryStatus: fe?.status ?? null, createdAt: c.createdAt.toISOString() }
+        const row = { id: c.id, ruleType: c.ruleType, label: COMMISSION_TYPE_LABEL[c.ruleType] ?? c.ruleType, description: c.description, value: num(c.commissionValue), status: c.status, entryId: fe?.id ?? null, entryStatus: fe?.status ?? null, createdAt: c.createdAt.toISOString(), dealId: dealIdOf(c.ruleDetails) }
         return { ...row, paid: commissionPaid(row) }
       })
     const recurrences: PayrollRecurrenceRow[] = recRows.filter((x) => x.employeeUserId === r.userId).map((x) => ({

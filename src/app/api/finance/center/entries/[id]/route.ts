@@ -3,13 +3,15 @@
 //   PATCH : finance.manage — edita o lançamento (descrição, valor, datas, conta,
 //           categoria, centro de custo, fornecedor/contraparte, documento, forma, obs.)
 //           { description?, amount?, dueDate?, competenceDate?, accountId?, categoryId?, costCenterId?,
-//             supplierId?, counterparty?, documentNumber?, paymentMethod?, notes?, vehicleId? }
+//             supplierId?, counterparty?, documentNumber?, paymentMethod?, notes?, vehicleId?, dealId? }
+//           dealId só em lançamento manual; sem contraparte, herda o cliente da negociação.
 //   POST  : finance.manage — ações { action: 'settle', paidDate, accountId?, paymentMethod?,
 //           paidAmount?, interestAmount?, discountAmount? } | { action: 'cancel', reason? }
 // Status (estorno/reabrir) segue por PATCH /api/finance/entries/[id].
 // =============================================================================
 
 import { NextResponse } from 'next/server'
+import { randomUUID } from 'node:crypto'
 import type { Prisma } from '@prisma/client'
 import { z, ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
@@ -18,7 +20,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { financeGuard } from '@/lib/finance/access'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { noonUtc } from '@/lib/finance/recurrence-core'
-import { bad, categoryKindError, centerRefError, entryAccessError, supplierName } from '../_lib/shared'
+import { MANUAL_DEAL_SOURCE_PREFIX, bad, categoryKindError, centerRefError, dealForEntry, entryAccessError, isDeletableSource, supplierName } from '../_lib/shared'
 import { cancelEntry, settleEntry, settleSchema } from '../_lib/settle'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -31,7 +33,7 @@ const patchSchema = z.object({
   amount: z.coerce.number().positive('Informe o valor.').max(100_000_000).optional(),
   dueDate: ymd.optional(),
   competenceDate: ymd.nullable().optional(),
-  accountId: optId, categoryId: optId, costCenterId: optId, supplierId: optId, vehicleId: optId,
+  accountId: optId, categoryId: optId, costCenterId: optId, supplierId: optId, vehicleId: optId, dealId: optId,
   counterparty: optText(160), documentNumber: optText(80), paymentMethod: optText(60), notes: optText(2000),
 })
 
@@ -61,8 +63,24 @@ export async function PATCH(req: Request, { params }: Ctx) {
       if (d[k] !== undefined) data[k] = d[k] || null
     }
     if (d.supplierId !== undefined) data.supplierId = d.supplierId || null
-    if (d.counterparty !== undefined || d.supplierId !== undefined) {
-      data.counterparty = d.counterparty || (await supplierName(d.supplierId ?? e.supplierId)) || null
+    let dealCustomer: string | null = null
+    if (d.dealId !== undefined && (d.dealId || null) !== e.dealId) {
+      if (!isDeletableSource(e.source)) return bad('Lançamento integrado: o vínculo vem da negociação.')
+      if (d.dealId) {
+        const deal = await dealForEntry(g.tenantId, d.dealId)
+        if (!deal) return bad('Negociação inválida.')
+        data.dealId = deal.id
+        dealCustomer = deal.customer
+        // @@unique [dealId, source]: cada manual vinculado tem origem própria.
+        if (!e.source?.startsWith(MANUAL_DEAL_SOURCE_PREFIX)) data.source = `${MANUAL_DEAL_SOURCE_PREFIX}${randomUUID()}`
+        if (d.vehicleId === undefined && !e.vehicleId && deal.vehicleId) data.vehicleId = deal.vehicleId
+      } else {
+        data.dealId = null
+      }
+    }
+    if (d.counterparty !== undefined || d.supplierId !== undefined || dealCustomer) {
+      const cp = d.counterparty !== undefined ? d.counterparty : d.supplierId !== undefined ? null : e.counterparty
+      data.counterparty = cp || (await supplierName(d.supplierId ?? e.supplierId)) || dealCustomer || null
     }
     const row = await prisma.financialEntry.update({ where: { id }, data })
     await createSafeAuditLog({ userId: g.user.id, tenantId: g.tenantId, action: 'UPDATE', entity: 'FinancialEntry', entityId: id, userName: g.user.name, userRole: g.user.role })

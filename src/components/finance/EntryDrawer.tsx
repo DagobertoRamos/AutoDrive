@@ -17,6 +17,7 @@ import { MoneyInput } from '@/components/ui/money-input'
 import { RequiredMark } from '@/components/ui/field'
 import { COST_ITEM_KINDS, COST_ITEM_LABEL, chargeResult, itemsTotal } from '@/lib/finance/entry-settlement-core'
 import { AttachmentsPanel } from '@/components/finance/center/entries/AttachmentsPanel'
+import { DealPeekLink } from '@/components/deals/DealPeek'
 
 interface Detail {
   entry: {
@@ -179,7 +180,7 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
           {d && e && (
             <>
               {/* Origem */}
-              {(d.deal || d.vehicle) && (
+              {(d.deal || d.vehicle || (e.type === 'RECEITA' && e.counterparty)) && (
                 <section className="rounded-xl border border-gray-200 bg-white p-4">
                   <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Origem</h3>
                   <div className="grid gap-2 text-sm sm:grid-cols-2">
@@ -187,9 +188,15 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
                       <div className="flex items-start gap-2">
                         <Handshake size={15} className="mt-0.5 text-gray-400" />
                         <div>
-                          <Link href={`/negociacoes/${d.deal.id}`} className="font-medium text-brand-700 hover:underline">Negociação {d.deal.dealNumber ?? ''}</Link>
+                          <DealPeekLink dealId={d.deal.id} className="font-medium text-brand-700 hover:underline">Negociação {d.deal.dealNumber ?? ''}</DealPeekLink>
                           <p className="text-xs text-gray-500">{[d.deal.customer, d.deal.seller ? `vend. ${d.deal.seller}` : null].filter(Boolean).join(' · ') || '—'}</p>
                         </div>
+                      </div>
+                    )}
+                    {e.type === 'RECEITA' && (e.counterparty || d.deal?.customer) && (
+                      <div className="sm:col-span-2">
+                        <p className="text-[10px] uppercase tracking-wide text-gray-400">Cliente / pagador</p>
+                        <p className="text-sm font-medium text-gray-900">{e.counterparty || d.deal?.customer}</p>
                       </div>
                     )}
                     {d.vehicle && (

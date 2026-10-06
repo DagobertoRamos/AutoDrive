@@ -97,6 +97,22 @@ export async function entryAccessError(
 
 /** Origens que podem ser apagadas de vez (o resto é cancelado). */
 export const DELETABLE_SOURCES = new Set(['MANUAL', 'RECORRENCIA'])
-export const isDeletableSource = (source: string | null | undefined) => !source || DELETABLE_SOURCES.has(source)
+/** Lançamento manual vinculado a uma negociação: origem única por linha (@@unique [dealId, source]). */
+export const MANUAL_DEAL_SOURCE_PREFIX = 'MANUAL_NEG_'
+export const isDeletableSource = (source: string | null | undefined) => !source || DELETABLE_SOURCES.has(source) || source.startsWith(MANUAL_DEAL_SOURCE_PREFIX)
+
+/** Negociação da loja com o nome do cliente (Person ?? Customer) e o carro vendido. */
+export async function dealForEntry(tenantId: string | null, dealId: string): Promise<{ id: string; customer: string | null; vehicleId: string | null } | null> {
+  const d = await prisma.deal.findFirst({
+    where: { id: dealId, ...(tenantId ? { tenantId } : {}) },
+    select: {
+      id: true, person: { select: { nomeCompleto: true } }, customer: { select: { name: true } },
+      vehicles: { orderBy: { createdAt: 'asc' }, select: { role: true, vehicleId: true } },
+    },
+  })
+  if (!d) return null
+  const main = d.vehicles.find((v) => ['VENDIDO', 'COMPRADO', 'CONSIGNADO'].includes(v.role) && v.vehicleId) ?? d.vehicles.find((v) => v.vehicleId)
+  return { id: d.id, customer: d.person?.nomeCompleto ?? d.customer?.name ?? null, vehicleId: main?.vehicleId ?? null }
+}
 
 export const round2 = (n: number) => Math.round(n * 100) / 100

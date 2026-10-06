@@ -64,7 +64,7 @@ export default function PayrollCenter() {
         actions={<>
           <div className="inline-flex items-center rounded-lg border border-gray-200 bg-white">
             <button onClick={() => setMonth((m) => shift(m, -1))} className="p-2 text-gray-500 hover:text-gray-900" aria-label="Mês anterior"><ChevronLeft size={16} /></button>
-            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="border-0 bg-transparent px-1 py-1.5 text-sm focus:outline-none focus:ring-0" />
+            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="min-w-[10.5rem] border-0 bg-transparent px-1 py-1.5 text-sm focus:outline-none focus:ring-0" />
             <button onClick={() => setMonth((m) => shift(m, 1))} className="p-2 text-gray-500 hover:text-gray-900" aria-label="Próximo mês"><ChevronRight size={16} /></button>
           </div>
         </>}

@@ -24,6 +24,7 @@ import PendencySlaWatcher from '@/components/pendencies/PendencySlaWatcher'
 import PendencyCriticalBanner from '@/components/pendencies/PendencyCriticalBanner'
 import QualityScoreWatcher from '@/components/quality/QualityScoreWatcher'
 import { resolveSessionStatus } from '@/lib/auth-session'
+import { DealPeekProvider } from '@/components/deals/DealPeek'
 
 export default function DashboardShell({
   children,
@@ -59,7 +60,7 @@ export default function DashboardShell({
   }
 
   return (
-    <>
+    <DealPeekProvider>
       <ThemeInjector />
       <div className="flex h-screen w-full overflow-hidden bg-gray-50">
         <Sidebar />
@@ -77,6 +78,6 @@ export default function DashboardShell({
       <PendencySlaWatcher />
       <QualityScoreWatcher />
       <HelpChatLauncher />
-    </>
+    </DealPeekProvider>
   )
 }

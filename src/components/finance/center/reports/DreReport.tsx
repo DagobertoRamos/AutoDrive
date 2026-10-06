@@ -11,6 +11,8 @@ import {
   COLORS, Kpi, MonthInput, Panel, RegimeToggle, SelectInput, StateBox, Toolbar, currentMonth, downloadCsv, fmt, fmtPct,
   fmtShort, monthLabel, monthsBack, qs, useFinanceData, type Option,
 } from './shared'
+import PrintHeader from '@/components/finance/center/print/PrintHeader'
+import PrintFooter, { PrintFrame } from '@/components/finance/center/print/PrintFooter'
 
 interface Line { key: string; label: string; values: Record<string, number>; total: number; kind: 'group' | 'subtotal' | 'result'; av: Record<string, number | null>; avTotal: number | null }
 interface Drill { categoryId: string | null; label: string; values: Record<string, number>; total: number }
@@ -60,9 +62,18 @@ export default function DreReport() {
 
   const periods = data?.periods ?? []
 
+  const regimeLabel = regime === 'caixa' ? 'caixa' : 'competência'
+  const centerName = costCenterId === 'none' ? 'Sem centro' : costCenterId ? data?.filters.costCenters.find((c) => c.id === costCenterId)?.name : null
+  const unitName = unitId ? data?.filters.units.find((u) => u.id === unitId)?.name : null
+
   return (
-    <div className="space-y-5">
-      <div>
+    <PrintFrame className="space-y-5 print:space-y-3">
+      <PrintHeader
+        title="DRE gerencial"
+        subtitle={<>{monthLabel(from <= to ? from : to)} a {monthLabel(from <= to ? to : from)} · regime de {regimeLabel}{centerName || unitName ? <><br />{[centerName, unitName].filter(Boolean).join(' · ')}</> : null}</>}
+      />
+      <PrintFooter label={`DRE gerencial (${regimeLabel}) · ${monthLabel(from <= to ? from : to)} a ${monthLabel(from <= to ? to : from)}`} />
+      <div className="print:hidden">
         <h1 className="text-xl font-bold text-gray-900">DRE gerencial</h1>
         <p className="mt-0.5 text-sm text-gray-500">
           {data ? `${monthLabel(data.from)} a ${monthLabel(data.to)} · regime de ${data.regime === 'caixa' ? 'caixa' : 'competência'}` : 'Demonstração do resultado'}
@@ -184,7 +195,7 @@ export default function DreReport() {
           </div>
         </Panel>
       )}
-    </div>
+    </PrintFrame>
   )
 }
 

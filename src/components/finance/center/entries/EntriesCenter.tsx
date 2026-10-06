@@ -12,6 +12,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { ArrowRightLeft, Ban, CheckCircle2, Copy, Eye, Loader2, Paperclip, Pencil, Plus, Repeat, RefreshCw, Trash2, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { EntryDrawer } from '@/components/finance/EntryDrawer'
+import { DealPeekLink } from '@/components/deals/DealPeek'
 import { CategorySelect } from './CategorySelect'
 import { EntryForm, type EntryFormValues } from './EntryForm'
 import { SettleModal, type SettleTarget } from './SettleModal'
@@ -31,6 +32,7 @@ interface Row {
   source: string | null; deletable: boolean; linked: boolean
   installmentNumber: number | null; installmentTotal: number | null; recurrenceId: string | null
   vehicle: { id: string; plate: string | null; title: string } | null; attachments: number
+  deal?: { id: string; dealNumber: string | null; customer: string | null } | null
 }
 type Summary = Record<Tab, { count: number; amount: number }>
 
@@ -98,6 +100,7 @@ export function EntriesCenter({ kind }: { kind: Kind }) {
     type: r.type, description: r.description.replace(/\s\(\d+\/\d+\)$/, ''), amount: r.amount, dueDate: ymd(r.dueDate), competenceDate: ymd(r.competenceDate),
     accountId: r.account?.id ?? '', categoryId: r.category?.id ?? '', costCenterId: r.costCenter?.id ?? '', supplierId: r.supplierId ?? '',
     counterparty: r.counterparty ?? '', documentNumber: r.documentNumber ?? '', paymentMethod: r.paymentMethod ?? '', notes: r.notes ?? '',
+    dealId: r.deal?.id ?? '',
   })
 
   async function remove(list: Row[]) {
@@ -133,15 +136,15 @@ export function EntriesCenter({ kind }: { kind: Kind }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-        <input type="date" className={inputCls} value={from} onChange={(e) => setFrom(e.target.value)} aria-label="Vencimento de" title="Vencimento de" />
-        <input type="date" className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} aria-label="Vencimento até" title="Vencimento até" />
-        <select className={inputCls} value={accountId} onChange={(e) => setAccountId(e.target.value)} aria-label="Conta">
+      <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-8">
+        <input type="date" className={cn(inputCls, 'min-w-[10rem]')} value={from} onChange={(e) => setFrom(e.target.value)} aria-label="Vencimento de" title="Vencimento de" />
+        <input type="date" className={cn(inputCls, 'min-w-[10rem]')} value={to} onChange={(e) => setTo(e.target.value)} aria-label="Vencimento até" title="Vencimento até" />
+        <select className={cn(inputCls, 'truncate')} value={accountId} onChange={(e) => setAccountId(e.target.value)} aria-label="Conta">
           <option value="">Todas as contas</option>
           {refs.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
         <CategorySelect className={inputCls} categories={refs.categories} kind={kind} value={categoryId} onChange={setCategoryId} emptyLabel="Todas as categorias" />
-        <select className={inputCls} value={costCenterId} onChange={(e) => setCostCenterId(e.target.value)} aria-label="Centro de custo">
+        <select className={cn(inputCls, 'truncate')} value={costCenterId} onChange={(e) => setCostCenterId(e.target.value)} aria-label="Centro de custo">
           <option value="">Todos os centros</option>
           {refs.costCenters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
@@ -194,7 +197,8 @@ export function EntriesCenter({ kind }: { kind: Kind }) {
                     <td className="max-w-[320px] cursor-pointer px-3 py-2.5" onClick={() => setDrawerId(r.id)}>
                       <p className="truncate font-medium text-gray-900">{r.description}</p>
                       <p className="flex flex-wrap items-center gap-x-2 truncate text-[11px] text-gray-500">
-                        {r.counterparty && <span>{r.counterparty}</span>}
+                        {(r.counterparty || r.deal?.customer) && <span>{r.counterparty || r.deal?.customer}</span>}
+                        {r.deal && <DealPeekLink dealId={r.deal.id} className="font-medium text-brand-700 hover:underline">{r.deal.dealNumber ?? 'Negociação'}</DealPeekLink>}
                         {r.vehicle?.plate && <span className="font-mono">{r.vehicle.plate}</span>}
                         {r.documentNumber && <span>doc. {r.documentNumber}</span>}
                         {r.recurrenceId && <Repeat size={11} className="text-gray-400" aria-label="Fixa" />}

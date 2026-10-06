@@ -12,6 +12,7 @@ import { VehicleStatusBadge, CautelarBadge, StockTypeBadge, ConditionBadge } fro
 import { cn } from '@/lib/utils'
 import { VEHICLE_NO_PHOTO_IMG, realPhotoUrls } from '@/lib/vehicle-placeholder'
 import { VehiclePhotoImg } from './VehiclePhotoImg'
+import { DealPeekLink } from '@/components/deals/DealPeek'
 
 interface VehiclePendency {
   id: string
@@ -128,7 +129,9 @@ export function VehicleCard({ vehicle, className }: VehicleCardProps) {
                 )}
                 {vehicle.openNegotiationNumber && (
                   <p className="text-amber-800">
-                    Negociação: <span className="font-mono font-medium">{vehicle.openNegotiationNumber}</span>
+                    Negociação: {vehicle.openNegotiationId
+                      ? <DealPeekLink asButton dealId={vehicle.openNegotiationId} className="font-mono font-medium underline decoration-dotted hover:text-amber-950">{vehicle.openNegotiationNumber}</DealPeekLink>
+                      : <span className="font-mono font-medium">{vehicle.openNegotiationNumber}</span>}
                   </p>
                 )}
                 {vehicle.openNegotiationStatus && (

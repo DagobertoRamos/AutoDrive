@@ -115,3 +115,14 @@ describe('matchFinancings', () => {
     expect(matchFinancings(inc, [])).toEqual([-1, -1, -1, -1])
   })
 })
+
+describe('retorno — exemplo do dono', () => {
+  it('100 mil a 6% com ILA 20% e IOF 1,5% → líquido 4.710 (comissões sobre o líquido)', async () => {
+    const { calculateReturn } = await import('./return-calc')
+    const r = calculateReturn({ financedAmount: 100000, returnRatePercent: 6, ilaPercent: 20, iofPercent: 1.5 })
+    expect(r).toEqual({ returnGrossValue: 6000, ilaValue: 1200, iofValue: 90, returnNetValue: 4710, commissionBaseValue: 4710 })
+    // vendedor 8% + gerente 5% + F&I 5% = 847,80 → sobram 3.862,20 de receita de retorno
+    const comissoes = [8, 5, 5].reduce((s, p) => s + Math.round(r.returnNetValue * p) / 100, 0)
+    expect(Math.round((r.returnNetValue - comissoes) * 100) / 100).toBe(3862.2)
+  })
+})

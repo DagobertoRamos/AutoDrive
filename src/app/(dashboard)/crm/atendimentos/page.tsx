@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { DealPeekLink } from '@/components/deals/DealPeek'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Loader2, RefreshCw, Search, Sliders, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -272,7 +273,7 @@ export default function CrmAttendancesPage() {
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-0.5">
                       {row.leadId && <Link href={`/crm/leads/${row.leadId}`} className="text-[10px] font-medium text-sky-600 hover:underline dark:text-sky-400">Ver lead</Link>}
-                      {row.dealId && <Link href={`/negociacoes/${row.dealId}`} className="text-[10px] font-medium text-emerald-600 hover:underline dark:text-emerald-400">Ver negociação</Link>}
+                      {row.dealId && <DealPeekLink dealId={row.dealId} className="text-[10px] font-medium text-emerald-600 hover:underline dark:text-emerald-400">Ver negociação</DealPeekLink>}
                       {!row.leadId && !row.dealId && <span className="text-[10px] text-gray-300">—</span>}
                     </div>
                   </td>

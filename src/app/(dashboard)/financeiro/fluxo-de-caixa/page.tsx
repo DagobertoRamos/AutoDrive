@@ -7,10 +7,12 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Printer, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Card, ErrorBox, KpiCard, brl, dateBR, inputClass } from '@/components/finance/center/dashboard/shared'
 import { CashflowChart, type CashflowBucket } from '@/components/finance/center/dashboard/CashflowChart'
+import PrintHeader from '@/components/finance/center/print/PrintHeader'
+import PrintFooter, { PrintFrame } from '@/components/finance/center/print/PrintFooter'
 
 type Granularity = 'day' | 'month'
 interface Cashflow {
@@ -77,9 +79,17 @@ export default function CashflowPage() {
   const d = data
   const visible = d?.buckets.filter((b) => granularity === 'month' || b.entradas || b.saidas || b.kind === 'mixed') ?? []
 
+  const accountName = accountId === 'all' ? 'Todas as contas' : d?.filters.accounts.find((a) => a.id === accountId)?.name ?? 'Conta'
+  const centerName = costCenterId ? d?.filters.costCenters.find((c) => c.id === costCenterId)?.name ?? null : null
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <PrintFrame className="space-y-5 print:space-y-3">
+      <PrintHeader
+        title={`Fluxo de caixa — ${granularity === 'day' ? 'diário' : 'mensal'}`}
+        subtitle={<>Período: {dateBR(range.from)} a {dateBR(range.to)}<br />{[accountName, centerName].filter(Boolean).join(' · ')}{includeOverdue ? ' · com vencidos' : ''}</>}
+      />
+      <PrintFooter label={`Fluxo de caixa ${granularity === 'day' ? 'diário' : 'mensal'} · ${dateBR(range.from)} a ${dateBR(range.to)}`} />
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <div className="flex items-center gap-2">
           <Link href="/financeiro" className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Voltar ao painel"><ArrowLeft size={18} /></Link>
           <h1 className="text-xl font-bold text-gray-900">Fluxo de caixa</h1>
@@ -94,21 +104,21 @@ export default function CashflowPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-wrap items-end gap-2 print:hidden">
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">De
-          <input type="date" className={inputClass} value={range.from} max={range.to} onChange={(e) => e.target.value && setRange((r) => ({ ...r, from: e.target.value }))} />
+          <input type="date" className={cn(inputClass, 'min-w-[10rem]')} value={range.from} max={range.to} onChange={(e) => e.target.value && setRange((r) => ({ ...r, from: e.target.value }))} />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">Até
-          <input type="date" className={inputClass} value={range.to} min={range.from} onChange={(e) => e.target.value && setRange((r) => ({ ...r, to: e.target.value }))} />
+          <input type="date" className={cn(inputClass, 'min-w-[10rem]')} value={range.to} min={range.from} onChange={(e) => e.target.value && setRange((r) => ({ ...r, to: e.target.value }))} />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">Conta
-          <select className={cn(inputClass, 'min-w-[180px]')} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+        <label className="flex min-w-0 max-w-full flex-col gap-1 text-xs font-medium text-gray-600">Conta
+          <select className={cn(inputClass, 'w-full min-w-[11rem] max-w-full truncate sm:w-auto sm:max-w-[18rem]')} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
             <option value="all">Todas as contas</option>
             {(d?.filters.accounts ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">Centro de custo
-          <select className={cn(inputClass, 'min-w-[180px]')} value={costCenterId} onChange={(e) => setCostCenterId(e.target.value)}>
+        <label className="flex min-w-0 max-w-full flex-col gap-1 text-xs font-medium text-gray-600">Centro de custo
+          <select className={cn(inputClass, 'w-full min-w-[11rem] max-w-full truncate sm:w-auto sm:max-w-[18rem]')} value={costCenterId} onChange={(e) => setCostCenterId(e.target.value)}>
             <option value="">Todos</option>
             {(d?.filters.costCenters ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -118,11 +128,12 @@ export default function CashflowPage() {
           Incluir vencidos{d && d.overdue.count > 0 ? ` (${d.overdue.count})` : ''}
         </label>
         <button onClick={() => void load()} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Atualizar"><RefreshCw size={15} className={cn(loading && 'animate-spin')} /></button>
+        <button onClick={() => window.print()} disabled={!d} className="btn-secondary ml-auto text-sm" title="Imprimir ou salvar em PDF"><Printer size={15} />Imprimir / PDF</button>
       </div>
 
       {error && <ErrorBox message={error} onRetry={() => void load()} />}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 print:grid-cols-4 print:gap-2">
         <KpiCard label={d?.anchored === false ? 'Saldo inicial (filtro)' : 'Saldo inicial'} loading={loading && !d} value={brl(d?.startBalance)} />
         <KpiCard label="Entradas" loading={loading && !d} value={brl(d?.totals.entradas)} tone="in"
           sub={d && <>Realizadas {brl(d.totals.realizedIn)}<br />Previstas {brl(d.totals.projectedIn)}</>} />
@@ -133,13 +144,13 @@ export default function CashflowPage() {
           sub={d?.currentBalance != null ? `Saldo hoje ${brl(d.currentBalance)}` : undefined} />
       </div>
 
-      <Card>
+      <Card className="print:break-inside-avoid">
         {d ? <CashflowChart data={d.buckets} /> : <div className="h-72 animate-pulse rounded-lg bg-gray-100" />}
       </Card>
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card print:overflow-visible print:rounded-none print:border-0 print:shadow-none">
+        <div className="overflow-x-auto print:overflow-visible">
+          <table className="min-w-full divide-y divide-gray-200 text-sm print:text-[9px] print:[&_td]:py-0.5 print:[&_th]:py-1">
             <thead className="bg-gray-50">
               <tr>
                 {['Período', '', 'Entradas', 'Saídas', 'Saldo do período', 'Saldo acumulado'].map((h, i) => (
@@ -177,6 +188,6 @@ export default function CashflowPage() {
           </table>
         </div>
       </div>
-    </div>
+    </PrintFrame>
   )
 }

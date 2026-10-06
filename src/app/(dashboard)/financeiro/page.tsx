@@ -68,7 +68,7 @@ export default function FinancePanelPage() {
           <h1 className="mr-2 text-xl font-bold text-gray-900">Painel financeiro</h1>
           <div className="flex items-center gap-1">
             <button onClick={() => setMonth((m) => shiftMonth(m, -1))} className="rounded-lg border border-gray-200 bg-white p-2 text-gray-600 hover:bg-gray-50" aria-label="Mês anterior"><ChevronLeft size={16} /></button>
-            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={cn(inputClass, 'w-[150px]')} aria-label="Mês" />
+            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={cn(inputClass, 'min-w-[11.5rem]')} aria-label="Mês" />
             <button onClick={() => setMonth((m) => shiftMonth(m, 1))} className="rounded-lg border border-gray-200 bg-white p-2 text-gray-600 hover:bg-gray-50" aria-label="Próximo mês"><ChevronRight size={16} /></button>
             <button onClick={() => void load()} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Atualizar"><RefreshCw size={15} className={cn(loading && 'animate-spin')} /></button>
           </div>

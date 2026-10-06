@@ -158,7 +158,7 @@ export default function FinanceEntriesPage() {
               ) : (
                 items.map((e) => (
                   <tr key={e.id} onClick={() => setDetailId(e.id)} className="cursor-pointer hover:bg-gray-50">
-                    <td className="px-4 py-3"><p className="font-medium text-gray-900">{e.description}</p>{e.source && e.source !== 'MANUAL' && <span className="text-[10px] uppercase tracking-wide text-brand-600">{sourceLabel(e.source)}</span>}</td>
+                    <td className="px-4 py-3"><p className="font-medium text-gray-900">{e.description}</p>{e.source && !e.source.startsWith('MANUAL') && <span className="text-[10px] uppercase tracking-wide text-brand-600">{sourceLabel(e.source)}</span>}</td>
                     <td className="px-4 py-3"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', e.type === 'RECEITA' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600')}>{e.type === 'RECEITA' ? 'Receita' : 'Despesa'}</span></td>
                     <td className="px-4 py-3 text-gray-600">{e.category ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{e.account ?? '—'}</td>

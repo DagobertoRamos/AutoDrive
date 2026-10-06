@@ -12,6 +12,7 @@ import { ShieldCheck, RefreshCw, Plus, Trash2, Pencil, Check, X } from 'lucide-r
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import { RequiredMark } from '@/components/ui/field'
+import { DocumentsBadge } from '@/components/documents/DocumentsPanel'
 
 interface Props {
   dealId:   string
@@ -163,6 +164,7 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <DocumentsBadge entityType="WARRANTY_SALE" entityId={s.id} defaultDocType="NOTA_FISCAL" title={`Documentos — ${s.warranty?.name ?? 'Garantia'}`} />
                   {editingId === s.id ? (
                     <>
                       <input

@@ -49,6 +49,7 @@ import AttachmentUploader, { type Attachment } from './_components/AttachmentUpl
 import ContractsTab from './_components/ContractsTab'
 import NfeTab from './_components/NfeTab'
 import NotesPanel from './_components/NotesPanel'
+import { DocumentsBadge } from '@/components/documents/DocumentsPanel'
 import { useDealActions } from './_hooks/useDealActions'
 import { SERVICE_KINDS, SERVICE_KIND_BY_KEY, guessServiceKind, serviceKindOf } from '@/lib/finance/result-centers-core'
 import { isDealLocked, canAddPayment, canApproveDiscount, canReopen, canForceFinalize } from '@/lib/negotiation-rbac'
@@ -1874,7 +1875,7 @@ export default function NegociacaoDetailPage() {
                 <table className="w-full text-sm">
                   <thead className="border-b border-gray-100 bg-gray-50">
                     <tr>
-                      {['Serviço', 'Tipo', 'Valor', 'Custo', 'Fornecedor', 'Comissão'].map((h) => (
+                      {['Serviço', 'Tipo', 'Valor', 'Custo', 'Fornecedor', 'Comissão', 'Docs'].map((h) => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">{h}</th>
                       ))}
                       {isManager && <th className="px-4 py-3" />}
@@ -1889,6 +1890,7 @@ export default function NegociacaoDetailPage() {
                         <td className="px-4 py-3 text-gray-600">{fmtBRL(s.cost) ?? '—'}</td>
                         <td className="px-4 py-3 text-gray-600">{s.supplier ?? '—'}</td>
                         <td className="px-4 py-3 text-gray-600">{fmtBRL(s.commission) ?? '—'}</td>
+                        <td className="px-4 py-3"><DocumentsBadge entityType="DEAL_SERVICE" entityId={s.id} defaultDocType="NOTA_FISCAL" title={`Documentos — ${s.name}`} /></td>
                         {isManager && (
                           <td className="px-4 py-3 text-right whitespace-nowrap">
                             <button onClick={() => openServiceModal(s)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-brand-700" title="Editar" aria-label="Editar serviço"><Edit size={14} /></button>
@@ -1901,7 +1903,7 @@ export default function NegociacaoDetailPage() {
                   <tfoot className="border-t-2 border-gray-200 bg-gray-50">
                     <tr>
                       <td className="px-4 py-3 font-semibold text-gray-700" colSpan={2}>Total</td>
-                      <td className="px-4 py-3 font-bold text-brand-700" colSpan={isManager ? 5 : 4}>
+                      <td className="px-4 py-3 font-bold text-brand-700" colSpan={isManager ? 6 : 5}>
                         {fmtBRL(deal.services.reduce((acc, s) => acc + Number(s.value ?? 0), 0)) ?? '—'}
                       </td>
                     </tr>

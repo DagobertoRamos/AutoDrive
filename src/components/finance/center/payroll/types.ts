@@ -10,6 +10,7 @@ export interface PayrollEntryRow {
 export interface PayrollCommissionRow {
   id: string; ruleType: string; label: string; description: string; value: number; status: string
   entryId: string | null; entryStatus: string | null; paid: boolean; createdAt: string
+  dealId?: string | null
 }
 export interface PayrollRecurrenceRow {
   id: string; description: string; amount: number; dayOfMonth: number; active: boolean

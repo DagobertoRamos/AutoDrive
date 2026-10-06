@@ -129,7 +129,7 @@ export default function BudgetGrid() {
         <div className="inline-flex items-center rounded-lg border border-gray-200 bg-white">
           <button onClick={() => step(-1)} className="p-2 text-gray-500 hover:text-gray-900" aria-label="Anterior"><ChevronLeft size={16} /></button>
           {view === 'month'
-            ? <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="border-0 bg-transparent px-1 py-1.5 text-sm focus:outline-none focus:ring-0" />
+            ? <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="min-w-[10.5rem] border-0 bg-transparent px-1 py-1.5 text-sm focus:outline-none focus:ring-0" />
             : <span className="px-3 text-sm font-medium text-gray-800">{year}</span>}
           <button onClick={() => step(1)} className="p-2 text-gray-500 hover:text-gray-900" aria-label="Próximo"><ChevronRight size={16} /></button>
         </div>
@@ -138,7 +138,7 @@ export default function BudgetGrid() {
             <button key={k} onClick={() => setKind(k)} className={cn('rounded-md px-3 py-1.5 text-sm font-medium', kind === k ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50')}>{k === 'DESPESA' ? 'Despesas' : 'Receitas'}</button>
           ))}
         </div>
-        <select value={costCenterId} onChange={(e) => setCostCenterId(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
+        <select value={costCenterId} onChange={(e) => setCostCenterId(e.target.value)} className="min-w-[10rem] max-w-full truncate rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm sm:max-w-[18rem]">
           <option value="">Geral (loja toda)</option>
           {costCenters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>

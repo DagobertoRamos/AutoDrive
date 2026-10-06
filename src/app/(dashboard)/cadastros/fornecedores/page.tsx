@@ -17,6 +17,7 @@ import { formatCNPJ, isValidCNPJ } from '@/lib/br-docs/cnpj'
 import { formatPhone } from '@/lib/br-docs/phone'
 import { formatCEP } from '@/lib/br-docs/cep'
 import { RequiredMark } from '@/components/ui/field'
+import { DocumentsBadge, DocumentsPanel } from '@/components/documents/DocumentsPanel'
 
 interface Supplier {
   id: string; name: string; legalName: string | null; kind: string; personType: string; document: string | null
@@ -159,6 +160,7 @@ export default function FornecedoresPage() {
                   <td className="px-4 py-2.5 text-gray-600">{[s.city, s.state].filter(Boolean).join('/') || '—'}</td>
                   <td className="whitespace-nowrap px-4 py-2.5 text-gray-600">{s.whatsapp || s.phone ? formatPhone(s.whatsapp || s.phone) : '—'}</td>
                   <td className="whitespace-nowrap px-4 py-2.5 text-right">
+                    <DocumentsBadge entityType="SUPPLIER" entityId={s.id} defaultDocType="CONTRATO" title={`Documentos — ${s.name}`} className="mr-1 align-middle" />
                     {canEdit && <>
                       <button onClick={() => open(s)} className="mr-1 inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Editar"><Pencil size={15} /></button>
                       <button onClick={() => void toggle(s)} className="rounded-md border border-gray-200 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50">{s.active ? 'Desativar' : 'Ativar'}</button>
@@ -235,6 +237,8 @@ export default function FornecedoresPage() {
                 <L label="Dados bancários"><input className={inputCls} value={f.bankInfo} onChange={(e) => set('bankInfo', e.target.value)} placeholder="Banco, agência, conta" /></L>
                 <div className="sm:col-span-2"><L label="Observações"><textarea rows={2} className={inputCls} value={f.notes} onChange={(e) => set('notes', e.target.value)} /></L></div>
               </Section>
+
+              {editing.id && <DocumentsPanel entityType="SUPPLIER" entityId={editing.id} defaultDocType="CONTRATO" />}
             </div>
             <div className="flex items-center justify-between gap-3 border-t border-gray-100 px-5 py-3">
               <p className="min-h-5 text-sm text-red-600">{formErr}</p>

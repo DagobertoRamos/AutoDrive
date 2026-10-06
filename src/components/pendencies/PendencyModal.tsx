@@ -12,6 +12,7 @@ import { cn, formatDate, formatRelativeTime } from '@/lib/utils'
 import { canAccessModule, type UserRole } from '@/lib/permissions'
 import type { PendencyWithRelations } from '@/types'
 import { RequiredMark } from '@/components/ui/field'
+import { DealPeekLink } from '@/components/deals/DealPeek'
 
 interface PendencyModalProps {
   pendency: PendencyWithRelations
@@ -251,7 +252,14 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
               <Field label="Cliente" value={pendency.customerName} />
               <Field label="Placa" value={pendency.plate} mono />
               <Field label="Veículo" value={pendency.vehicleLabel ?? pendency.vehicle?.plate ?? pendency.vehicle?.model ?? null} />
-              <Field label="Negociação" value={pendency.negotiation} />
+              {pendency.dealId ? (
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Negociação</p>
+                  <DealPeekLink dealId={pendency.dealId} className="text-sm font-medium text-brand-700 hover:underline">{pendency.negotiation || 'Ver negociação'}</DealPeekLink>
+                </div>
+              ) : (
+                <Field label="Negociação" value={pendency.negotiation} />
+              )}
               <Field label="Tipo" value={pendency.type} />
               <Field label="Responsável" value={pendency.responsible?.fullName} />
               <Field label="Data Inicial" value={pendency.initialDate ? formatDate(new Date(pendency.initialDate as string)) : undefined} />

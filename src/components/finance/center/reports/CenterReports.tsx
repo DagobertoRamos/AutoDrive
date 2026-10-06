@@ -4,12 +4,12 @@
 // e receitas de F&I por banco.
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { ChevronDown, ChevronRight, X } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { cn } from '@/lib/utils'
 import { COLORS, Kpi, Panel, StateBox, SortTh, fmt, fmtDate, fmtPct, fmtShort, td, tdR, th, thR, useFinanceData, useSort } from './shared'
 import type { ReportViewProps } from './types'
+import { DealPeekLink } from '@/components/deals/DealPeek'
 
 const money = (n: number) => <span className={cn('tabular-nums', n < 0 ? 'text-red-600' : n > 0 ? 'text-green-700' : 'text-gray-400')}>{fmt(n)}</span>
 
@@ -184,7 +184,7 @@ function CenterDetailPanel({ detail, loading, error, onClose }: { detail: Center
                             <div className="text-gray-900">{e.description ?? '—'}</div>
                             <div className="text-xs text-gray-500">
                               {[e.counterparty, e.part].filter(Boolean).join(' · ')}
-                              {e.dealId && <> · <Link href={`/negociacoes/${e.dealId}`} className="text-brand-700 hover:underline">negociação</Link></>}
+                              {e.dealId && <> · <DealPeekLink dealId={e.dealId} className="text-brand-700 hover:underline">negociação</DealPeekLink></>}
                             </div>
                           </td>
                           <td className={cn(td, 'text-xs text-gray-500')}>{e.category ?? e.group}</td>
@@ -267,7 +267,7 @@ function ServiceTables({ lines, rows, totals, compact }: { lines: ServiceLine[];
                   <tr className="hover:bg-gray-50">
                     <td className={cn(td, 'whitespace-nowrap text-xs text-gray-500')}>{fmtDate(r.date)}</td>
                     <td className={td}>
-                      <Link href={`/negociacoes/${r.dealId}`} className="font-medium text-brand-700 hover:underline">{r.dealNumber ?? 'Negociação'}</Link>
+                      <DealPeekLink dealId={r.dealId} className="font-medium text-brand-700 hover:underline">{r.dealNumber ?? 'Negociação'}</DealPeekLink>
                       <div className="text-xs text-gray-500">{[r.customer, r.plate].filter(Boolean).join(' · ')}</div>
                     </td>
                     <td className={td}>
@@ -474,7 +474,7 @@ export function FiRevenueReport({ url, onData, registerCsv }: ReportViewProps) {
                   <tr key={c.id} className="hover:bg-gray-50">
                     <td className={cn(td, 'whitespace-nowrap text-xs text-gray-500')}>{fmtDate(c.date)}</td>
                     <td className={td}>
-                      <Link href={`/negociacoes/${c.dealId}`} className="font-medium text-brand-700 hover:underline">{c.dealNumber ?? 'Negociação'}</Link>
+                      <DealPeekLink dealId={c.dealId} className="font-medium text-brand-700 hover:underline">{c.dealNumber ?? 'Negociação'}</DealPeekLink>
                       <div className="text-xs text-gray-500">{[c.customer, c.plate].filter(Boolean).join(' · ')}</div>
                     </td>
                     <td className={td}><div className="text-gray-900">{c.bank}</div>{c.contractNumber && <div className="text-xs text-gray-500">{c.contractNumber}</div>}</td>

@@ -5,6 +5,7 @@
 import { useEffect, useMemo } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { cn } from '@/lib/utils'
+import { DealPeekLink } from '@/components/deals/DealPeek'
 import { COLORS, Kpi, Panel, StateBox, SortTh, fmt, fmtDate, fmtPct, fmtShort, td, tdR, useFinanceData, useSort } from './shared'
 import type { ReportViewProps } from './types'
 
@@ -95,7 +96,7 @@ export function VehicleProfitReport({ url, onData, registerCsv }: ReportViewProp
                     <td className={cn(td, 'whitespace-nowrap text-xs text-gray-500')}>{fmtDate(r.saleDate)}</td>
                     <td className={td}>
                       <p className="font-medium text-gray-900">{r.plate ?? '—'}</p>
-                      <p className="text-xs text-gray-500">{r.description}{r.dealNumber ? ` · ${r.dealNumber}` : ''}</p>
+                      <p className="text-xs text-gray-500">{r.description}{r.dealNumber ? <> · <DealPeekLink dealId={r.dealId} className="text-brand-700 hover:underline">{r.dealNumber}</DealPeekLink></> : ''}</p>
                     </td>
                     <td className={cn(td, 'text-xs')}>{r.sellerName ?? '—'}</td>
                     <td className={tdR}>{fmt(r.saleValue)}</td>

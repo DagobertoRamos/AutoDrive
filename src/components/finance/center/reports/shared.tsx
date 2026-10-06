@@ -78,16 +78,16 @@ export function MonthInput({ label, value, onChange }: { label: string; value: s
   return (
     <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
       {label}
-      <input type="month" className={cn(inputClass, 'w-[150px]')} value={value} onChange={(e) => e.target.value && onChange(e.target.value)} />
+      <input type="month" className={cn(inputClass, 'w-full min-w-[11.5rem] sm:w-auto')} value={value} onChange={(e) => e.target.value && onChange(e.target.value)} />
     </label>
   )
 }
 
 export function SelectInput({ label, value, onChange, options, all }: { label: string; value: string; onChange: (v: string) => void; options: Option[]; all: string }) {
   return (
-    <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
+    <label className="flex min-w-0 max-w-full flex-col gap-1 text-xs font-medium text-gray-600">
       {label}
-      <select className={cn(inputClass, 'min-w-[160px]')} value={value} onChange={(e) => onChange(e.target.value)}>
+      <select className={cn(inputClass, 'w-full min-w-[10rem] max-w-full truncate sm:w-auto sm:max-w-[18rem]')} value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">{all}</option>
         {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
       </select>

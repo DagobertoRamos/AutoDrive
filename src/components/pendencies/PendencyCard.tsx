@@ -10,6 +10,7 @@ import { PriorityBadge, StatusBadge, PRIORITY_BORDER_COLOR } from './PendencySta
 import { PendencyModal } from './PendencyModal'
 import { cn, formatDate } from '@/lib/utils'
 import type { PendencyWithRelations } from '@/types'
+import { DealPeekLink } from '@/components/deals/DealPeek'
 
 interface PendencyCardProps {
   pendency: PendencyWithRelations
@@ -72,7 +73,9 @@ export function PendencyCard({ pendency, onRefresh }: PendencyCardProps) {
         {pendency.negotiation && (
           <div className="flex items-center gap-1 mb-2">
             <FileText size={11} className="text-gray-400 shrink-0" />
-            <span className="text-xs text-gray-500 truncate">{pendency.negotiation}</span>
+            {pendency.dealId
+              ? <DealPeekLink dealId={pendency.dealId} className="truncate text-xs font-medium text-brand-700 hover:underline">{pendency.negotiation}</DealPeekLink>
+              : <span className="text-xs text-gray-500 truncate">{pendency.negotiation}</span>}
           </div>
         )}
 

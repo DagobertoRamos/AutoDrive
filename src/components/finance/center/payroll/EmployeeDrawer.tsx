@@ -10,6 +10,9 @@ import { cn } from '@/lib/utils'
 import { FieldLabel } from '@/components/ui/field'
 import { MoneyInput } from '@/components/ui/money-input'
 import { Badge, Toggle, api, brl, dateBR, iconBtn, inputClass, todayYmd } from '../config/ui'
+import { DocumentsPanel } from '@/components/documents/DocumentsPanel'
+import { payrollEntityId } from '@/lib/documents/attachment-types'
+import { DealPeekLink } from '@/components/deals/DealPeek'
 import { STATUS_LABEL, STATUS_TONE, type PayrollEmployee, type PayrollMonthData, type PayrollRecurrenceRow } from './types'
 
 type Tab = 'resumo' | 'fixos' | 'adiantamentos'
@@ -158,7 +161,7 @@ export default function EmployeeDrawer({ employee: emp, data, onClose, onChanged
                 <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
                   {emp.commissions.map((c) => (
                     <div key={c.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-                      <span className="min-w-0 flex-1"><span className="block truncate">{c.description}</span><span className="text-xs text-gray-400">{c.label}</span></span>
+                      <span className="min-w-0 flex-1"><span className="block truncate">{c.dealId ? <DealPeekLink dealId={c.dealId} className="text-brand-700 hover:underline">{c.description}</DealPeekLink> : c.description}</span><span className="text-xs text-gray-400">{c.label}</span></span>
                       <Badge tone={c.paid ? 'green' : c.status === 'PREVISTO' ? 'gray' : 'amber'}>{c.paid ? 'Paga' : c.status === 'PREVISTO' ? 'Prevista' : c.status === 'AJUSTADO' ? 'Ajustada' : 'Aprovada'}</Badge>
                       <span className="w-28 text-right tabular-nums">{brl(c.value)}</span>
                     </div>
@@ -166,6 +169,8 @@ export default function EmployeeDrawer({ employee: emp, data, onClose, onChanged
                 </div>
               </>}
             </section>
+
+            <DocumentsPanel entityType="PAYROLL" entityId={payrollEntityId(emp.userId, month)} defaultDocType="RECIBO" title={`Documentos — ${data.monthLabel}`} className="rounded-lg border border-gray-200 p-3" />
           </>}
 
           {tab === 'fixos' && <>

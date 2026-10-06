@@ -4373,6 +4373,8 @@ model FinancialEntryAttachment {
   id          String   @id @default(cuid())
   entryId     String
   tenantId    String?
+  /// NOTA_FISCAL | BOLETO | COMPROVANTE | CONTRATO | RECIBO | OUTRO
+  docType     String?
   name        String
   url         String
   mimeType    String?
@@ -4385,6 +4387,27 @@ model FinancialEntryAttachment {
   @@index([entryId])
   @@index([tenantId])
   @@map("financial_entry_attachments")
+}
+
+/// Documento anexado a qualquer registro do sistema (nota fiscal, boleto,
+/// comprovante…). Nunca substitui o anterior; exclusão é definitiva e explícita.
+model DocumentAttachment {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  /// DEAL_SERVICE | WARRANTY_SALE | VEHICLE_SERVICE | DEAL_PAYMENT | SUPPLIER | PAYROLL | DEAL | VEHICLE
+  entityType  String
+  entityId    String
+  /// NOTA_FISCAL | BOLETO | COMPROVANTE | CONTRATO | RECIBO | OUTRO
+  docType     String   @default("OUTRO")
+  name        String
+  storageKey  String
+  mimeType    String?
+  size        Int?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, entityType, entityId])
+  @@map("document_attachments")
 }
 
 /// Orçamento mensal (orçado × realizado) por categoria e, opcionalmente, centro de custo.

@@ -7,10 +7,11 @@
 //   POST  /api/finance/center/entries        (único/parcelado)
 //   POST  /api/finance/recurrences           (repetir mensalmente)
 //   PATCH /api/finance/center/entries/[id]   (editar)
+//   GET   /api/finance/center/deals-search    (vincular negociação → cliente/pagador e veículo)
 // =============================================================================
 
-import { useMemo, useRef, useState } from 'react'
-import { Loader2, Paperclip, Save, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Handshake, Loader2, Paperclip, Save, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MoneyInput } from '@/components/ui/money-input'
 import { CategorySelect } from './CategorySelect'
@@ -34,13 +35,17 @@ export interface EntryFormValues {
   documentNumber: string
   paymentMethod: string
   notes: string
+  /** Negociação vinculada (opcional). */
+  dealId: string
+  /** Veículo (carro da negociação escolhida). */
+  vehicleId?: string
 }
 
 type Mode = 'unica' | 'parcelada' | 'mensal'
 
 export const emptyEntryValues = (type: EntryType): EntryFormValues => ({
   type, description: '', amount: null, dueDate: todayYmd(), competenceDate: '', accountId: '', categoryId: '', costCenterId: '',
-  supplierId: '', counterparty: '', documentNumber: '', paymentMethod: '', notes: '',
+  supplierId: '', counterparty: '', documentNumber: '', paymentMethod: '', notes: '', dealId: '',
 })
 
 export function EntryForm({ type, refs, initial, editId, onClose, onSaved }: {
@@ -65,6 +70,14 @@ export function EntryForm({ type, refs, initial, editId, onClose, onSaved }: {
   const fileInput = useRef<HTMLInputElement>(null)
 
   const set = <K extends keyof EntryFormValues>(k: K, val: EntryFormValues[K]) => setV((s) => ({ ...s, [k]: val }))
+  // Cliente/pagador vem da negociação; só não sobrescreve o que foi digitado à mão.
+  const autoParty = useRef<string | null>(null)
+  const pickDeal = (d: DealOption | null) => {
+    const manual = !!v.counterparty.trim() && v.counterparty !== autoParty.current
+    const name = d?.customer ?? ''
+    if (!manual) autoParty.current = name
+    setV((s) => ({ ...s, dealId: d?.id ?? '', vehicleId: d?.vehicleId ?? undefined, counterparty: manual ? s.counterparty : name }))
+  }
   const isExpense = v.type === 'DESPESA'
   const editing = !!editId
   const perInstallment = useMemo(() => (mode === 'parcelada' && v.amount && count > 1 ? Math.floor((v.amount * 100) / count) / 100 : null), [mode, v.amount, count])
@@ -83,11 +96,13 @@ export function EntryForm({ type, refs, initial, editId, onClose, onSaved }: {
       description: v.description.trim(), accountId: v.accountId || null, categoryId: v.categoryId || null,
       costCenterId: v.costCenterId || null, supplierId: v.supplierId || null, counterparty: v.counterparty.trim() || null,
       notes: v.notes.trim() || null,
+      ...(v.vehicleId ? { vehicleId: v.vehicleId } : {}),
     }
+    const dealRef = editing ? { dealId: v.dealId || null } : v.dealId ? { dealId: v.dealId } : {}
     try {
       if (editing) {
         const r = await postJson(`/api/finance/center/entries/${editId}`, {
-          ...common, amount: v.amount, dueDate: v.dueDate, competenceDate: v.competenceDate || null,
+          ...common, ...dealRef, amount: v.amount, dueDate: v.dueDate, competenceDate: v.competenceDate || null,
           documentNumber: v.documentNumber.trim() || null, paymentMethod: v.paymentMethod || null,
         }, 'PATCH')
         if (!r.ok) { setErr(r.data.error ?? 'Não foi possível salvar.'); return }
@@ -103,7 +118,7 @@ export function EntryForm({ type, refs, initial, editId, onClose, onSaved }: {
         return
       }
       const r = await postJson<{ data?: Array<{ id: string }> }>('/api/finance/center/entries', {
-        ...common, type: v.type, amount: v.amount, dueDate: v.dueDate, competenceDate: v.competenceDate || null,
+        ...common, ...dealRef, type: v.type, amount: v.amount, dueDate: v.dueDate, competenceDate: v.competenceDate || null,
         documentNumber: v.documentNumber.trim() || null, paymentMethod: v.paymentMethod || null,
         installments: mode === 'parcelada' ? count : 1,
         paid: paid ? { paidDate, accountId: paidAccount || v.accountId || null } : null,
@@ -177,6 +192,11 @@ export function EntryForm({ type, refs, initial, editId, onClose, onSaved }: {
             {refs.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </Field>
+        {mode !== 'mensal' && (
+          <Field label="Negociação" className="sm:col-span-6">
+            <DealPicker value={v.dealId} onPick={pickDeal} />
+          </Field>
+        )}
         <Field label={isExpense ? 'Favorecido' : 'Cliente / pagador'} className="sm:col-span-2">
           <input className={inputCls} value={v.counterparty} onChange={(e) => set('counterparty', e.target.value)} maxLength={160} />
         </Field>
@@ -261,5 +281,78 @@ export function EntryForm({ type, refs, initial, editId, onClose, onSaved }: {
         <div className="sm:col-span-6"><ErrorLine>{err}</ErrorLine></div>
       </div>
     </Modal>
+  )
+}
+
+// ── Negociação vinculada ──────────────────────────────────────────────────────
+
+interface DealOption {
+  id: string; dealNumber: string | null; type: string; status: string
+  customer: string | null; document: string | null; plate: string | null; vehicleId: string | null; vehicleTitle: string | null
+}
+
+const dealLabel = (d: DealOption) => [d.dealNumber ?? 'Negociação', d.customer, d.plate].filter(Boolean).join(' · ')
+
+function DealPicker({ value, onPick }: { value: string; onPick: (d: DealOption | null) => void }) {
+  const [selected, setSelected] = useState<DealOption | null>(null)
+  const [q, setQ] = useState('')
+  const [list, setList] = useState<DealOption[]>([])
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  // Edição/duplicação: mostra a negociação já vinculada.
+  useEffect(() => {
+    if (!value || selected?.id === value) return
+    const ctrl = new AbortController()
+    fetch(`/api/finance/center/deals-search?id=${encodeURIComponent(value)}`, { credentials: 'include', signal: ctrl.signal })
+      .then((r) => r.json()).then((j) => { if (j?.data?.[0]) setSelected(j.data[0]) }).catch(() => undefined)
+    return () => ctrl.abort()
+  }, [value, selected?.id])
+
+  useEffect(() => {
+    const term = q.trim()
+    if (term.length < 2) return
+    const ctrl = new AbortController()
+    const t = setTimeout(() => {
+      setLoading(true)
+      fetch(`/api/finance/center/deals-search?q=${encodeURIComponent(term)}`, { credentials: 'include', signal: ctrl.signal })
+        .then((r) => r.json()).then((j) => { setList(j?.data ?? []); setOpen(true) }).catch(() => undefined)
+        .finally(() => setLoading(false))
+    }, 300)
+    return () => { clearTimeout(t); ctrl.abort() }
+  }, [q])
+
+  if (value && selected) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm">
+        <Handshake size={14} className="shrink-0 text-gray-400" />
+        <span className="min-w-0 flex-1 truncate text-gray-900">{dealLabel(selected)}</span>
+        <button type="button" onClick={() => { setSelected(null); setQ(''); setList([]); onPick(null) }} className="rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700" aria-label="Remover vínculo"><X size={14} /></button>
+      </div>
+    )
+  }
+
+  const term = q.trim()
+  return (
+    <div className="relative">
+      <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      <input className={cn(inputCls, 'pl-8')} value={q} onChange={(e) => setQ(e.target.value)} onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)} placeholder="Número, cliente ou placa" />
+      {loading && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-400" />}
+      {open && term.length >= 2 && !loading && (
+        <ul className="absolute z-10 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+          {list.length === 0 && <li className="px-3 py-2 text-sm text-gray-400">Nenhuma negociação.</li>}
+          {list.map((d) => (
+            <li key={d.id}>
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { setSelected(d); setOpen(false); setQ(''); onPick(d) }}
+                className="flex w-full flex-col items-start px-3 py-1.5 text-left hover:bg-gray-50">
+                <span className="text-sm font-medium text-gray-900">{d.dealNumber ?? 'Negociação'}{d.customer ? ` · ${d.customer}` : ''}</span>
+                <span className="text-[11px] text-gray-500">{[d.plate, d.vehicleTitle].filter(Boolean).join(' ') || '—'}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }

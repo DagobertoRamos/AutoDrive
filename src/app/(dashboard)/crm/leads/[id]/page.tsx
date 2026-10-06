@@ -22,6 +22,7 @@ import { useCrmSettings } from '@/hooks/useCrmSettings'
 import { reasonsFor, sourceLabelOf, temperatureOf, type CloseOutcome } from '@/lib/crm/settings-core'
 import CloseReasonModal from '@/components/crm/CloseReasonModal'
 import type { Pipeline } from '@/lib/crm/pipelines-core'
+import { DealPeekLink } from '@/components/deals/DealPeek'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface LeadTag    { id: string; name: string; color: string | null }
@@ -726,7 +727,7 @@ function DealsTab({ leadId, workspace, lead, onRefresh }: { leadId: string; work
           </div>
           <div className="flex items-center gap-2">
             {dl.isPrimary && <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[9px] font-bold text-brand-700 dark:bg-brand-900 dark:text-brand-300">Principal</span>}
-            {dl.deal && <Link href={`/negociacoes/${dl.dealId}`} className="text-[11px] font-medium text-sky-600 hover:underline dark:text-sky-400">Abrir →</Link>}
+            {dl.deal && <DealPeekLink dealId={dl.dealId} className="text-[11px] font-medium text-sky-600 hover:underline dark:text-sky-400">Abrir →</DealPeekLink>}
           </div>
         </div>
       ))}
@@ -1311,9 +1312,9 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
 
           {/* Deal vinculado */}
           {relations.deal?.dealNumber && (
-            <Link href={`/negociacoes/${lead.convertedDealId}`} className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:underline dark:text-emerald-400">
+            <DealPeekLink dealId={lead.convertedDealId} className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:underline dark:text-emerald-400">
               <Handshake size={11} />{relations.deal.dealNumber}
-            </Link>
+            </DealPeekLink>
           )}
 
           <div className="ml-auto text-[10px] tabular-nums text-gray-400 dark:text-gray-500">

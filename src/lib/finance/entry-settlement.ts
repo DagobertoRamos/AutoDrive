@@ -30,7 +30,7 @@ const DEBT_TYPE_LABEL: Record<string, string> = {
 const RESP_LABEL: Record<string, string> = { COMPRADOR: 'Comprador', CLIENTE: 'Comprador', VENDEDOR: 'Vendedor', LOJA: 'Loja' }
 
 export function sourceLabel(source: string | null) {
-  if (!source || source === 'MANUAL') return 'Manual'
+  if (!source || source === 'MANUAL' || source.startsWith('MANUAL_NEG_')) return 'Manual'
   if (source.startsWith(PAYMENT_SOURCE_PREFIX)) return 'Pagamento da negociação'
   if (source.startsWith(DEBT_SOURCE_PREFIX)) return 'Débito da negociação'
   if (source.startsWith(TRADE_SOURCE_PREFIX)) return 'Veículo na troca'
@@ -94,7 +94,7 @@ export async function loadEntryDetail(id: string) {
   const [deal, debt, payment, vehicle, supplier, service, warrantySale] = await Promise.all([
     e.dealId ? prisma.deal.findUnique({
       where:  { id: e.dealId },
-      select: { id: true, dealNumber: true, status: true, type: true, customer: { select: { name: true } }, seller: { select: { fullName: true, shortName: true } }, vehicles: { select: { role: true, plate: true, model: true, vehicleId: true } } },
+      select: { id: true, dealNumber: true, status: true, type: true, customer: { select: { name: true } }, person: { select: { nomeCompleto: true } }, seller: { select: { fullName: true, shortName: true } }, vehicles: { select: { role: true, plate: true, model: true, vehicleId: true } } },
     }) : null,
     debtId ? prisma.dealDebt.findUnique({ where: { id: debtId } }) : null,
     paymentId ? prisma.dealPayment.findUnique({ where: { id: paymentId } }) : null,
@@ -135,7 +135,7 @@ export async function loadEntryDetail(id: string) {
     },
     items: e.items.map((i) => ({ id: i.id, kind: i.kind, label: (COST_ITEM_LABEL as Record<string, string>)[i.kind] ?? i.kind, description: i.description, amount: num(i.amount), supplierId: i.supplierId })),
     deal: deal ? {
-      id: deal.id, dealNumber: deal.dealNumber, status: deal.status, type: deal.type, customer: deal.customer?.name ?? null,
+      id: deal.id, dealNumber: deal.dealNumber, status: deal.status, type: deal.type, customer: deal.person?.nomeCompleto ?? deal.customer?.name ?? null,
       seller: deal.seller?.shortName ?? deal.seller?.fullName ?? null,
       vehicles: deal.vehicles.map((v) => ({ role: v.role, plate: v.plate, model: v.model, vehicleId: v.vehicleId })),
     } : null,

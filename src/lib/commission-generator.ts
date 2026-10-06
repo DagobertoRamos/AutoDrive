@@ -619,6 +619,26 @@ export async function generateCommissionsForDeal(
         reference:     { dealId: d.id, bank: d.paymentBank ?? null },
       })
     }
+    // Setor de F&I (cargo "fi"): comissão sobre o mesmo líquido, pela regra do cargo.
+    const fiUsers = await prisma.user.findMany({
+      where: { tenantId, status: 'ATIVO', position: { slug: 'fi' } },
+      select: { id: true, name: true, unitId: true },
+    })
+    for (const u of fiUsers) {
+      if (unitId && u.unitId && u.unitId !== unitId) continue
+      if (u.id === sellerEarner?.userId || u.id === managerEarner?.userId) continue
+      items.push({
+        ruleType:      'RETORNO',
+        commissionScope: 'RETURN_COMMISSION',
+        employeeKind:  'USER',
+        employeeId:    u.id,
+        employeeUserId: u.id,
+        employeeLabel: u.name,
+        baseValue:     returnNet,
+        description:   `RETORNO financeiro — F&I ${u.name}`,
+        reference:     { dealId: d.id, bank: d.paymentBank ?? null },
+      })
+    }
   }
 
   // 3. Para cada item: resolver a regra (em paralelo) + calcular o valor

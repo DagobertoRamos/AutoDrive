@@ -20,3 +20,26 @@ ADD COLUMN     "systemKey" TEXT;
 
 -- AlterTable
 ALTER TABLE "warranty_sales" ADD COLUMN     "costValue" DECIMAL(12,2);
+
+-- AlterTable
+ALTER TABLE "financial_entry_attachments" ADD COLUMN     "docType" TEXT;
+
+-- CreateTable
+CREATE TABLE "document_attachments" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT,
+    "entityType" TEXT NOT NULL,
+    "entityId" TEXT NOT NULL,
+    "docType" TEXT NOT NULL DEFAULT 'OUTRO',
+    "name" TEXT NOT NULL,
+    "storageKey" TEXT NOT NULL,
+    "mimeType" TEXT,
+    "size" INTEGER,
+    "createdById" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "document_attachments_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "document_attachments_tenantId_entityType_entityId_idx" ON "document_attachments"("tenantId", "entityType", "entityId");

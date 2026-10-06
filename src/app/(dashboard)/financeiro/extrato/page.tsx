@@ -12,6 +12,7 @@ import { ArrowLeft, Download, Printer, RefreshCw, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toCsv } from '@/lib/finance/ledger'
 import { ErrorBox, KpiCard, brl, dateBR, inputClass } from '@/components/finance/center/dashboard/shared'
+import StatementPrint from '@/components/finance/center/print/StatementPrint'
 
 interface Line {
   key: string; date: string; description: string; category: string | null; costCenter: string | null; counterparty: string | null
@@ -97,12 +98,8 @@ function StatementPage() {
 
   return (
     <div className="space-y-5">
-      <style>{`@media print {
-        body * { visibility: hidden !important; }
-        #fin-statement, #fin-statement * { visibility: visible !important; }
-        #fin-statement { position: absolute; inset: 0 auto auto 0; width: 100%; }
-        #fin-statement .shadow-card { box-shadow: none; }
-      }`}</style>
+      {/* Impressão/PDF: layout dedicado (portal em <body>, só ele aparece na impressão). */}
+      <StatementPrint data={data} consolidated={consolidated} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -111,22 +108,22 @@ function StatementPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={exportCsv} disabled={!data?.lines.length} className="btn-secondary text-sm"><Download size={15} />CSV</button>
-          <button onClick={() => window.print()} disabled={!data} className="btn-secondary text-sm"><Printer size={15} />Imprimir</button>
+          <button onClick={() => window.print()} disabled={!data} className="btn-secondary text-sm" title="Imprimir ou salvar em PDF"><Printer size={15} />Imprimir / PDF</button>
         </div>
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">Conta
-          <select className={cn(inputClass, 'min-w-[200px]')} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+        <label className="flex min-w-0 max-w-full flex-col gap-1 text-xs font-medium text-gray-600">Conta
+          <select className={cn(inputClass, 'w-full min-w-[12rem] max-w-full truncate sm:w-auto sm:max-w-[20rem]')} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
             <option value="all">Todas as contas</option>
             {(data?.accounts ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}{!a.includeInTotal ? ' (fora do total)' : ''}</option>)}
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">De
-          <input type="date" className={inputClass} value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} />
+          <input type="date" className={cn(inputClass, 'min-w-[10rem]')} value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">Até
-          <input type="date" className={inputClass} value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} />
+          <input type="date" className={cn(inputClass, 'min-w-[10rem]')} value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} />
         </label>
         <div className="flex flex-wrap gap-1">
           {presets.map((p) => (
@@ -141,11 +138,7 @@ function StatementPage() {
 
       {error && <ErrorBox message={error} onRetry={() => void load()} />}
 
-      <div id="fin-statement" className="space-y-4">
-        <div className="hidden print:block">
-          <h2 className="text-lg font-bold text-gray-900">Extrato · {data?.account.name}</h2>
-          <p className="text-sm text-gray-600">{dateBR(data?.from)} a {dateBR(data?.to)}</p>
-        </div>
+      <div className="space-y-4">
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <KpiCard label="Saldo anterior" loading={loading && !data} value={brl(data?.openingBalance)} />

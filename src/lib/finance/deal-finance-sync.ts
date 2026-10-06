@@ -90,6 +90,7 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
       id: true, tenantId: true, unitId: true, sellerId: true, dealNumber: true, type: true, status: true, source: true,
       approvedAt: true, createdAt: true, tradeValue: true, returnNetValue: true,
       customer: { select: { name: true } },
+      person: { select: { nomeCompleto: true } },
       payments: true, debts: true, services: true,
       warrantySales: { select: { id: true, status: true, finalPrice: true, costValue: true, createdAt: true, warranty: { select: { name: true, provider: true } } } },
       vehicles: { select: { id: true, role: true, plate: true, brand: true, model: true, vehicleId: true, agreedValue: true, evaluatedValue: true } },
@@ -108,6 +109,8 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
   const bySource = new Map(entries.map((e) => [e.source ?? '', e]))
   const dead = DEAD_STATUSES.includes(deal.status)
   const ref = deal.dealNumber ?? deal.id.slice(0, 8)
+  // Cliente / pagador dos recebimentos (Person ?? Customer); sem nome, não apaga o que já existe.
+  const customerName = deal.person?.nomeCompleto ?? deal.customer?.name ?? null
   const plateOf = (role: string | null) => deal.vehicles.find((v) => v.role === (role ?? 'VENDIDO'))?.plate ?? null
   const base = { tenantId: deal.tenantId, unitId: deal.unitId, sellerId: deal.sellerId, dealId: deal.id }
   const keep = new Set<string>()
@@ -141,6 +144,8 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
       const how = p.method ? ` (${PAYMENT_LABEL[p.method] ?? p.method})` : p.bank ? ` (${p.bank})` : ''
       const plate = p.vehiclePlate ?? plateOf('VENDIDO')
       const status = dead && p.status !== 'CONFIRMADO' ? 'CANCELADO' : paymentStatus(p.status)
+      // Financiamento: o banco paga; demais: o cliente da negociação.
+      const party = p.type === 'FINANCIAMENTO' && p.bank ? p.bank : customerName
       const data = {
         description: `${kind}${how} — ${[ref, plate].filter(Boolean).join(' · ')}`,
         amount: p.value,
@@ -148,7 +153,7 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
         dueDate: p.dueDate ?? p.firstDueDate ?? p.paidAt ?? null,
         paidDate: status === 'RECEBIDO' ? p.paidAt ?? new Date() : null,
         paymentMethod: p.method ?? p.type,
-        counterparty: p.type === 'FINANCIAMENTO' && p.bank ? p.bank : deal.customer?.name ?? null,
+        ...(party ? { counterparty: party } : {}),
         documentNumber: p.authorizationCode ?? null,
       }
       const cur = bySource.get(source)
@@ -176,7 +181,7 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
       const data = {
         description: `Veículo na troca — ${[t.plate, [t.brand, t.model].filter(Boolean).join(' ')].filter(Boolean).join(' · ')} · ${ref}`,
         amount: value, status, dueDate: when, paidDate: status === 'RECEBIDO' ? when : null,
-        paymentMethod: 'Veículo na troca', counterparty: deal.customer?.name ?? null,
+        paymentMethod: 'Veículo na troca', ...(customerName ? { counterparty: customerName } : {}),
       }
       const cur = bySource.get(source)
       if (cur) await prisma.financialEntry.update({ where: { id: cur.id }, data: cur.costCenterId ? data : { ...data, costCenterId: salesCenter } })

@@ -183,6 +183,9 @@ export interface DealRevenueInput {
   debts?: { id: string; type: string; value: unknown; responsavel?: string | null }[]
   services?: { id: string; value: unknown; kind?: string | null; name?: string | null; supplier?: string | null }[]
   discountRequests?: { status: string; approvedValue?: unknown; requestedValue?: unknown }[]
+  /** Garantias vendidas (cadastro de garantias): receita da área Garantias pelo preço de venda. */
+  warrantyPaidBy?: string | null
+  warrantySales?: { id: string; finalPrice: unknown; status: string }[]
 }
 
 export interface RevenueComponent {
@@ -219,6 +222,12 @@ export function dealRevenueComponents(d: DealRevenueInput): RevenueComponent[] {
   for (const s of (d.services ?? []).filter((x) => num(x.value) > 0)) {
     const kind = SERVICE_KIND_BY_KEY[serviceKindOf(s)]
     out.push({ key: `SERV_${s.id}`, label: s.name || kind.label, center: kind.center, revenueCode: kind.revenueCode, amount: c2(num(s.value)), serviceId: s.id, serviceKind: kind.key })
+  }
+  // Garantia vendida ao cliente (cortesia da loja não é receita).
+  if (String(d.warrantyPaidBy ?? '').toUpperCase() !== 'LOJA') {
+    for (const w of (d.warrantySales ?? []).filter((x) => x.status === 'ATIVA' && num(x.finalPrice) > 0)) {
+      out.push({ key: `GAR_${w.id}`, label: 'Garantia', center: 'GARANTIAS', revenueCode: SERVICE_KIND_BY_KEY.GARANTIA.revenueCode, amount: c2(num(w.finalPrice)), serviceKind: 'GARANTIA' })
+    }
   }
   return out
 }

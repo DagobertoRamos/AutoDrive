@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, ChevronDown, ChevronUp, Clock, ExternalLink, Loader2, Plus, Save, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { DocumentsBadge } from '@/components/documents/DocumentsPanel'
 import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { SERVICE_TYPE_LABELS } from '@/lib/evaluation/catalog'
 import { isOverdue, parseMoneyInput, SERVICE_STATUS_LABEL, type ServiceStatus } from '@/lib/stock/prep-core'
@@ -167,6 +168,7 @@ function ServiceCard({ s, suppliers, canEdit, onPatch }: { s: Svc; suppliers: Da
           {s.deniedReason && s.status === 'NEGADO' && <p className="text-[11px] text-red-700">Motivo: {s.deniedReason}</p>}
         </div>
         <div className="flex items-center gap-1.5">
+          <DocumentsBadge entityType="VEHICLE_SERVICE" entityId={s.id} defaultDocType="NOTA_FISCAL" title={`Documentos — ${s.description}`} />
           {late && <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700"><AlertTriangle size={11} />Atrasado</span>}
           <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', TONE[s.status])}>{SERVICE_STATUS_LABEL[s.status]}</span>
         </div>

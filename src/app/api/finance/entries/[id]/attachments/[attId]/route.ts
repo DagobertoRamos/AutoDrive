@@ -34,7 +34,8 @@ export async function GET(req: Request, { params }: Ctx) {
   if (l.error) return l.error
   const file = await readAttachmentFile(l.att.url).catch(() => null)
   if (!file) return bad('Arquivo não encontrado no armazenamento.', 404)
-  const type = l.att.mimeType || file.contentType
+  const stored = l.att.mimeType || file.contentType
+  const type = /xml/i.test(stored) ? 'text/plain; charset=utf-8' : stored // XML abre como texto
   return new NextResponse(file.body as unknown as BodyInit, {
     headers: { 'Content-Type': type, 'Content-Disposition': `inline; filename="${l.att.name.replace(/"/g, '')}"`, 'Cache-Control': 'private, max-age=300' },
   })
