@@ -13,6 +13,7 @@
 import { prisma } from '@/lib/prisma'
 import { applyStatusSideEffects } from './entry-settlement'
 import { noonUtc } from './recurrence-core'
+import { lockedDatesOf, periodError } from './period-lock'
 import { partialBlockedReason, partialSource, planSettlement, principalOf } from './settlement-core'
 
 export interface SettleTitleInput {
@@ -50,6 +51,8 @@ export async function settleTitle(tenantId: string | null, entryId: string, inpu
   if (e.status === 'CANCELADO') return { error: 'Lançamento cancelado: reabra antes de dar baixa.' }
   if (e.status !== 'PREVISTO') return { error: 'Lançamento já quitado.' }
   if (e.transferGroupId) return { error: 'Transferência não tem baixa.' }
+  const closed = await periodError(e.tenantId, [input.paidDate])
+  if (closed) return { error: closed }
   if (e.commissionCalculationId) {
     const c = await prisma.commissionCalculation.findUnique({ where: { id: e.commissionCalculationId }, select: { status: true } })
     if (c?.status === 'CANCELADO') return { error: 'Comissão cancelada: não pode ser paga.' }
@@ -129,6 +132,8 @@ export async function reverseSettlement(tenantId: string | null, entryId: string
   if (!e) return 'Lançamento não encontrado.'
   if (e.parentEntryId) {
     if (e.status === 'CANCELADO') return 'Esta baixa já foi estornada.'
+    const closedP = await periodError(e.tenantId, [e.paidDate])
+    if (closedP) return closedP
     const parent = await prisma.financialEntry.findUnique({ where: { id: e.parentEntryId }, include: { partials: { where: { status: { not: 'CANCELADO' } }, select: { id: true, createdAt: true }, orderBy: { createdAt: 'desc' } } } })
     if (!parent) return 'Título não encontrado.'
     if (parent.status !== 'PREVISTO') return 'Estorne primeiro a baixa final do título.'
@@ -150,6 +155,8 @@ export async function reverseSettlement(tenantId: string | null, entryId: string
   }
   if (e.status !== 'PAGO' && e.status !== 'RECEBIDO') return 'Lançamento sem baixa para estornar.'
   if (e.transferGroupId) return 'Transferência: exclua a transferência.'
+  const closedF = await periodError(e.tenantId, [e.paidDate])
+  if (closedF) return closedF
   const principal = principalOf({ amount: Number(e.amount), interestAmount: e.interestAmount == null ? null : Number(e.interestAmount), discountAmount: e.discountAmount == null ? null : Number(e.discountAmount) })
   const r = await prisma.financialEntry.updateMany({
     where: { id: e.id, status: e.status, amount: e.amount },
@@ -172,6 +179,8 @@ export async function settleBatch(tenantId: string, input: BatchInput, actor: Ac
   if (!input.items.length) return { error: 'Selecione os lançamentos.' }
   if (input.items.length > 200) return { error: 'No máximo 200 lançamentos por lote.' }
   if (input.paidDate > todaySP()) return { error: 'A data da baixa não pode ser futura.' }
+  const closed = await periodError(tenantId, [input.paidDate])
+  if (closed) return { error: closed }
   const ids = [...new Set(input.items.map((i) => i.entryId))]
   const rows = await prisma.financialEntry.findMany({ where: { id: { in: ids }, tenantId }, select: { id: true, type: true, status: true, amount: true, parentEntryId: true, transferGroupId: true, source: true, commissionCalculationId: true, vehicleServiceId: true } })
   const byId = new Map(rows.map((r) => [r.id, r]))

@@ -11,6 +11,7 @@ import { prisma } from '@/lib/prisma'
 import { applyStatusSideEffects } from '@/lib/finance/entry-settlement'
 import { settleTitle, type Actor } from '@/lib/finance/settlement'
 import { createSafeAuditLog } from '@/lib/auth-guards'
+import { lockedDatesOf, periodError } from '@/lib/finance/period-lock'
 import { isDeletableSource } from './shared'
 
 const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.')
@@ -52,6 +53,8 @@ export async function cancelEntry(id: string, reason: string | null | undefined)
   if (e.status === 'CANCELADO') return null
   if (e.status !== 'PREVISTO') return 'Estorne a baixa antes de cancelar.'
   if (e._count.partials) return 'O título tem baixas parciais: estorne-as antes de cancelar.'
+  const closed = await periodError(e.tenantId, [e.competenceDate])
+  if (closed) return closed
   const why = reason?.trim()
   const notes = why ? [e.notes?.trim(), `Cancelado: ${why}`].filter(Boolean).join('\n').slice(0, 2000) : e.notes
   await prisma.financialEntry.update({ where: { id }, data: { status: 'CANCELADO', notes } })
@@ -71,6 +74,8 @@ export async function voidEntry(id: string, reason: string | null | undefined, a
   if (e.parentEntryId) return 'Esta linha é uma baixa: use Estornar.'
   if (e.transferGroupId) return 'Transferência: cancele pela transferência.'
   if (e._count.partials) return 'O título tem baixas: estorne-as antes.'
+  const closed = await periodError(e.tenantId, lockedDatesOf(e))
+  if (closed) return closed
   const why = reason?.trim() || 'Excluído pelo usuário'
   const before = { status: e.status, amount: Number(e.amount), paidDate: e.paidDate, accountId: e.accountId, description: e.description }
   if (e.status === 'PREVISTO') {

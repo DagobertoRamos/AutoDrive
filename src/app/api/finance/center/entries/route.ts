@@ -25,6 +25,7 @@ import { randomUUID } from 'node:crypto'
 import type { Prisma } from '@prisma/client'
 import { z, ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
+import { periodError } from '@/lib/finance/period-lock'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { financeGuard } from '@/lib/finance/access'
@@ -223,6 +224,8 @@ export async function POST(req: Request) {
     const refErr = await centerRefError(tenantId, { ...d, accountId: d.paid?.accountId || d.accountId })
       ?? await categoryKindError(d.categoryId, d.type)
     if (refErr) return bad(refErr)
+    const closed = await periodError(tenantId, [d.competenceDate ?? d.dueDate, d.paid?.paidDate])
+    if (closed) return bad(closed)
     if (d.vehicleId && !(await prisma.vehicle.findFirst({ where: { id: d.vehicleId, tenantId }, select: { id: true } }))) return bad('Veículo inválido.')
 
     const deal = d.dealId ? await dealForEntry(tenantId, d.dealId) : null

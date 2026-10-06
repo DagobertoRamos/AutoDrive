@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
+import { periodError } from '@/lib/finance/period-lock'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createEntrySchema } from '@/lib/validators/finance'
@@ -74,6 +75,9 @@ export async function POST(req: Request) {
     if (!d.dueDate) return NextResponse.json({ success: false, error: 'Informe o vencimento.' }, { status: 400 })
     const refErr = await tenantRefError(tenantId, d)
     if (refErr) return NextResponse.json({ success: false, error: refErr }, { status: 400 })
+    const closed = await periodError(tenantId, [d.competenceDate ?? d.dueDate, d.status === 'PAGO' || d.status === 'RECEBIDO' ? d.paidDate ?? new Date() : null])
+    if (closed) return NextResponse.json({ success: false, error: closed }, { status: 400 })
+    if ((d.status === 'PAGO' && d.type !== 'DESPESA') || (d.status === 'RECEBIDO' && d.type !== 'RECEITA')) return NextResponse.json({ success: false, error: 'Status não combina com o tipo do lançamento.' }, { status: 400 })
     const entry = await prisma.financialEntry.create({
       data: {
         tenantId, type: d.type, status: d.status, description: d.description, amount: d.amount,

@@ -16,6 +16,7 @@ import { createDealAudit } from '@/lib/negotiation-service'
 import { PAYMENT_SOURCE_PREFIX } from './deal-finance-sync'
 import { baseSource } from './settlement-core'
 import { categoryIdByCode, resultCenterIds } from './setup'
+import { periodError } from './period-lock'
 
 export const REFUND_SOURCE_PREFIX = 'NEG_ESTORNO_'
 export const OWNER_RETURN_SOURCE_PREFIX = 'NEG_DEVOLUCAO_'
@@ -130,6 +131,8 @@ export async function registerRefund(tenantId: string, input: RefundInput): Prom
   const line = (await loadDealRefundLines(deal.id)).find((l) => l.refId === input.refId && l.kind === input.kind)
   if (!line) return { ok: false, error: 'Item não encontrado nesta negociação.' }
   if (line.refund) return { ok: false, error: 'Este valor já foi marcado como estornado.' }
+  const closed = await periodError(tenantId, [input.date])
+  if (closed) return { ok: false, error: closed }
   if (!(input.amount > 0)) return { ok: false, error: 'Informe o valor.' }
   if (input.amount > line.moved + 0.009) return { ok: false, error: 'O valor é maior do que o que foi movimentado.' }
   if (input.accountId) {
@@ -168,6 +171,8 @@ export async function undoRefund(tenantId: string, dealId: string, refId: string
   if (!deal) return { ok: false, error: 'Negociação não encontrada.' }
   const entry = await prisma.financialEntry.findFirst({ where: { dealId, source: refundSource(kind, refId) }, select: { id: true, amount: true, settlementBatchId: true } })
   if (!entry) return { ok: false, error: 'Estorno não encontrado.' }
+  const closed = await periodError(tenantId, [(await prisma.financialEntry.findUnique({ where: { id: entry.id }, select: { paidDate: true } }))?.paidDate])
+  if (closed) return { ok: false, error: closed }
   await prisma.$transaction(async (tx) => {
     // Nunca apaga: fica cancelado (origem renomeada para liberar um novo estorno).
     await tx.financialEntry.update({ where: { id: entry.id }, data: { status: 'CANCELADO', source: `${refundSource(kind, refId)}#X${Date.now()}`, notes: 'Estorno desfeito.' } })

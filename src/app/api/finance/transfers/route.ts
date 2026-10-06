@@ -13,6 +13,7 @@ import { NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
 import { z, ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
+import { periodError } from '@/lib/finance/period-lock'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { financeGuard } from '@/lib/finance/access'
@@ -68,6 +69,8 @@ export async function POST(req: Request) {
   try {
     const d = schema.parse(await req.json())
     if (d.fromAccountId === d.toAccountId) return bad('Escolha contas diferentes.')
+    const closed = await periodError(tenantId, [d.date])
+    if (closed) return bad(closed)
     const accounts = await prisma.financialAccount.findMany({ where: { id: { in: [d.fromAccountId, d.toAccountId] }, tenantId }, select: { id: true, name: true } })
     const fromAcc = accounts.find((a) => a.id === d.fromAccountId); const toAcc = accounts.find((a) => a.id === d.toAccountId)
     if (!fromAcc || !toAcc) return bad('Conta inválida.')

@@ -15,6 +15,7 @@ import { updateEntrySchema } from '@/lib/validators/finance'
 import { zodErrorResponse, num } from '@/lib/finance/finance-service'
 import { reverseSettlement, settleTitle } from '@/lib/finance/settlement'
 import { entryDiff } from '@/lib/finance/entry-audit'
+import { lockedDatesOf, periodError } from '@/lib/finance/period-lock'
 import { tenantRefError } from '@/lib/finance/tenant-refs'
 import { entryAccessError, legacyFinanceGuard } from '@/app/api/finance/center/entries/_lib/shared'
 import { voidEntry } from '@/app/api/finance/center/entries/_lib/settle'
@@ -76,6 +77,11 @@ export async function PATCH(req: Request, { params }: Ctx) {
     // Demais campos. Valor e tipo de lançamento já baixado não mudam (estorne antes).
     const updateData: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(d)) if (v !== undefined && k !== 'status' && k !== 'paidDate') updateData[k] = v
+    if (Object.keys(updateData).some((k) => k !== 'notes' && k !== 'documentNumber')) {
+      const fresh = await prisma.financialEntry.findUniqueOrThrow({ where: { id } })
+      const closed = await periodError(existing.tenantId, [...lockedDatesOf(fresh), d.competenceDate])
+      if (closed) return NextResponse.json({ success: false, error: closed }, { status: 400 })
+    }
     if (settled && ((d.amount !== undefined && Math.abs(Number(d.amount) - Number(existing.amount)) > 0.004) || (d.type && d.type !== existing.type))) {
       return NextResponse.json({ success: false, error: 'Lançamento baixado: estorne a baixa para mudar valor ou tipo.' }, { status: 400 })
     }

@@ -68,6 +68,7 @@ import { HandCoins,
   XCircle,
   Palette,
   Target,
+  Lock,
   Trophy,
   Columns3,
   // Marketing / Mesa SDR + Telefonia
@@ -186,6 +187,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Plano de contas',    href: '/financeiro/plano-de-contas',  icon: Tags,            module: 'finance' },
       { label: 'Centros de custo',   href: '/financeiro/centros-de-custo', icon: Network,         module: 'finance' },
       { label: 'Orçamento',          href: '/financeiro/orcamento',        icon: Target,          module: 'finance' },
+      { label: 'Fechamento',         href: '/financeiro/fechamento',       icon: Lock,            module: 'finance' },
     ],
   },
 

@@ -17,6 +17,7 @@ import { z, ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { entryDiff } from '@/lib/finance/entry-audit'
+import { lockedDatesOf, periodError } from '@/lib/finance/period-lock'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { financeGuard } from '@/lib/finance/access'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
@@ -52,6 +53,12 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const refErr = await centerRefError(g.tenantId, d) ?? await categoryKindError(d.categoryId, e.type)
     if (refErr) return bad(refErr)
     if (d.vehicleId && !(await prisma.vehicle.findFirst({ where: { id: d.vehicleId, tenantId: g.tenantId }, select: { id: true } }))) return bad('Veículo inválido.')
+    // Período fechado: só observação e nº do documento podem mudar.
+    const touchesMoney = (['description', 'amount', 'dueDate', 'competenceDate', 'accountId', 'categoryId', 'costCenterId', 'vehicleId', 'supplierId'] as const).some((k) => d[k] !== undefined)
+    if (touchesMoney) {
+      const closed = await periodError(g.tenantId, [...lockedDatesOf(e), d.competenceDate])
+      if (closed) return bad(closed)
+    }
     if (d.amount !== undefined && d.amount !== Number(e.amount)) {
       if (e.commissionCalculationId) return bad('Comissão: o valor vem do sistema de comissões.')
       if (e.vehicleServiceId) return bad('Custo de serviço: altere o valor na aba Serviços do veículo.')
