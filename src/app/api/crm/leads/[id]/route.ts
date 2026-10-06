@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { ensureLeadOriginVehicle } from '@/lib/crm/lead-vehicles'
 import { createSafeAuditLog, forbiddenResponse, getSessionUser, unauthorizedResponse } from '@/lib/auth-guards'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
@@ -236,6 +237,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     // F1: etiquetas + Workspace Fase A: próxima visita, leads de interesse (3),
     // resumo mais recente, deals vinculados — tudo em lote tolerante a migration.
+    // Lead que chegou com carro do estoque: vira veículo de interesse.
+    await ensureLeadOriginVehicle(tenantId, { id: lead.id, vehicleId: lead.vehicleId })
     const [appliedTags, availableTags, nextVisitArr, vehicleInterests, latestSummary, linkedDeals] = await Promise.all([
       prisma.crmLeadTag.findMany({ where: { leadId: lead.id }, select: { tag: { select: { id: true, name: true, color: true, active: true } } } }).catch(() => []),
       prisma.crmTag.findMany({ where: { tenantId, active: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, color: true } }).catch(() => []),

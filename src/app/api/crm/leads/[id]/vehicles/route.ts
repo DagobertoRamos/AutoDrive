@@ -1,6 +1,7 @@
 // =============================================================================
 // GET/POST /api/crm/leads/[id]/vehicles — Veículos de interesse do lead (N:M).
-// GET: lista todos (incluindo removidos). POST: adiciona novo interesse.
+// GET: lista todos (incluindo removidos). POST: { vehicleId } (estoque) ou
+// { brand, model, year } (fora do estoque) — regras em lib/crm/lead-vehicles.
 // =============================================================================
 
 import { NextResponse } from 'next/server'
@@ -10,6 +11,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
+import { addManualInterest, addStockInterest } from '@/lib/crm/lead-vehicles'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,24 +47,13 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
 
     const b = await req.json().catch(() => ({}))
     const vehicleId = b?.vehicleId ? String(b.vehicleId) : null
-
-    // Se vinculado a veículo, busca snapshot do estoque.
-    let snapshot: { brand?: string|null; model?: string|null; version?: string|null; year?: number|null; plate?: string|null } = {}
-    if (vehicleId) {
-      const v = await prisma.vehicle.findFirst({ where: { id: vehicleId, tenantId }, select: { brand: true, model: true, version: true, modelYear: true, plate: true } }).catch(() => null)
-      if (v) snapshot = { brand: v.brand, model: v.model, version: v.version, year: v.modelYear, plate: v.plate }
-    }
-
-    const entry = await prisma.crmLeadVehicle.create({ data: {
-      tenantId, leadId: id, vehicleId,
-      brand: b?.brand ?? snapshot?.brand ?? null, model: b?.model ?? snapshot?.model ?? null,
-      version: b?.version ?? snapshot?.version ?? null, year: b?.year ?? snapshot?.year ?? null,
-      plate: b?.plate ?? snapshot?.plate ?? null, priceViewed: b?.priceViewed ?? null,
-      interest: b?.interest ?? 'PRIMARY', status: 'INTERESTED',
-      role: ['COMPRA','TROCA','VENDA','CONSIGNACAO','AVALIACAO'].includes(String(b?.role ?? '')) ? String(b.role) : 'COMPRA',
-      isPrimary: Boolean(b?.isPrimary), notes: b?.notes ? String(b.notes).trim() : null,
-      addedByUserId: user.id,
-    }})
+    const model = String(b?.model ?? '').trim()
+    if (!vehicleId && !model) return NextResponse.json({ success: false, error: 'Informe o modelo.' }, { status: 400 })
+    const year = Number(b?.year)
+    const entry = vehicleId
+      ? await addStockInterest(tenantId, id, vehicleId, user.id)
+      : await addManualInterest(tenantId, id, { brand: b?.brand ? String(b.brand) : null, model, year: Number.isInteger(year) && year > 1900 && year < 2100 ? year : null }, user.id)
+    if (!entry) return NextResponse.json({ success: false, error: 'Veículo não encontrado no estoque.' }, { status: 404 })
     return NextResponse.json({ success: true, data: entry }, { status: 201 })
   } catch (err) { return handlePrismaError(err) }
 }

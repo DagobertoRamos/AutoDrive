@@ -8,13 +8,14 @@
 // =============================================================================
 
 import { SiteLeadPhotos } from '@/components/crm/SiteLeadPhotos'
+import { LeadVehicleInterests } from '@/components/crm/LeadVehicleInterests'
 import Link from 'next/link'
 import { use, useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import {
   ArrowLeft, Calendar, Car, CheckCircle2, ChevronRight,
-  Clock, FileText, Handshake, Loader2, MessageSquare, MoreVertical, Pencil,
-  Plus, RefreshCw, Trash2, User, X,
+  Clock, FileText, Handshake, Loader2, MessageSquare, MoreVertical,
+  Plus, RefreshCw, User, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
@@ -29,7 +30,7 @@ import { opsHint, opsText } from '@/lib/glossary-ops'
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface LeadTag    { id: string; name: string; color: string | null }
 interface VisitItem  { id: string; scheduledAt: string; status: string; objective: string | null; vehicleRef: string | null; clientConfirmed: boolean }
-interface VehicleItem { id: string; vehicleId: string | null; brand: string | null; model: string | null; version: string | null; plate: string | null; isPrimary: boolean; status: string; interest: string; role: string; removedAt: string | null }
+interface VehicleItem { id: string; vehicleId: string | null; brand: string | null; model: string | null; version: string | null; year?: number | null; priceViewed?: number | string | null; plate: string | null; isPrimary: boolean; status: string; interest: string; role: string; removedAt: string | null }
 interface PendencyRef  { id: string; type: string; status: string; priority: string; dueDate: string | null; description: string | null; createdAt: string }
 interface DealLink   { id: string; dealId: string; isPrimary: boolean; linkedAt: string; deal: { id: string; dealNumber: string | null; status: string; type: string } | null }
 interface Summary    { id: string; version: number; objective: string | null; desiredVehicle: string | null; hasTradeIn: boolean; narrative: string | null; authorName: string | null; createdAt: string }
@@ -200,8 +201,6 @@ function InteractionForm({ leadId, onSaved }: { leadId: string; onSaved: () => v
 }
 
 // ── SummaryTab — Resumo editável + histórico + próximas ações + veículos ─────
-const ROLE_LABELS: Record<string,string> = { COMPRA:'Compra', TROCA:'Troca', VENDA:'Venda p/ loja', CONSIGNACAO:'Consignação', AVALIACAO:'Avaliação' }
-const ROLE_CLS:   Record<string,string>  = { COMPRA:'bg-blue-50 text-blue-700', TROCA:'bg-amber-50 text-amber-700', VENDA:'bg-emerald-50 text-emerald-700', CONSIGNACAO:'bg-purple-50 text-purple-700', AVALIACAO:'bg-gray-100 text-gray-600' }
 const PEND_TYPE_LABELS: Record<string,string> = { VISITA_AGENDADA:'Visita agendada', FOLLOWUP:'Follow-up', ALIMENTAR_SISTEMA:'Alimentar sistema', ACOMPANHAMENTO:'Acompanhamento', PENDENCIA:'Pendência' }
 
 function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, relations, onRefresh }: {
@@ -231,9 +230,6 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
   const [savingPend, setSavingPend] = useState(false)
 
   // Veículos rápidos
-  const [showVehicleForm, setShowVehicleForm] = useState(false)
-  const [vehicleForm, setVehicleForm] = useState({ brand: '', model: '', plate: '', role: 'COMPRA', isPrimary: true })
-  const [savingVehicle, setSavingVehicle] = useState(false)
 
   useEffect(() => { setTasksList(tasks) }, [tasks])
 
@@ -279,15 +275,6 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
     } finally { setSavingPend(false) }
   }
 
-  const createVehicle = async () => {
-    if (!vehicleForm.model.trim()) return
-    setSavingVehicle(true)
-    try {
-      await fetch(`/api/crm/leads/${leadId}/vehicles`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(vehicleForm) })
-      setVehicleForm({ brand: '', model: '', plate: '', role: 'COMPRA', isPrimary: true }); setShowVehicleForm(false); onRefresh()
-    } finally { setSavingVehicle(false) }
-  }
-
   return (
     <div className="grid gap-4 lg:grid-cols-2">
 
@@ -305,51 +292,7 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
           {lead.notes && <div className="mt-3 rounded-lg bg-gray-50 p-3 text-[12px] text-gray-600 dark:bg-slate-800 dark:text-gray-300">{lead.notes}</div>}
         </div>
 
-        {/* Veículos de interesse */}
-        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Car size={14} />Veículos de interesse</h3>
-            <button onClick={() => setShowVehicleForm(v => !v)} className="flex items-center gap-1 text-[11px] text-brand-600 hover:underline"><Plus size={11} />Adicionar</button>
-          </div>
-
-          {showVehicleForm && (
-            <div className="mb-3 rounded-lg border border-brand-100 bg-brand-50/50 p-3 space-y-2 dark:border-brand-900/30 dark:bg-brand-950/20">
-              <div className="grid grid-cols-2 gap-2">
-                <input placeholder="Marca" value={vehicleForm.brand} onChange={e => setVehicleForm(f => ({...f, brand: e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
-                <div className="relative">
-                  <input placeholder="Modelo / versão" aria-required="true" value={vehicleForm.model} onChange={e => setVehicleForm(f => ({...f, model: e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white py-1.5 pl-2 pr-5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
-                  <RequiredMark className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2" />
-                </div>
-                <input placeholder="Placa" value={vehicleForm.plate} onChange={e => setVehicleForm(f => ({...f, plate: e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
-                <select value={vehicleForm.role} onChange={e => setVehicleForm(f => ({...f, role: e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white">
-                  {Object.entries(ROLE_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
-              </div>
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-1.5 text-[11px] text-gray-600 dark:text-gray-300"><input type="checkbox" checked={vehicleForm.isPrimary} onChange={e => setVehicleForm(f => ({...f, isPrimary: e.target.checked}))} className="rounded border-gray-300" />Principal</label>
-                <button onClick={createVehicle} disabled={savingVehicle || !vehicleForm.model.trim()} className="ml-auto rounded-lg bg-brand-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{savingVehicle ? <Loader2 size={11} className="animate-spin inline" /> : 'Salvar'}</button>
-                <button onClick={() => setShowVehicleForm(false)} className="text-[11px] text-gray-500 hover:text-gray-700">Cancelar</button>
-              </div>
-            </div>
-          )}
-
-          {workspace.vehicleInterests.filter(v => !v.removedAt).map(v => (
-            <div key={v.id} className="mb-2 flex items-center gap-2 rounded-lg border border-gray-100 p-2.5 dark:border-white/5">
-              <Car size={14} className="shrink-0 text-gray-400" />
-              <div className="flex-1 min-w-0">
-                <p className="text-[12px] font-medium text-gray-900 dark:text-white">{[v.brand, v.model].filter(Boolean).join(' ') || 'Veículo'}</p>
-                {v.plate && <p className="font-mono text-[10px] text-gray-400">{v.plate}</p>}
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <span className={cn('rounded px-1.5 py-0.5 text-[9px] font-bold', ROLE_CLS[v.role] ?? 'bg-gray-100 text-gray-500')}>{ROLE_LABELS[v.role] ?? v.role}</span>
-                {v.isPrimary && <span className="rounded bg-brand-100 px-1 py-0.5 text-[9px] font-bold text-brand-700 dark:bg-brand-900 dark:text-brand-300">Principal</span>}
-              </div>
-            </div>
-          ))}
-          {workspace.vehicleInterests.filter(v => !v.removedAt).length === 0 && (
-            <p className="text-[12px] text-gray-400 italic">Nenhum veículo cadastrado.</p>
-          )}
-        </div>
+        <LeadVehicleInterests leadId={leadId} items={workspace.vehicleInterests} onChange={onRefresh} />
 
         {/* Próximas ações */}
         <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
@@ -541,15 +484,10 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
 }
 
 // ── VehiclesTab — CRUD completo: interesse + avaliação + editar + excluir ──────
-const BLANK_VEH = { brand:'', model:'', version:'', plate:'', role:'COMPRA', isPrimary:false, notes:'' }
 const BLANK_EVAL = { plate:'', brand:'', model:'', km:'', ownerName:'' }
 type EvalItem = { id:string; status:string; plate:string|null; brand:string|null; model:string|null; evaluatedValue:unknown; createdAt:string }
 
 function VehiclesTab({ leadId, workspace, onRefresh }: { leadId:string; workspace:Workspace; onRefresh:()=>void }) {
-  const [showVehForm, setShowVehForm] = useState(false)
-  const [editVeh, setEditVeh] = useState<VehicleItem|null>(null)
-  const [vehForm, setVehForm] = useState(BLANK_VEH)
-  const [vehBusy, setVehBusy] = useState(false)
   const [showEvalForm, setShowEvalForm] = useState(false)
   const [evalForm, setEvalForm] = useState(BLANK_EVAL)
   const [evalBusy, setEvalBusy] = useState(false)
@@ -560,29 +498,6 @@ function VehiclesTab({ leadId, workspace, onRefresh }: { leadId:string; workspac
     fetch(`/api/crm/leads/${leadId}/evaluations`,{credentials:'include'}).then(r=>r.json()).then(j=>setEvals(j?.data?.map((l:{evaluation:unknown})=>l.evaluation).filter(Boolean)??[])).catch(()=>{})
   },[leadId])
   useEffect(()=>{ reloadEvals() },[reloadEvals])
-
-  const saveVehicle = async () => {
-    if (!vehForm.model.trim()) return
-    setVehBusy(true)
-    try {
-      if (editVeh) {
-        // Update: usa PATCH no id do veículo (remove + recria pois não há PATCH na API atual)
-        await fetch(`/api/crm/leads/${leadId}/vehicles/${editVeh.id}`, { method:'DELETE', credentials:'include' }).catch(()=>{})
-      }
-      await fetch(`/api/crm/leads/${leadId}/vehicles`,{ method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify(vehForm) })
-      setShowVehForm(false); setEditVeh(null); setVehForm(BLANK_VEH); onRefresh()
-    } finally { setVehBusy(false) }
-  }
-
-  const removeVehicle = async (v: VehicleItem) => {
-    if (!window.confirm(`Remover veículo "${[v.brand,v.model].filter(Boolean).join(' ') || v.plate}"?`)) return
-    await fetch(`/api/crm/leads/${leadId}/vehicles/${v.id}`, { method:'DELETE', credentials:'include' }).catch(()=>{})
-    onRefresh()
-  }
-
-  const startEdit = (v: VehicleItem) => {
-    setEditVeh(v); setVehForm({ brand:v.brand??'', model:v.model??'', version:v.version??'', plate:v.plate??'', role:v.role, isPrimary:v.isPrimary, notes:'' }); setShowVehForm(true)
-  }
 
   const startEval = async () => {
     if (!evalForm.plate.trim()) { setEvalErr('Informe a placa.'); return }
@@ -595,59 +510,10 @@ function VehiclesTab({ leadId, workspace, onRefresh }: { leadId:string; workspac
     } finally { setEvalBusy(false) }
   }
 
-  const active = workspace.vehicleInterests.filter(v=>!v.removedAt)
-
   return (
     <div className="space-y-4">
 
-      {/* Veículos de interesse — CRUD */}
-      <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Car size={15} />Veículos de interesse</h3>
-          <button onClick={()=>{setEditVeh(null);setVehForm(BLANK_VEH);setShowVehForm(v=>!v)}} className="flex items-center gap-1 text-[11px] text-brand-600 hover:underline"><Plus size={11} />Adicionar</button>
-        </div>
-
-        {showVehForm && (
-          <div className="mb-3 rounded-lg border border-brand-100 bg-brand-50/50 p-3 space-y-2 dark:border-brand-900/30 dark:bg-brand-950/20">
-            <p className="text-[11px] font-semibold text-brand-700 dark:text-brand-300">{editVeh ? 'Editar veículo' : 'Novo veículo de interesse'}</p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {[['brand','Marca'],['model','Modelo'],['version','Versão'],['plate','Placa']].map(([k,l])=>(
-                <div key={k}>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">{l}{k==='model' && <> <RequiredMark /></>}</label>
-                  <input value={(vehForm as unknown as Record<string,string>)[k]} onChange={e=>setVehForm(f=>({...f,[k]:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
-                </div>
-              ))}
-              <select value={vehForm.role} onChange={e=>setVehForm(f=>({...f,role:e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white">
-                {Object.entries(ROLE_LABELS).map(([v,l])=><option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
-            <label className="flex items-center gap-1.5 text-[11px] text-gray-600 dark:text-gray-300"><input type="checkbox" checked={vehForm.isPrimary} onChange={e=>setVehForm(f=>({...f,isPrimary:e.target.checked}))} className="rounded border-gray-300" />Veículo principal</label>
-            <div className="flex gap-2">
-              <button onClick={saveVehicle} disabled={vehBusy || !vehForm.model.trim()} className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{vehBusy?<Loader2 size={11} className="animate-spin"/>:<CheckCircle2 size={11}/>}Salvar</button>
-              <button onClick={()=>{setShowVehForm(false);setEditVeh(null)}} className="text-[11px] text-gray-500">Cancelar</button>
-            </div>
-          </div>
-        )}
-
-        {active.length === 0 && !showVehForm ? (
-          <p className="text-[12px] text-gray-400 italic">Nenhum veículo cadastrado.</p>
-        ) : active.map(v => (
-          <div key={v.id} className="mb-2 group flex items-center gap-3 rounded-lg border border-gray-100 p-2.5 hover:border-gray-200 dark:border-white/5 dark:hover:border-white/10">
-            <Car size={16} className="shrink-0 text-gray-400" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-medium text-gray-900 dark:text-white">{[v.brand,v.model,v.version].filter(Boolean).join(' ')||'—'}</p>
-              {v.plate && <p className="font-mono text-[10px] text-gray-400">{v.plate}</p>}
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <span className={cn('rounded px-1.5 py-0.5 text-[9px] font-bold', ROLE_CLS[v.role]??'bg-gray-100 text-gray-500')}>{ROLE_LABELS[v.role]??v.role}</span>
-              {v.isPrimary && <span className="rounded bg-brand-100 px-1 py-0.5 text-[9px] font-bold text-brand-700 dark:bg-brand-900 dark:text-brand-300">Principal</span>}
-              {/* Ações — aparecem no hover */}
-              <button onClick={()=>startEdit(v)} className="opacity-0 group-hover:opacity-100 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-slate-700 transition-opacity" title="Editar"><Pencil size={12}/></button>
-              <button onClick={()=>removeVehicle(v)} className="opacity-0 group-hover:opacity-100 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 transition-opacity" title="Remover"><Trash2 size={12}/></button>
-            </div>
-          </div>
-        ))}
-      </div>
+      <LeadVehicleInterests leadId={leadId} items={workspace.vehicleInterests} onChange={onRefresh} iconSize={15} />
 
       {/* Avaliações — nova + lista */}
       <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
