@@ -319,6 +319,57 @@ describe.skipIf(!LOCAL)('operações veiculares (banco real)', () => {
     }
   })
 
+  it('conta da AutoDrive (Celcoin) é o padrão da consulta; conexão própria da loja vence', async () => {
+    const conns = await import('./connections')
+    const vdata = await import('./vehicle-data')
+    let polls = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.endsWith('/v5/token')) return new Response(JSON.stringify({ access_token: 'tok', expires_in: 2400 }), { status: 200 })
+      if (init?.method === 'POST') return new Response(JSON.stringify({ version: '1.0.0', status: 'SUCCESS', body: { idConsult: 'cc-1', status: 'PENDING', debts: [] } }), { status: 200 })
+      polls++
+      return new Response(JSON.stringify({ version: '1.0.0', status: 'SUCCESS', body: { idConsult: 'cc-1', status: 'PROCESSED', debts: [{ debitId: 'd1', title: 'Licenciamento 2026', type: 'Licenciamento', amount: 160.22 }] } }), { status: 200 })
+    }))
+    let platformId = ''
+    const own = await prisma.integrationConnection.findFirst({ where: { tenantId, domain: 'VEHICLE_DATA', status: 'ACTIVE' } })
+    try {
+      if (own) await conns.disableConnection(tenantId, own.id, actor)
+      await expect(conns.saveConnection(conns.PLATFORM_TENANT, { domain: 'RENAVE', providerId: 'INTEGRARENAVE', fields: { baseUrl: 'https://x.test', apiKey: 'k' } }, actor)).rejects.toThrow(/consulta de débitos/)
+      const saved = await conns.saveConnection(conns.PLATFORM_TENANT, { domain: 'VEHICLE_DATA', providerId: 'CELCOIN', environment: 'HOMOLOGACAO', fields: { clientId: 'id-e2e', clientSecret: 'segredo-e2e' } }, actor)
+      platformId = saved.id
+      await conns.recordTest(saved.id, true, null)
+      await conns.activateConnection(conns.PLATFORM_TENANT, saved.id, actor)
+
+      const resolved = await conns.activeConnection(tenantId, 'VEHICLE_DATA')
+      expect(resolved).toMatchObject({ providerId: 'CELCOIN', platform: true, id: saved.id })
+      expect((await conns.platformDefaults()).VEHICLE_DATA?.providerId).toBe('CELCOIN')
+      expect((await conns.listConnections(tenantId)).some((c) => c.id === saved.id)).toBe(false)
+
+      const car = (await prisma.vehicle.create({ data: { tenantId, unitId: unitA, brand: 'VW', model: 'Polo', plate: 'CEL1C23', renavam: '00639884962', stockStatus: 'DISPONIVEL', isAvailableForSale: true } })).id
+      extraVehicles.push(car)
+      await expect(vdata.requestVehicleQuery(car, tenantId, { uf: 'SP' }, actor)).rejects.toMatchObject({ details: { need: 'ownerDoc' } })
+      const r = await vdata.requestVehicleQuery(car, tenantId, { uf: 'SP', ownerDoc: OWNER }, actor)
+      expect(r.query).toMatchObject({ status: 'PROCESSING', providerId: 'CELCOIN', connectionId: saved.id, externalId: 'cc-1' })
+      await vdata.pollVehicleQueries(200)
+      expect(polls).toBeGreaterThan(0)
+      const done = await prisma.vehicleDataQuery.findUnique({ where: { id: r.query!.id } })
+      expect(done?.status).toBe('DONE')
+      expect(Number(done?.debtsTotal)).toBe(160.22)
+
+      if (own) {
+        await conns.activateConnection(tenantId, own.id, actor)
+        expect(await conns.activeConnection(tenantId, 'VEHICLE_DATA')).toMatchObject({ providerId: own.providerId })
+        expect((await conns.activeConnection(tenantId, 'VEHICLE_DATA')).platform).toBeFalsy()
+      }
+    } finally {
+      vi.unstubAllGlobals()
+      if (platformId) {
+        await prisma.vehicleDataQuery.deleteMany({ where: { connectionId: platformId } })
+        await prisma.integrationConnection.delete({ where: { id: platformId } }).catch(() => {})
+      }
+    }
+  })
+
   it('NF-e pela Focus: prévia aponta o que falta; emissão vai a autorizada e vincula', async () => {
     const conns = await import('./connections')
     const fe = await import('./fiscal-emission')

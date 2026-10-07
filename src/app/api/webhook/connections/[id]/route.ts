@@ -52,7 +52,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       const p = vehicleDataProvider(conn.providerId)
       const parsed = p?.parseWebhook?.(body) ?? null
       if (!parsed) { await finish('IGNORED'); return NextResponse.json({ ok: true }) }
-      const q = await prisma.vehicleDataQuery.findFirst({ where: { tenantId: conn.tenantId, providerId: conn.providerId, OR: [{ externalId: parsed.externalId }, { id: parsed.externalId }] } })
+      const q = await prisma.vehicleDataQuery.findFirst({ where: { connectionId: conn.id, OR: [{ externalId: parsed.externalId }, { id: parsed.externalId }] } })
       if (q) await completeVehicleQuery(q.id, parsed.result)
     } else if (conn.domain === 'FISCAL') {
       await refreshPendingFiscal(conn.tenantId, 20)

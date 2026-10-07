@@ -4,6 +4,8 @@
 // Conexões da loja: para cada área (RENAVE, notas, transferência, consulta
 // veicular), o provedor ativo e — sob demanda — a lista de indicados, as
 // credenciais da conta da loja, o teste e a ativação. Segredos nunca voltam.
+// scope="platform": a conta da própria AutoDrive (MASTER), padrão das lojas
+// que não conectaram um provedor próprio.
 // =============================================================================
 
 import { useState } from 'react'
@@ -27,42 +29,55 @@ const MODE_TEXT: Record<string, string> = { API: 'Conector pronto', PARCEIRO: 'C
 const STATUS_TONE: Record<string, 'ok' | 'attention' | 'critical' | 'neutral'> = { ACTIVE: 'ok', DRAFT: 'attention', ERROR: 'critical', DISABLED: 'neutral' }
 const STATUS_TEXT: Record<string, string> = { ACTIVE: 'Ativa', DRAFT: 'Não testada', ERROR: 'Com erro', DISABLED: 'Desativada' }
 
-export function ConnectionsPanel({ catalog, labels, connections, units, onChanged }: { catalog: ProviderEntry[]; labels: Record<string, string>; connections: Connection[]; units: { id: string; name: string }[]; onChanged: () => void }) {
+export type PlatformDefaults = Record<string, { providerId: string; environment: string } | null>
+type Scope = 'platform' | undefined
+
+export function ConnectionsPanel({ catalog, labels, connections, units, onChanged, scope, domains, defaults }: { catalog: ProviderEntry[]; labels: Record<string, string>; connections: Connection[]; units: { id: string; name: string }[]; onChanged: () => void; scope?: Scope; domains?: ConnectorDomain[]; defaults?: PlatformDefaults }) {
   const [domain, setDomain] = useState<ConnectorDomain | null>(null)
   return (
     <div className="divide-y divide-gray-100">
-      {DOMAINS.map((d) => {
+      {DOMAINS.filter((d) => !domains || domains.includes(d.key)).map((d) => {
         const active = connections.find((c) => c.domain === d.key && c.status === 'ACTIVE')
         const entry = active ? catalog.find((p) => p.domain === d.key && p.id === active.providerId) : null
         const pending = !active && connections.some((c) => c.domain === d.key && (c.status === 'DRAFT' || c.status === 'ERROR'))
+        const def = !scope && !active ? defaults?.[d.key] : null
+        const defName = def ? catalog.find((p) => p.domain === d.key && p.id === def.providerId)?.name ?? def.providerId : null
         return (
           <button key={d.key} onClick={() => setDomain(d.key)} className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-gray-50/60">
             <span className="inline-flex items-center gap-1 text-sm text-gray-700">{labels[d.key]}<Hint term={d.hint} /></span>
             <span className="inline-flex items-center gap-2 text-sm">
               {active ? <><span className="font-medium text-gray-800">{entry?.name ?? active.providerId}</span><CheckCircle2 className="h-4 w-4 text-emerald-500" /></>
                 : pending ? <span className="text-amber-700">Configuração pendente</span>
-                : <span className="text-gray-400">Manual</span>}
+                : defName ? <><span className="font-medium text-gray-800">{defName}</span><span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">Padrão AutoDrive</span></>
+                : <span className="text-gray-400">{scope ? 'Não configurada' : 'Manual'}</span>}
               <ChevronRight className="h-4 w-4 text-gray-300" />
             </span>
           </button>
         )
       })}
-      <DomainDrawer domain={domain} onClose={() => setDomain(null)} catalog={catalog} labels={labels} connections={connections} units={units} onChanged={onChanged} />
+      <DomainDrawer domain={domain} onClose={() => setDomain(null)} catalog={catalog} labels={labels} connections={connections} units={units} onChanged={onChanged} scope={scope} defaultName={domain && !scope && defaults?.[domain] ? catalog.find((p) => p.domain === domain && p.id === defaults[domain]!.providerId)?.name ?? defaults[domain]!.providerId : null} />
     </div>
   )
 }
 
-function DomainDrawer({ domain, onClose, catalog, labels, connections, units, onChanged }: { domain: ConnectorDomain | null; onClose: () => void; catalog: ProviderEntry[]; labels: Record<string, string>; connections: Connection[]; units: { id: string; name: string }[]; onChanged: () => void }) {
+function DomainDrawer({ domain, onClose, catalog, labels, connections, units, onChanged, scope, defaultName }: { domain: ConnectorDomain | null; onClose: () => void; catalog: ProviderEntry[]; labels: Record<string, string>; connections: Connection[]; units: { id: string; name: string }[]; onChanged: () => void; scope?: Scope; defaultName?: string | null }) {
   const [editing, setEditing] = useState<ProviderEntry | null>(null)
   if (!domain) return null
   const list = catalog.filter((p) => p.domain === domain && p.mode !== 'MANUAL').sort((a, b) => Number(!!b.recommended) - Number(!!a.recommended))
   const mine = connections.filter((c) => c.domain === domain)
+  const ownActive = mine.some((c) => c.status === 'ACTIVE')
   return (
     <Drawer open title={labels[domain]} onClose={() => { setEditing(null); onClose() }}>
       {editing ? (
-        <ConnectionForm entry={editing} existing={mine.find((c) => c.providerId === editing.id) ?? null} units={units} onBack={() => setEditing(null)} onChanged={onChanged} />
+        <ConnectionForm entry={editing} existing={mine.find((c) => c.providerId === editing.id) ?? null} units={scope ? [] : units} scope={scope} onBack={() => setEditing(null)} onChanged={onChanged} />
       ) : (
         <>
+          {scope && <p className="rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-800">Conta da AutoDrive. Vale para todas as lojas que não conectaram um provedor próprio, e o custo das consultas é da AutoDrive.</p>}
+          {!scope && defaultName && (
+            <p className={`rounded-lg px-3 py-2 text-sm ${ownActive ? 'bg-gray-50 text-gray-600' : 'bg-brand-50 text-brand-800'}`}>
+              {ownActive ? `A loja usa o provedor próprio. Desative-o para voltar ao padrão da AutoDrive (${defaultName}).` : `Já funciona com o padrão da AutoDrive (${defaultName}), sem a loja precisar contratar nada. Para usar outro provedor, conecte abaixo com a conta da loja.`}
+            </p>
+          )}
           {mine.length > 0 && (
             <div className="rounded-xl border border-gray-200 bg-white">
               {mine.map((c) => {
@@ -107,7 +122,7 @@ function DomainDrawer({ domain, onClose, catalog, labels, connections, units, on
   )
 }
 
-function ConnectionForm({ entry, existing, units, onBack, onChanged }: { entry: ProviderEntry; existing: Connection | null; units: { id: string; name: string }[]; onBack: () => void; onChanged: () => void }) {
+function ConnectionForm({ entry, existing, units, scope, onBack, onChanged }: { entry: ProviderEntry; existing: Connection | null; units: { id: string; name: string }[]; scope?: Scope; onBack: () => void; onChanged: () => void }) {
   const [fields, setFields] = useState<Record<string, string>>(() => Object.fromEntries(entry.fields.filter((f) => !f.secret).map((f) => [f.key, String(existing?.settings?.[f.key] ?? '')])))
   const [environment, setEnvironment] = useState(existing?.environment ?? (entry.environments.includes('HOMOLOGACAO') ? 'HOMOLOGACAO' : 'PRODUCAO'))
   const [unitId, setUnitId] = useState(existing?.unitId ?? '')
@@ -118,7 +133,7 @@ function ConnectionForm({ entry, existing, units, onBack, onChanged }: { entry: 
 
   const run = async (label: string, body: Record<string, unknown>) => {
     setBusy(label); setError(null); setInfo(null)
-    const r = await postJson<any>('/api/settings/operations', body)
+    const r = await postJson<any>('/api/settings/operations', scope ? { ...body, scope } : body)
     setBusy(null)
     if (!r.ok) { setError(r.error); return null }
     return r.data

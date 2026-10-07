@@ -25,7 +25,7 @@ const r2 = (n: number) => Math.round(n * 100) / 100
 const REPORTS_RESTRICTIONS = new Set(['INFOSIMPLES', 'CONSULTA_DE_PLACA', 'CHECKTUDO'])
 
 export async function requestVehicleQuery(vehicleId: string, tenantId: string | null, opts: { force?: boolean; ownerDoc?: string | null; uf?: string | null }, actor: Actor) {
-  const v = await prisma.vehicle.findFirst({ where: { id: vehicleId, ...(tenantId ? { tenantId } : {}) }, select: { id: true, tenantId: true, unitId: true, plate: true, renavam: true, chassi: true, originEvaluationId: true, unit: { select: { state: true } } } })
+  const v = await prisma.vehicle.findFirst({ where: { id: vehicleId, ...(tenantId ? { tenantId } : {}) }, select: { id: true, tenantId: true, unitId: true, plate: true, renavam: true, chassi: true, originEvaluationId: true, customerId: true, unit: { select: { state: true } } } })
   if (!v?.tenantId) throw new OpsError('Veículo não encontrado.', 404)
   if (!v.plate) throw new OpsError('Cadastre a placa do veículo para consultar.', 400)
   const conn = await activeConnection(v.tenantId, 'VEHICLE_DATA', v.unitId)
@@ -40,9 +40,17 @@ export async function requestVehicleQuery(vehicleId: string, tenantId: string | 
   const running = await prisma.vehicleDataQuery.findFirst({ where: { vehicleId, status: 'PROCESSING', createdAt: { gte: new Date(Date.now() - INFLIGHT_MS) } } })
   if (running) return { query: running, cached: true }
 
-  // Alguns Detrans exigem o documento do proprietário: o da avaliação, se houver.
-  const ownerDoc = (opts.ownerDoc ?? (v.originEvaluationId ? (await prisma.vehicleEvaluation.findUnique({ where: { id: v.originEvaluationId }, select: { ownerCpf: true } }))?.ownerCpf : null) ?? '').replace(/\D/g, '') || null
+  // Alguns provedores exigem o documento do proprietário: o informado, o da avaliação ou o do cliente de origem.
+  const ownerDoc = (opts.ownerDoc
+    ?? (v.originEvaluationId ? (await prisma.vehicleEvaluation.findUnique({ where: { id: v.originEvaluationId }, select: { ownerCpf: true } }))?.ownerCpf : null)
+    ?? (v.customerId ? (await prisma.customer.findUnique({ where: { id: v.customerId }, select: { cpf: true } }))?.cpf : null)
+    ?? '').replace(/\D/g, '') || null
   const uf = (opts.uf ?? v.unit?.state ?? null)?.toUpperCase() ?? null
+  if (conn.providerId === 'CELCOIN') {
+    if (!v.renavam) throw new OpsError('Cadastre o RENAVAM do veículo para consultar os débitos.', 400)
+    if (!uf) throw new OpsError('Cadastre o estado (UF) da loja para consultar os débitos.', 400)
+    if (!ownerDoc || (ownerDoc.length !== 11 && ownerDoc.length !== 14)) throw new OpsError('Informe o CPF ou CNPJ do dono que está no documento do carro.', 400, { need: 'ownerDoc' })
+  }
   const q = await prisma.vehicleDataQuery.create({
     data: { tenantId: v.tenantId, vehicleId, plate: v.plate, renavam: v.renavam, chassi: v.chassi, uf, providerId: conn.providerId, connectionId: conn.id, kind: 'FULL', status: 'PROCESSING', requestedById: actor.id ?? null },
   })

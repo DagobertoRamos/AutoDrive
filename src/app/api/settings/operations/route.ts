@@ -15,7 +15,7 @@ import { CAPABILITY_KEYS, CAPABILITY_LABEL, resolveCapabilities, type GlobalCapa
 import { listCertificates, revokeCertificate, saveCertificate } from '@/lib/automotive/certificates'
 import { loadGlobalCapabilities, loadOpsConfig, operationUf, saveGlobalCapabilities, saveOpsConfig } from '@/lib/automotive/config'
 import { listProviders, testProvider } from '@/lib/automotive/gateways/registry'
-import { activateConnection, connectionById, connectionWebhookUrl, disableConnection, listConnections, recordTest, saveConnection } from '@/lib/automotive/connections'
+import { activateConnection, connectionById, connectionWebhookUrl, disableConnection, listConnections, PLATFORM_TENANT, platformDefaults, recordTest, saveConnection } from '@/lib/automotive/connections'
 import { PROVIDERS, DOMAIN_LABEL } from '@/lib/automotive/providers-catalog'
 import { defaultFiscalRules, normalizeFiscalRules } from '@/lib/automotive/fiscal-rules'
 import { vehicleDataProvider } from '@/lib/automotive/gateways/vehicle-data'
@@ -36,7 +36,14 @@ export async function GET(req: NextRequest) {
     const c = await ctx(req)
     if (c instanceof NextResponse) return c
     const global = await loadGlobalCapabilities()
-    if (!c.tenantId) return NextResponse.json({ success: true, data: { tenant: null, global: c.s.user.role === 'MASTER' ? global : undefined, capabilityKeys: CAPABILITY_KEYS, capabilityLabels: CAPABILITY_LABEL } })
+    const master = c.s.user.role === 'MASTER'
+    // Conta padrão da AutoDrive: a loja vê qual é; o MASTER também gerencia.
+    const [defaults, platformConnections] = await Promise.all([
+      platformDefaults(),
+      master ? listConnections(PLATFORM_TENANT) : Promise.resolve(null),
+    ])
+    const platform = { defaults, ...(platformConnections ? { connections: platformConnections.map((x) => ({ ...x, webhookUrl: connectionWebhookUrl(x.id) })) } : {}) }
+    if (!c.tenantId) return NextResponse.json({ success: true, data: { tenant: null, platform, catalog: PROVIDERS, domainLabels: DOMAIN_LABEL, global: master ? global : undefined, capabilityKeys: CAPABILITY_KEYS, capabilityLabels: CAPABILITY_LABEL } })
     const [config, units, certs, uf, connections] = await Promise.all([
       loadOpsConfig(c.tenantId),
       prisma.unit.findMany({ where: { tenantId: c.tenantId, active: true }, select: { id: true, name: true, cnpj: true, state: true }, orderBy: { name: 'asc' } }),
@@ -47,7 +54,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        tenant: c.tenantId, config, units, certificates: certs, uf,
+        tenant: c.tenantId, config, units, certificates: certs, uf, platform,
         fiscalRules: normalizeFiscalRules(config.fiscalRules, uf),
         fiscalDefaults: defaultFiscalRules(uf, normalizeFiscalRules(config.fiscalRules, uf).regime),
         catalog: PROVIDERS, domainLabels: DOMAIN_LABEL,
@@ -55,7 +62,7 @@ export async function GET(req: NextRequest) {
         effective: resolveCapabilities(uf, global, config.capabilities),
         providers: { renave: listProviders('renave'), fiscal: listProviders('fiscal'), transfer: listProviders('transfer') },
         capabilityKeys: CAPABILITY_KEYS, capabilityLabels: CAPABILITY_LABEL,
-        ...(c.s.user.role === 'MASTER' ? { global } : {}),
+        ...(master ? { global } : {}),
       },
     })
   } catch (err) {
@@ -92,22 +99,28 @@ export async function POST(req: NextRequest) {
   try {
     const c = await ctx(req)
     if (c instanceof NextResponse) return c
-    if (!c.tenantId) return NextResponse.json({ success: false, error: 'Escolha a loja.' }, { status: 400 })
     const b = await req.json().catch(() => ({})) as Record<string, any>
+    // scope 'platform' = conta da AutoDrive (só MASTER, só ações de conexão).
+    const platformScope = b.scope === 'platform'
+    if (platformScope) {
+      if (c.s.user.role !== 'MASTER') return NextResponse.json({ success: false, error: 'Somente o MASTER altera a conta da AutoDrive.' }, { status: 403 })
+      if (!String(b.action ?? '').startsWith('connection.')) return NextResponse.json({ success: false, error: 'Ação inválida.' }, { status: 400 })
+    } else if (!c.tenantId) return NextResponse.json({ success: false, error: 'Escolha a loja.' }, { status: 400 })
+    const tenantId = platformScope ? PLATFORM_TENANT : c.tenantId!
     if (b.action === 'certificate.upload') {
       const unitId = typeof b.unitId === 'string' && b.unitId ? b.unitId : null
-      if (unitId && !(await prisma.unit.findFirst({ where: { id: unitId, tenantId: c.tenantId }, select: { id: true } }))) return NextResponse.json({ success: false, error: 'Filial inválida.' }, { status: 400 })
-      const saved = await saveCertificate(c.tenantId, unitId, String(b.pfx ?? ''), String(b.password ?? ''), c.s.actor)
+      if (unitId && !(await prisma.unit.findFirst({ where: { id: unitId, tenantId: tenantId }, select: { id: true } }))) return NextResponse.json({ success: false, error: 'Filial inválida.' }, { status: 400 })
+      const saved = await saveCertificate(tenantId, unitId, String(b.pfx ?? ''), String(b.password ?? ''), c.s.actor)
       return NextResponse.json({ success: true, data: saved })
     }
     if (b.action === 'connection.save') {
-      const saved = await saveConnection(c.tenantId, { domain: String(b.domain ?? ''), providerId: String(b.providerId ?? ''), environment: b.environment, unitId: b.unitId ?? null, fields: (b.fields ?? {}) as Record<string, unknown> }, c.s.actor)
+      const saved = await saveConnection(tenantId, { domain: String(b.domain ?? ''), providerId: String(b.providerId ?? ''), environment: b.environment, unitId: b.unitId ?? null, fields: (b.fields ?? {}) as Record<string, unknown> }, c.s.actor)
       return NextResponse.json({ success: true, data: { id: saved.id, webhookUrl: connectionWebhookUrl(saved.id) } })
     }
     if (b.action === 'connection.test') {
       const conn = await connectionById(String(b.id ?? ''))
-      if (!conn || conn.tenantId !== c.tenantId) return NextResponse.json({ success: false, error: 'Conexão não encontrada.' }, { status: 404 })
-      const ctxP = { tenantId: c.tenantId, credentials: conn.credentials, environment: conn.environment, connectionId: conn.id }
+      if (!conn || conn.tenantId !== tenantId) return NextResponse.json({ success: false, error: 'Conexão não encontrada.' }, { status: 404 })
+      const ctxP = { tenantId, credentials: conn.credentials, environment: conn.environment, connectionId: conn.id }
       const r = await testProvider(conn.domain, conn.providerId, ctxP)
       await recordTest(conn.id!, r.ok, r.ok ? null : r.message)
       // Consulta veicular por webhook: cadastra o endereço da loja no provedor quando a API permite.
@@ -119,15 +132,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, data: { ...r, webhookRegistered } })
     }
     if (b.action === 'connection.activate') {
-      await activateConnection(c.tenantId, String(b.id ?? ''), c.s.actor)
+      await activateConnection(tenantId, String(b.id ?? ''), c.s.actor)
       return NextResponse.json({ success: true })
     }
     if (b.action === 'connection.disable') {
-      await disableConnection(c.tenantId, String(b.id ?? ''), c.s.actor)
+      await disableConnection(tenantId, String(b.id ?? ''), c.s.actor)
       return NextResponse.json({ success: true })
     }
     if (b.action === 'certificate.revoke') {
-      await revokeCertificate(c.tenantId, String(b.id ?? ''), c.s.actor)
+      await revokeCertificate(tenantId, String(b.id ?? ''), c.s.actor)
       return NextResponse.json({ success: true })
     }
     return NextResponse.json({ success: false, error: 'Ação inválida.' }, { status: 400 })

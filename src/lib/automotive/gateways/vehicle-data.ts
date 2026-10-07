@@ -116,15 +116,33 @@ async function celcoinAuth(ctx: ProviderContext) {
   })
   return { Authorization: `Bearer ${tok}` }
 }
-function celcoinResult(j: any): VehicleDataResult {
-  const s = String(j?.status ?? '').toUpperCase()
-  const id = j?.idConsult != null ? String(j.idConsult) : null
-  if (s === 'SUCCESS') {
-    const debts = (Array.isArray(j?.debts) ? j.debts : []).map((d: any) => ({ id: d?.id != null ? String(d.id) : null, type: debtType(String(d?.type ?? d?.description ?? '')), description: String(d?.description ?? d?.type ?? 'Débito').slice(0, 200), amount: money(d?.amount), dueDate: d?.dueDate ?? null, expired: !!d?.isExpired }))
-    return { state: 'DONE', externalId: id, debts, restrictions: [] }
+// Resposta: { version, status, body: { idConsult, status, debts[], error[] } } — o
+// status de fora é só o da chamada; o andamento da consulta está em body.status.
+const CELCOIN_PENDING = new Set(['', 'PENDING', 'PROCESSING', 'IN_PROCESS', 'INPROCESS', 'WAITING', 'CREATED', 'RECEIVED'])
+const CELCOIN_DONE = new Set(['SUCCESS', 'PROCESSED', 'COMPLETED', 'CONCLUDED', 'FINISHED', 'DONE', 'CONSULTED'])
+const CELCOIN_FAIL = new Set(['ERROR', 'FAILED', 'FAILURE', 'REJECTED', 'CANCELED', 'CANCELLED'])
+function celcoinResult(raw: any): VehicleDataResult {
+  const outer = String(raw?.status ?? '').toUpperCase()
+  const b = Array.isArray(raw?.body) ? raw.body[0] : raw?.body && typeof raw.body === 'object' ? raw.body : raw
+  const id = b?.idConsult != null ? String(b.idConsult) : null
+  const errs = Array.isArray(b?.error) ? b.error : Array.isArray(raw?.error) ? raw.error : []
+  const errMsg = errs.map((e: any) => e?.message).filter(Boolean).join(' ') || b?.message || raw?.message || null
+  // Sem envelope (ex.: aviso já desembrulhado): só vale se trouxer o idConsult.
+  const flat = b === raw && b?.idConsult == null
+  const s = flat ? '' : String(b?.status ?? '').toUpperCase()
+  if (CELCOIN_FAIL.has(outer) || CELCOIN_FAIL.has(s) || (errs.length && !CELCOIN_DONE.has(s))) {
+    return { state: 'ERROR', externalId: id, ...EMPTY, message: errMsg ?? 'Consulta não concluída.' }
   }
-  if (s === 'ERROR' || s === 'FAILED') return { state: 'ERROR', externalId: id, ...EMPTY, message: j?.message ?? 'Consulta não concluída.' }
-  return { state: 'PROCESSING', externalId: id, ...EMPTY }
+  if (flat || CELCOIN_PENDING.has(s) || !CELCOIN_DONE.has(s)) return { state: 'PROCESSING', externalId: id, ...EMPTY }
+  const debts = (Array.isArray(b?.debts) ? b.debts : []).map((d: any) => ({
+    id: d?.debitId != null ? String(d.debitId) : d?.id != null ? String(d.id) : null,
+    type: debtType(`${d?.type ?? ''} ${d?.title ?? ''} ${d?.description ?? ''}`),
+    description: String(d?.title || d?.description || d?.type || 'Débito').slice(0, 200),
+    year: d?.year ? Number(d.year) : null, amount: money(d?.amount),
+    dueDate: d?.dueDate ?? d?.expirationDate ?? null, expired: !!d?.isExpired,
+    required: d?.required !== false, dependsOn: Array.isArray(d?.dependsOn) ? d.dependsOn.map(String) : undefined,
+  }))
+  return { state: 'DONE', externalId: id, debts, restrictions: [] }
 }
 
 export const celcoin: VehicleDataProvider = {
@@ -134,19 +152,22 @@ export const celcoin: VehicleDataProvider = {
     catch (e) { return { ok: false, message: e instanceof ProviderError && e.rejected ? 'Client ID ou Client Secret recusados pela Celcoin.' : 'Não foi possível alcançar a Celcoin.' } }
   },
   async consult(ctx, input) {
+    // A Celcoin exige placa, RENAVAM, UF e documento do proprietário.
+    const missing = [!input.renavam && 'RENAVAM do veículo', !input.uf && 'UF', !input.ownerDoc && 'CPF/CNPJ do proprietário'].filter(Boolean)
+    if (missing.length) throw new ProviderError(`Para consultar na Celcoin, informe: ${missing.join(', ')}.`, 'CELCOIN_MISSING_FIELDS', true, false)
     const r = await http(`${celcoinHost(ctx)}/baas/v2/vehicledebts/consult`, {
       method: 'POST', headers: await celcoinAuth(ctx),
-      body: { licensePlate: input.plate, renavam: input.renavam ?? undefined, state: input.uf ?? undefined, documentNumber: input.ownerDoc ?? undefined, clientRequestId: input.reference },
+      body: { clientRequestId: input.reference, licensePlate: input.plate.replace(/[^A-Za-z0-9]/g, '').toUpperCase(), renavam: String(input.renavam).replace(/\D/g, ''), state: String(input.uf).toUpperCase(), documentNumber: String(input.ownerDoc).replace(/\D/g, '') },
     })
     return celcoinResult(r.json)
   },
   async status(ctx, externalId) {
     const r = await http(`${celcoinHost(ctx)}/baas/v2/vehicledebts/consult?IdConsult=${encodeURIComponent(externalId)}`, { headers: await celcoinAuth(ctx) })
-    return celcoinResult(Array.isArray(r.json?.body) ? r.json.body[0] : r.json?.body ?? r.json)
+    return celcoinResult(r.json)
   },
   parseWebhook(body) {
     if (String(body?.entity ?? '') !== 'vehicledebts-consult') return null
-    const res = celcoinResult(body?.body ?? body)
+    const res = celcoinResult(body?.body && typeof body.body === 'object' && 'body' in body.body ? body.body : body)
     return res.externalId ? { externalId: res.externalId, result: res } : null
   },
 }

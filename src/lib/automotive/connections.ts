@@ -17,7 +17,18 @@ export interface ResolvedConnection {
   environment: 'HOMOLOGACAO' | 'PRODUCAO'
   credentials: Record<string, string>
   settings: Record<string, unknown>
+  /** Conta da AutoDrive (padrão da plataforma), não da loja. */
+  platform?: boolean
 }
+
+/**
+ * Conta da própria AutoDrive: o MASTER conecta uma vez e ela vale para toda loja
+ * que não conectou um provedor próprio. Só onde a AutoDrive contrata (consulta
+ * de débitos); RENAVE, notas e transferência seguem sendo da loja (BYOC).
+ */
+export const PLATFORM_TENANT = '__autodrive__'
+export const PLATFORM_DOMAINS: ReadonlySet<string> = new Set(['VEHICLE_DATA'])
+const isPlatform = (tenantId: string) => tenantId === PLATFORM_TENANT
 
 const MANUAL: Omit<ResolvedConnection, 'providerId'> = { id: null, environment: 'PRODUCAO', credentials: {}, settings: {} }
 
@@ -38,12 +49,35 @@ export async function activeConnection(tenantId: string, domain: ConnectorDomain
     orderBy: { updatedAt: 'desc' },
   }).catch(() => [])
   const row = rows.find((r) => r.scopeKey === unitId) ?? rows.find((r) => r.scopeKey === 'ALL')
-  if (!row) return { ...MANUAL, providerId: 'MANUAL' }
+  if (row) return resolved(row)
+  // Sem conexão própria: a conta padrão da AutoDrive, quando houver.
+  if (PLATFORM_DOMAINS.has(domain) && !isPlatform(tenantId)) {
+    const def = await platformConnectionRow(domain)
+    if (def) return { ...resolved(def), platform: true }
+  }
+  return { ...MANUAL, providerId: 'MANUAL' }
+}
+
+function resolved(row: { id: string; providerId: string; environment: string; settings: Prisma.JsonValue; secretsEncrypted: string | null }): ResolvedConnection {
   return {
     id: row.id, providerId: row.providerId, environment: row.environment === 'HOMOLOGACAO' ? 'HOMOLOGACAO' : 'PRODUCAO',
     credentials: { ...((row.settings as Record<string, string> | null) ?? {}), ...readSecrets(row.secretsEncrypted) },
     settings: (row.settings as Record<string, unknown> | null) ?? {},
   }
+}
+
+function platformConnectionRow(domain: string) {
+  return prisma.integrationConnection.findFirst({ where: { tenantId: PLATFORM_TENANT, domain, status: 'ACTIVE' }, orderBy: { updatedAt: 'desc' } }).catch(() => null)
+}
+
+/** Provedor padrão da AutoDrive por área (para a loja só importa quem é). */
+export async function platformDefaults(): Promise<Record<string, { providerId: string; environment: string } | null>> {
+  const out: Record<string, { providerId: string; environment: string } | null> = {}
+  for (const d of PLATFORM_DOMAINS) {
+    const row = await platformConnectionRow(d)
+    out[d] = row ? { providerId: row.providerId, environment: row.environment } : null
+  }
+  return out
 }
 
 export async function connectionById(id: string): Promise<ResolvedConnection & { tenantId: string; domain: string } | null> {
@@ -75,6 +109,7 @@ export async function saveConnection(tenantId: string, input: { domain: string; 
   if (!entry) throw new OpsError('Provedor inválido.', 400)
   if (entry.mode === 'MANUAL') throw new OpsError('O modo manual não precisa de conexão.', 400)
   const environment = input.environment === 'HOMOLOGACAO' ? 'HOMOLOGACAO' : 'PRODUCAO'
+  if (isPlatform(tenantId) && (!PLATFORM_DOMAINS.has(entry.domain) || input.unitId)) throw new OpsError('A conta da AutoDrive só vale para a consulta de débitos, em todas as lojas.', 400)
   const scopeKey = input.unitId || 'ALL'
   if (input.unitId && !(await prisma.unit.findFirst({ where: { id: input.unitId, tenantId }, select: { id: true } }))) throw new OpsError('Filial inválida.', 400)
   const current = await prisma.integrationConnection.findUnique({ where: { tenantId_domain_providerId_scopeKey: { tenantId, domain: entry.domain, providerId: entry.id, scopeKey } } })
@@ -102,7 +137,7 @@ export async function saveConnection(tenantId: string, input: { domain: string; 
   const saved = current
     ? await prisma.integrationConnection.update({ where: { id: current.id }, data })
     : await prisma.integrationConnection.create({ data: { ...data, tenantId, domain: entry.domain, providerId: entry.id, scopeKey, createdById: actor.id ?? null } })
-  await prisma.auditLog.create({ data: { tenantId, userId: actor.id ?? null, userName: actor.name ?? null, userRole: actor.role ?? null, action: current ? 'CONNECTION_UPDATED' : 'CONNECTION_CREATED', entity: 'IntegrationConnection', entityId: saved.id, afterData: { domain: entry.domain, providerId: entry.id, environment, hints } as never } }).catch(() => {})
+  await prisma.auditLog.create({ data: { tenantId: isPlatform(tenantId) ? null : tenantId, userId: actor.id ?? null, userName: actor.name ?? null, userRole: actor.role ?? null, action: current ? 'CONNECTION_UPDATED' : 'CONNECTION_CREATED', entity: 'IntegrationConnection', entityId: saved.id, afterData: { domain: entry.domain, providerId: entry.id, environment, hints } as never } }).catch(() => {})
   return saved
 }
 
@@ -119,13 +154,13 @@ export async function activateConnection(tenantId: string, id: string, actor: Ac
     prisma.integrationConnection.updateMany({ where: { tenantId, domain: c.domain, scopeKey: c.scopeKey, status: 'ACTIVE', id: { not: c.id } }, data: { status: 'DISABLED' } }),
     prisma.integrationConnection.update({ where: { id: c.id }, data: { status: 'ACTIVE', updatedById: actor.id ?? null } }),
   ])
-  await recordEvent({ tenantId, type: 'CONNECTION_ACTIVATED', title: `Conexão ${c.providerId} ativada (${c.domain}).`, actor, technical: true })
+  if (!isPlatform(tenantId)) await recordEvent({ tenantId, type: 'CONNECTION_ACTIVATED', title: `Conexão ${c.providerId} ativada (${c.domain}).`, actor, technical: true })
 }
 
 export async function disableConnection(tenantId: string, id: string, actor: Actor) {
   const r = await prisma.integrationConnection.updateMany({ where: { id, tenantId }, data: { status: 'DISABLED', updatedById: actor.id ?? null } })
   if (!r.count) throw new OpsError('Conexão não encontrada.', 404)
-  await recordEvent({ tenantId, type: 'CONNECTION_DISABLED', title: 'Conexão desativada.', actor, technical: true })
+  if (!isPlatform(tenantId)) await recordEvent({ tenantId, type: 'CONNECTION_DISABLED', title: 'Conexão desativada.', actor, technical: true })
 }
 
 /**

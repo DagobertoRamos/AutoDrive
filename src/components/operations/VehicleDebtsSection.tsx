@@ -1,9 +1,9 @@
 'use client'
 
-// Débitos e restrições do veículo (consulta pela conta da loja no provedor).
+// Débitos e restrições do veículo (conta da loja no provedor ou o padrão da AutoDrive).
 import { useState } from 'react'
 import { restrictionKindText } from '@/lib/automotive/readiness-core'
-import { btn, EmptyState, ErrorLine, fmtBRL, fmtDate, fmtDateTime, postJson, Section } from './ui'
+import { btn, EmptyState, ErrorLine, fmtBRL, fmtDate, fmtDateTime, input, postJson, Section } from './ui'
 
 export interface VehicleQuery {
   id: string; status: string; providerName: string; createdAt: string; finishedAt: string | null
@@ -18,13 +18,21 @@ const TYPE_TEXT: Record<string, string> = { IPVA: 'IPVA', LICENCIAMENTO: 'Licenc
 export function VehicleDebtsSection({ vehicleId, query, connected, canQuery, defaultOpen, onReload }: { vehicleId: string; query: VehicleQuery | null; connected: boolean; canQuery: boolean; defaultOpen: boolean; onReload: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const run = async (force: boolean) => {
+  // O provedor pediu o CPF/CNPJ do dono (o que está no documento do carro).
+  const [askDoc, setAskDoc] = useState<{ force: boolean } | null>(null)
+  const [ownerDoc, setOwnerDoc] = useState('')
+  const run = async (force: boolean, doc?: string) => {
     setBusy(true); setError(null)
-    const r = await postJson(`/api/vehicles/${vehicleId}/operations`, { action: 'vehicleData.query', force })
+    const r = await postJson(`/api/vehicles/${vehicleId}/operations`, { action: 'vehicleData.query', force, ...(doc ? { ownerDoc: doc } : {}) })
     setBusy(false)
-    if (!r.ok) return setError(r.error)
+    if (!r.ok) {
+      if (r.details?.need === 'ownerDoc') { setAskDoc({ force }); if (doc) setError(r.error); return }
+      return setError(r.error)
+    }
+    setAskDoc(null); setOwnerDoc('')
     onReload()
   }
+  const docDigits = ownerDoc.replace(/\D/g, '')
   const processing = query?.status === 'PROCESSING'
   const groups = (query?.debts ?? []).reduce<Record<string, { total: number; items: VehicleQuery['debts'] }>>((acc, d) => {
     const g = acc[d.type] ?? { total: 0, items: [] }
@@ -74,6 +82,15 @@ export function VehicleDebtsSection({ vehicleId, query, connected, canQuery, def
               ))}
             </ul>
           )}
+        </div>
+      )}
+      {askDoc && (
+        <div className="mt-3 rounded-lg bg-gray-50 p-3">
+          <label className="block text-sm text-gray-700">CPF ou CNPJ do dono que está no documento do carro</label>
+          <div className="mt-1.5 flex gap-2">
+            <input className={input} inputMode="numeric" autoComplete="off" value={ownerDoc} onChange={(e) => setOwnerDoc(e.target.value)} placeholder="Somente números" />
+            <button className={btn.primary} disabled={busy || (docDigits.length !== 11 && docDigits.length !== 14)} onClick={() => run(askDoc.force, docDigits)}>{busy ? 'Consultando…' : 'Consultar'}</button>
+          </div>
         </div>
       )}
       <ErrorLine text={error} />

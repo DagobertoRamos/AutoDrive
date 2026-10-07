@@ -100,11 +100,27 @@ describe('adapters (respostas simuladas)', () => {
     expect(zapay.parseWebhook!({ event: 'vehicle_debt_unavailable', data: { request_id: 'r-1' } })?.result.state).toBe('UNAVAILABLE')
   })
 
-  it('Celcoin: token OAuth2 e consulta concluída', async () => {
-    stub((url) => url.endsWith('/v5/token') ? { body: { access_token: 'tok', expires_in: 2400 } } : { body: { status: 'SUCCESS', idConsult: 77, debts: [{ amount: 88.38, description: 'Multa', type: 'Infração', isExpired: true }] } })
-    const r = await celcoin.consult({ tenantId: 't', credentials: { clientId: 'a', clientSecret: 'b' }, environment: 'HOMOLOGACAO', connectionId: 'c1' }, { plate: 'ABC1D23', reference: 'q-2' })
-    expect(r).toMatchObject({ state: 'DONE', externalId: '77' })
-    expect(r.debts[0].type).toBe('MULTA')
+  it('Celcoin: token OAuth2, envelope body, pendente não vira "sem débitos"', async () => {
+    const ctx = { tenantId: 't', credentials: { clientId: 'a', clientSecret: 'b' }, environment: 'HOMOLOGACAO' as const, connectionId: 'c1' }
+    const input = { plate: 'abc-1d23', renavam: '00639884962', uf: 'sp', ownerDoc: '111.111.111-11', reference: 'q-2' }
+    const calls = stub((url) => url.endsWith('/v5/token') ? { body: { access_token: 'tok', expires_in: 2400 } } : { body: { version: '1.0.0', status: 'SUCCESS', body: { clientRequestId: 'q-2', idConsult: 'c-77', status: 'PENDING', debts: [] } } })
+    const r = await celcoin.consult(ctx, input)
+    expect(r).toMatchObject({ state: 'PROCESSING', externalId: 'c-77' })
+    expect(JSON.parse(String(calls[1].init.body))).toEqual({ clientRequestId: 'q-2', licensePlate: 'ABC1D23', renavam: '00639884962', state: 'SP', documentNumber: '11111111111' })
+
+    stub(() => ({ body: { version: '1.0.0', status: 'SUCCESS', body: { idConsult: 'c-77', status: 'PROCESSED', debts: [{ debitId: 'd1', amount: 88.38, title: 'Multa', type: 'Infração', isExpired: true, year: 2026 }, { debitId: 'd2', amount: 1500, title: 'IPVA 2026', type: 'IPVA' }] } } }))
+    const done = await celcoin.status(ctx, 'c-77')
+    expect(done).toMatchObject({ state: 'DONE', externalId: 'c-77' })
+    expect(done!.debts.map((d) => [d.id, d.type, d.amount])).toEqual([['d1', 'MULTA', 88.38], ['d2', 'IPVA', 1500]])
+
+    stub(() => ({ body: { version: '1.0.0', status: 'SUCCESS', body: { idConsult: 'c-78', status: 'ERROR', error: [{ errorCode: 'XXX001', message: 'Renavam não confere.' }] } } }))
+    expect(await celcoin.status(ctx, 'c-78')).toMatchObject({ state: 'ERROR', message: 'Renavam não confere.' })
+  })
+
+  it('Celcoin: sem RENAVAM, UF ou documento recusa antes de chamar', async () => {
+    const calls = stub(() => ({ body: {} }))
+    await expect(celcoin.consult({ tenantId: 't', credentials: { clientId: 'a', clientSecret: 'b' } }, { plate: 'ABC1D23', reference: 'q' })).rejects.toThrow(/RENAVAM.*UF.*CPF/)
+    expect(calls.length).toBe(0)
   })
 
   it('parceiro: restrições normalizadas e chave recusada vira recusa definitiva', async () => {

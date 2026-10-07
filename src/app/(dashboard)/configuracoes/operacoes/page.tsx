@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ShieldCheck, Upload } from 'lucide-react'
 import { FieldLabel } from '@/components/ui/field'
 import { btn, ErrorLine, fmtDate, Hint, input, Modal, postJson, Section, StatusBadge } from '@/components/operations/ui'
-import { ConnectionsPanel, type Connection } from '@/components/operations/ConnectionsPanel'
+import { ConnectionsPanel, type Connection, type PlatformDefaults } from '@/components/operations/ConnectionsPanel'
 import { FiscalRulesPanel } from '@/components/operations/FiscalRulesPanel'
 import type { FiscalRules } from '@/lib/automotive/fiscal-rules'
 import type { ProviderEntry } from '@/lib/automotive/providers-catalog'
@@ -40,6 +40,8 @@ interface Data {
   catalog: ProviderEntry[]
   domainLabels: Record<string, string>
   connections: Connection[]
+  /** Conta padrão da AutoDrive; `connections` só vem para o MASTER. */
+  platform?: { defaults: PlatformDefaults; connections?: Connection[] }
 }
 
 const ENF_LABEL: Record<Enf, string> = { OFF: 'Não verificar', WARN: 'Avisar', BLOCK: 'Impedir a venda' }
@@ -61,7 +63,18 @@ export default function OperacoesConfigPage() {
 
   if (error) return <div className="p-6"><ErrorLine text={error} /></div>
   if (!data) return <div className="m-6 h-40 animate-pulse rounded-xl bg-white" />
-  if (!data.tenant || !cfg) return <div className="p-6 text-sm text-gray-500">Escolha uma loja no topo da tela.</div>
+  // MASTER: a conta da AutoDrive, padrão de todas as lojas na consulta de débitos.
+  const platformSection = data.platform?.connections && data.catalog ? (
+    <Section title="Conta da AutoDrive" hint="PROVEDOR_INTEGRACAO" defaultOpen={!data.platform.defaults?.VEHICLE_DATA}>
+      <ConnectionsPanel scope="platform" domains={['VEHICLE_DATA']} catalog={data.catalog} labels={data.domainLabels} connections={data.platform.connections} units={[]} onChanged={load} />
+    </Section>
+  ) : null
+  if (!data.tenant || !cfg) return (
+    <div className="mx-auto flex max-w-3xl flex-col gap-4 p-4 sm:p-6">
+      {platformSection}
+      <p className="text-sm text-gray-500">Escolha uma loja no topo da tela.</p>
+    </div>
+  )
 
   const save = async () => {
     setSaving(true); setSaved(false)
@@ -96,8 +109,10 @@ export default function OperacoesConfigPage() {
         </div>
       </div>
 
+      {platformSection}
+
       <Section title="Conexões" hint="PROVEDOR_INTEGRACAO" defaultOpen>
-        <ConnectionsPanel catalog={data.catalog} labels={data.domainLabels} connections={data.connections} units={data.units} onChanged={load} />
+        <ConnectionsPanel catalog={data.catalog} labels={data.domainLabels} connections={data.connections} units={data.units} onChanged={load} defaults={data.platform?.defaults} />
       </Section>
 
       <Section title="Regras fiscais" hint="NFE_OPERACAO" defaultOpen={!cfg.fiscalRules?.confirmedAt}>
