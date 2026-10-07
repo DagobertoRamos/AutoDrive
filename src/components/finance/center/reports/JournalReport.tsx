@@ -6,6 +6,11 @@ import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Kpi, Panel, StateBox, fmt, fmtDate, td, tdR, th, thR, useFinanceData } from './shared'
 import type { ReportViewProps } from './types'
+import { HelpHint } from '@/components/ui/help-hint'
+
+/** Saldo como o contador lê: valor sem sinal + D (devedor) ou C (credor). */
+const nature = (b: number) => (Math.abs(b) < 0.005 ? '' : b > 0 ? 'D' : 'C')
+const saldo = (b: number) => `${fmt(Math.abs(b))}${nature(b) ? ` ${nature(b)}` : ''}`
 
 interface Data {
   from: string; to: string; count: number
@@ -21,7 +26,7 @@ export function JournalReport({ url, onData, registerCsv }: ReportViewProps) {
   useEffect(() => {
     registerCsv(data ? (tab === 'diario'
       ? { name: `diario-${data.from}-a-${data.to}`, headers: ['Data', 'Débito', 'Crédito', 'Valor', 'Histórico', 'Documento'], rows: data.lines.map((l) => [fmtDate(l.date), l.debit, l.credit, l.amount, l.history, l.document]) }
-      : { name: `balancete-${data.from}-a-${data.to}`, headers: ['Conta', 'Débitos', 'Créditos', 'Saldo'], rows: data.trial.map((t) => [t.account, t.debit, t.credit, t.balance]) }) : null)
+      : { name: `balancete-${data.from}-a-${data.to}`, headers: ['Conta', 'Débitos', 'Créditos', 'Saldo', 'Natureza'], rows: data.trial.map((t) => [t.account, t.debit, t.credit, Math.abs(t.balance), nature(t.balance)]) }) : null)
   }, [data, tab, registerCsv])
   const t = data?.totals
   return (
@@ -41,9 +46,9 @@ export function JournalReport({ url, onData, registerCsv }: ReportViewProps) {
         <StateBox loading={loading} error={error} empty={!data?.count} />
         {!loading && !error && !!data?.count && (tab === 'balancete' ? (
           <table className="w-full text-sm">
-            <thead className="bg-gray-50"><tr><th className={th}>Conta</th><th className={thR}>Débitos</th><th className={thR}>Créditos</th><th className={thR}>Saldo</th></tr></thead>
+            <thead className="bg-gray-50"><tr><th className={th}>Conta</th><th className={thR}>Débitos</th><th className={thR}>Créditos</th><th className={thR}><span className="inline-flex items-center gap-1">Saldo<HelpHint size={12} text="D = devedor (débitos maiores: caixa, bancos e despesas). C = credor (créditos maiores: receitas). Receita com saldo credor é o normal." /></span></th></tr></thead>
             <tbody className="divide-y divide-gray-100">
-              {data.trial.map((x) => <tr key={x.account}><td className={td}>{x.account}</td><td className={tdR}>{fmt(x.debit)}</td><td className={tdR}>{fmt(x.credit)}</td><td className={cn(tdR, 'font-semibold', x.balance < 0 && 'text-red-600')}>{fmt(x.balance)}</td></tr>)}
+              {data.trial.map((x) => <tr key={x.account}><td className={td}>{x.account}</td><td className={tdR}>{fmt(x.debit)}</td><td className={tdR}>{fmt(x.credit)}</td><td className={cn(tdR, 'font-semibold text-gray-900')}>{saldo(x.balance)}</td></tr>)}
             </tbody>
           </table>
         ) : (
