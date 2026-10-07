@@ -510,6 +510,40 @@ export async function resumeAfterSaleCancelled(tenantId: string, vehicleId: stri
   return affected
 }
 
+/**
+ * Carro que saiu do estoque sozinho (ex.: sumiu do feed do site de origem) e
+ * voltou: reativa os anúncios que o SISTEMA retirou por essa saída — os
+ * arquivados como "Retirado" a partir de `since` (a data de saída). O que a
+ * loja retirou antes disso fica como está. Roda a fila em seguida.
+ */
+export async function resumeAfterRestock(tenantId: string, vehicles: Array<{ id: string; since: Date }>, actor: Actor = SYSTEM_ACTOR): Promise<number> {
+  let affected = 0
+  for (const { id: vehicleId, since } of vehicles) {
+    const v = await prisma.vehicle.findFirst({ where: { id: vehicleId, tenantId }, select: { stockStatus: true, active: true } })
+    if (!v || !isPublishableStock(v.stockStatus, v.active)) continue
+    const pubs = await prisma.publication.findMany({
+      where: { tenantId, vehicleId, desiredState: 'REMOVIDO', archiveReason: 'RETIRADO', archivedAt: { gte: since }, updatedById: null, publishedAt: { not: null } },
+      orderBy: { updatedAt: 'desc' },
+    })
+    const seen = new Set<string>()
+    let n = 0
+    for (const p of pubs) {
+      const key = `${p.channel}:${p.connectionKey}:${p.campaignKey}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      const r = await applyIntent(tenantId, p.id, 'RETOMAR', actor, { reason: 'VENDA_CANCELADA' }).catch((e) => { console.error('[publications] retomar após volta ao estoque', p.id, e); return { ok: false } })
+      if (r.ok) n++
+    }
+    if (n) await logEvent(prisma, { tenantId, vehicleId, type: 'VENDA', message: `Voltou ao estoque: anúncios de volta ao ar (${n}).`, actor })
+    affected += n
+  }
+  if (affected) {
+    const { runWorker } = await import('./worker')
+    await runWorker({ maxJobs: 20, deadlineMs: 45_000 }).catch((e) => console.error('[publications] worker (volta ao estoque)', e))
+  }
+  return affected
+}
+
 /** Cancelamento: reativa os anúncios dos carros devolvidos ao estoque (em segundo plano). */
 export function notifySaleCancelled(tenantId: string | null | undefined, vehicleIds: Array<string | null | undefined>, actor?: Actor): void {
   if (!tenantId) return

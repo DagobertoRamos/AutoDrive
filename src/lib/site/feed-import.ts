@@ -16,7 +16,7 @@ import { Pool, neonConfig } from '@neondatabase/serverless'
 import ws from 'ws'
 import { prisma } from '@/lib/prisma'
 import {
-  mergeLegacy, parseFeed, planFeedSync, samePhotos,
+  mergeLegacy, parseFeed, planFeedSync, relinkByPlate, samePhotos,
   type FeedExtras, type FeedOrigin, type FeedVehicle, type LegacyVehicle,
 } from './feed-import-core'
 import { normalizeOrigin } from '@/lib/stock/origin-core'
@@ -197,11 +197,12 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
 
     const known = Object.values(state.map)
     const existing = known.length
-      ? await prisma.vehicle.findMany({ where: { id: { in: known }, tenantId: src.tenantId }, select: { id: true, active: true, stockStatus: true, photos: { select: { url: true }, orderBy: { order: 'asc' } }, siteListing: { select: { photosLocked: true } } } })
+      ? await prisma.vehicle.findMany({ where: { id: { in: known }, tenantId: src.tenantId }, select: { id: true, plate: true, createdAt: true, exitDate: true, active: true, stockStatus: true, photos: { select: { url: true }, orderBy: { order: 'asc' } }, siteListing: { select: { photosLocked: true } } } })
       : []
     const byId = new Map(existing.map((v) => [v.id, v]))
     // Vínculo para veículo apagado no SaaS: esquece e recria.
     for (const [ext, id] of Object.entries(state.map)) if (!byId.has(id)) delete state.map[ext]
+    state.map = relinkByPlate(items, state.map, existing)
     const activeIds = new Set(existing.filter((v) => v.active).map((v) => v.id))
 
     const plan = planFeedSync(items, state.map, activeIds)
@@ -211,6 +212,7 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
       const unit = await prisma.unit.findFirst({ where: { tenantId: src.tenantId }, orderBy: { createdAt: 'asc' }, select: { id: true } })
       let created = 0
       let updated = 0
+      const revived: Array<{ id: string; since: Date }> = []
       for (const item of plan.create) {
         const v = await prisma.vehicle.create({
           data: {
@@ -250,6 +252,7 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
           data: { ...data, ...(locked ? {} : { mainPhotoUrl }), ...reservedSync, ...reviveData },
         })
         delete state.removed[vehicleId]
+        if (revive) revived.push({ id: vehicleId, since: cur.exitDate ?? new Date(0) })
         if (!locked && !samePhotos(cur?.photos.map((p) => p.url) ?? [], realPhotoUrls(item.photos))) await writePhotos(vehicleId, item.photos)
         await upsertListing(src.tenantId, vehicleId, item)
         if (item.legacySlug) state.slugs[item.legacySlug] = vehicleId
@@ -261,6 +264,8 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
         await prisma.vehicle.updateMany({ where: { id: { in: plan.remove }, tenantId: src.tenantId }, data: { active: false, exitDate: new Date() } })
         for (const id of plan.remove) state.removed[id] = true
       }
+      // Saiu do feed e voltou: os anúncios retirados pela saída voltam ao ar (site incluso).
+      if (revived.length) await import('@/lib/publications/service').then((m) => m.resumeAfterRestock(src.tenantId, revived)).catch((e) => console.error('[feed-import] reativar anúncios', e instanceof Error ? e.message : e))
       result = { ...base, ok: true, feed: items.length, created, updated, removed: plan.remove.length, aborted: null, ...enrichInfo }
     }
   } catch (e) {

@@ -165,13 +165,45 @@ export function planFeedSync<T extends FeedVehicle>(items: T[], map: Record<stri
   const inFeed = new Set(items.map((i) => i.extId))
   const create: T[] = []
   const update: SyncPlan<T>['update'] = []
+  const kept = new Set<string>()
   for (const item of items) {
     const id = map[item.extId]
-    if (id) update.push({ vehicleId: id, item })
-    else create.push(item)
+    if (!id) create.push(item)
+    else if (!kept.has(id)) { kept.add(id); update.push({ vehicleId: id, item }) }
   }
-  const remove = live.filter(([ext]) => !inFeed.has(ext)).map(([, id]) => id)
+  // Ficha que segue no feed por outro id (carro recadastrado no site de origem) fica.
+  const remove = [...new Set(live.filter(([ext, id]) => !inFeed.has(ext) && !kept.has(id)).map(([, id]) => id))]
   return { create, update, remove, aborted: null }
+}
+
+export interface PlateCandidate { id: string; plate: string | null; active: boolean; stockStatus: string | null; createdAt: Date }
+
+/**
+ * O site de origem às vezes recadastra o mesmo carro com outro id. Sem isso a
+ * importação criava uma ficha nova e desativava a antiga (histórico, anúncios e
+ * edições ficavam na ficha morta). Item novo com placa de carro já importado →
+ * reaproveita essa ficha (ativa primeiro, depois a mais recente). Vendido no
+ * SaaS não é reaproveitado. Devolve o mapa extId → vehicleId atualizado.
+ */
+export function relinkByPlate(items: Array<{ extId: string; extras: { plate: string | null } }>, map: Record<string, string>, vehicles: PlateCandidate[]): Record<string, string> {
+  const best = new Map<string, PlateCandidate>()
+  for (const v of vehicles) {
+    const plate = normalizePlate(v.plate)
+    if (!plate || v.stockStatus === 'VENDIDO') continue
+    const cur = best.get(plate)
+    if (!cur || (v.active !== cur.active ? v.active : v.createdAt > cur.createdAt)) best.set(plate, v)
+  }
+  const out = { ...map }
+  const inFeed = new Set(items.map((i) => i.extId))
+  for (const item of items) {
+    if (out[item.extId] || !item.extras.plate) continue
+    const v = best.get(item.extras.plate)
+    if (!v) continue
+    // Esquece o id antigo que saiu do feed: o carro agora vive pelo novo.
+    for (const [ext, id] of Object.entries(out)) if (id === v.id && !inFeed.has(ext)) delete out[ext]
+    out[item.extId] = v.id
+  }
+  return out
 }
 
 export function samePhotos(a: string[], b: string[]): boolean {

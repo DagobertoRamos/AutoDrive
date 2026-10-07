@@ -41,7 +41,7 @@ export async function GET(req: Request) {
     const relevant: Prisma.VehicleWhereInput = { OR: [{ active: true, stockStatus: { in: [...SITE_VISIBLE_STOCK] } }, { siteListing: { is: { hidden: true } } }] }
     const select = {
       id: true, brand: true, model: true, version: true, year: true, modelYear: true, plate: true, km: true, active: true, stockStatus: true,
-      salePrice: true, promoPrice: true, isPromo: true, promoStartsAt: true, promoEndsAt: true, mainPhotoUrl: true, createdAt: true,
+      salePrice: true, promoPrice: true, isPromo: true, promoStartsAt: true, promoEndsAt: true, mainPhotoUrl: true, createdAt: true, notes: true,
       photos: { select: { url: true }, orderBy: [{ isMain: 'desc' as const }, { order: 'asc' as const }] },
       siteListing: { select: { featured: true, hidden: true, title: true, description: true, options: true, videoUrl: true, seoTitle: true, seoDescription: true } },
     } satisfies Prisma.VehicleSelect
@@ -54,9 +54,10 @@ export async function GET(req: Request) {
       const real = realPhotoUrls(r.photos.map((p) => p.url))
       const state = siteVehicleState({ active: r.active, stockStatus: r.stockStatus }, r.siteListing ? { photosStatus: 'ORIGEM', hidden: r.siteListing.hidden } : null, real.length)
       const why = state !== 'HIDDEN' ? null
-        : r.siteListing?.hidden ? 'escondido manualmente'
-        : !r.active ? 'veículo inativo'
-        : !r.stockStatus || !(SITE_VISIBLE_STOCK as readonly string[]).includes(r.stockStatus) ? `estoque: ${STOCK_LABEL[r.stockStatus ?? ''] ?? 'sem status'}` : null
+        // A situação do estoque vem antes: a retirada automática também marca "escondido".
+        : !r.active ? (r.notes?.startsWith('Importado do site antigo') ? 'veículo inativo (saiu do feed do site antigo)' : 'veículo inativo')
+        : !r.stockStatus || !(SITE_VISIBLE_STOCK as readonly string[]).includes(r.stockStatus) ? `estoque: ${STOCK_LABEL[r.stockStatus ?? ''] ?? 'sem status'}`
+        : r.siteListing?.hidden ? 'escondido do site' : null
       const t = { id: r.id, brand: r.brand, model: r.model, version: r.version, modelYear: r.modelYear, year: r.year }
       const pl = { salePrice: r.salePrice == null ? null : Number(r.salePrice), promoPrice: r.promoPrice == null ? null : Number(r.promoPrice), isPromo: r.isPromo, promoStartsAt: r.promoStartsAt, promoEndsAt: r.promoEndsAt }
       const price = effectivePrice(pl)

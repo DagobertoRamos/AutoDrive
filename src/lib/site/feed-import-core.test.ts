@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { feedTitle, isPlaceholderPhoto, normalizeFuel, normalizeTransmission, parseCsv, parseFeed, parseKm, parsePrice, planFeedSync, mergeLegacy, normalizePlate } from './feed-import-core'
+import { feedTitle, isPlaceholderPhoto, normalizeFuel, normalizeTransmission, parseCsv, parseFeed, parseKm, parsePrice, planFeedSync, mergeLegacy, normalizePlate, relinkByPlate } from './feed-import-core'
 
 const HEAD = '"id","title","description","availability","condition","price","link","image_link","additional_image_link","brand","model","version","year","mileage","transmission","fuel_type","body_style","color","city","state"'
 const row = (o: Partial<Record<string, string>>) => {
@@ -78,6 +78,12 @@ describe('planFeedSync', () => {
   it('já inativo não é removido de novo', () => {
     expect(planFeedSync([item('A')], { A: 'v1', C: 'v3' }, new Set(['v1'])).remove).toEqual([])
   })
+  it('mesma ficha por dois ids: atualiza uma vez e não desativa', () => {
+    const p = planFeedSync([item('B')], { A: 'v1', B: 'v1' }, new Set(['v1']))
+    expect(p.update).toEqual([{ vehicleId: 'v1', item: item('B') }])
+    expect(p.remove).toEqual([])
+    expect(planFeedSync([item('A'), item('B')], { A: 'v1', B: 'v1' }, new Set(['v1'])).update).toHaveLength(1)
+  })
   it('trava com feed vazio ou encolhido de repente', () => {
     const map = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`X${i}`, `v${i}`]))
     const active = new Set(Object.values(map))
@@ -133,5 +139,25 @@ describe('mergeLegacy (banco do site de origem)', () => {
     expect(m.extras.videoUrl).toBeNull()
     expect(m.extras.promo).toBeNull()
     expect(normalizePlate('ABC1234')).toBe('ABC1234')
+  })
+})
+
+describe('relinkByPlate', () => {
+  const it2 = (extId: string, plate: string | null) => ({ extId, extras: { plate } })
+  const v = (id: string, active: boolean, day: number, stockStatus = 'DISPONIVEL', plate = 'ABC1D23') => ({ id, plate, active, stockStatus, createdAt: new Date(2026, 9, day) })
+  it('carro recadastrado com outro id reaproveita a ficha e esquece o id antigo', () => {
+    expect(relinkByPlate([it2('NOVO', 'ABC1D23')], { VELHO: 'v1' }, [v('v1', false, 1)])).toEqual({ NOVO: 'v1' })
+  })
+  it('prefere a ficha ativa; entre iguais, a mais recente', () => {
+    expect(relinkByPlate([it2('N', 'ABC1D23')], {}, [v('v1', true, 1), v('v2', false, 5)]).N).toBe('v1')
+    expect(relinkByPlate([it2('N', 'ABC1D23')], {}, [v('v1', false, 1), v('v2', false, 5)]).N).toBe('v2')
+  })
+  it('vendido, sem placa ou já vinculado: não mexe', () => {
+    expect(relinkByPlate([it2('N', 'ABC1D23')], {}, [v('v1', false, 1, 'VENDIDO')])).toEqual({})
+    expect(relinkByPlate([it2('N', null)], {}, [v('v1', true, 1)])).toEqual({})
+    expect(relinkByPlate([it2('N', 'ABC1D23')], { N: 'v9' }, [v('v1', true, 1)])).toEqual({ N: 'v9' })
+  })
+  it('id antigo que continua no feed segue vinculado', () => {
+    expect(relinkByPlate([it2('A', 'ABC1D23'), it2('B', 'ABC1D23')], { A: 'v1' }, [v('v1', true, 1)])).toEqual({ A: 'v1', B: 'v1' })
   })
 })
