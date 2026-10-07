@@ -367,6 +367,23 @@ describe.skipIf(!LOCAL)('operações veiculares (banco real)', () => {
     }
   })
 
+  it('menu Operações: painel e listas da loja', async () => {
+    const lists = await import('./lists')
+    const dash = await lists.opsDashboard(tenantId)
+    expect(dash.renave.total).toBeGreaterThan(0)
+    expect(dash.connections.FISCAL.providerId).toBe('FOCUS_NFE')
+    const notas = await lists.opsList(tenantId, 'fiscal', 'authorized', '')
+    expect(notas.some((r) => r.title.startsWith('NF-e 77'))).toBe(true)
+    const consultas = await lists.opsList(tenantId, 'queries', 'restrictions', 'QRY1')
+    expect(consultas).toHaveLength(1)
+    expect(consultas[0].tone).toBe('critical')
+    const lojas = await lists.opsList(tenantId, 'transfer', 'stores', '')
+    expect(lojas[0].title).toContain('→')
+    for (const f of ['pending', 'issues', 'divergent', 'confirmed']) await lists.opsList(tenantId, 'renave', f, '')
+    for (const f of ['pending', 'rejected', 'cancelled']) await lists.opsList(tenantId, 'fiscal', f, '')
+    await lists.opsList(tenantId, 'transfer', 'open', '')
+  })
+
   it('23 · webhook duplicado é processado uma vez', async () => {
     const provider = `E2E${tag}`
     const a = await prisma.webhookInbox.createMany({ data: [{ provider, eventId: 'ev-1' }], skipDuplicates: true })

@@ -118,6 +118,21 @@ export const NAV_GROUPS: NavItem[] = [
     ],
   },
 
+  // ── OPERAÇÕES (RENAVE, notas, transferências, consultas) ──────────────────
+  {
+    label: 'Operações',
+    icon:  ShieldCheck,
+    module: 'ops.panel',
+    children: [
+      { label: 'Painel',          href: '/operacoes',                 icon: ListChecks,  module: 'ops.panel' },
+      { label: 'RENAVE',          href: '/operacoes/renave',          icon: ShieldCheck, module: 'ops.panel' },
+      { label: 'Notas fiscais',   href: '/operacoes/notas',           icon: FileText,    module: 'ops.panel' },
+      { label: 'Transferências',  href: '/operacoes/transferencias',  icon: Car,         module: 'ops.panel' },
+      { label: 'Consultas',       href: '/operacoes/consultas',       icon: ClipboardCheck, module: 'ops.panel' },
+      { label: 'Configurações',   href: '/configuracoes/operacoes',   icon: Settings,    module: 'ops.settings' },
+    ],
+  },
+
   // ── NEGOCIAÇÕES ───────────────────────────────────────────────────────────
   {
     label: 'Negociações',

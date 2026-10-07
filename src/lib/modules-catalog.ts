@@ -16,6 +16,7 @@ export const MODULE_CATALOG: ModuleGroup[] = [
     { key: 'stock.pendencies.configure', label: 'Configurar pendências de estoque' },
   ] },
   { area: 'Operações veiculares', features: [
+    { key: 'ops.panel', label: 'Menu Operações (painel e listas da loja)' },
     { key: 'ops.renave.view', label: 'Ver RENAVE' },
     { key: 'ops.renave.operate', label: 'Operar RENAVE (entrada e saída)' },
     { key: 'ops.fiscal.view', label: 'Ver notas fiscais' },

@@ -224,6 +224,7 @@ export type Module =
   | 'ops.margin.view'           // ver margem da operação
   | 'ops.logs.view'             // ver detalhes técnicos das integrações
   | 'ops.vehicle_data.query'    // consultar débitos e restrições (custa por consulta)
+  | 'ops.panel'                 // menu Operações: painel e listas da loja (RENAVE, notas, transferências)
 
 // ── Hierarquia numérica de roles ─────────────────────────────────────────────
 // Quanto maior, mais alto na hierarquia
@@ -887,6 +888,7 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   'ops.margin.view':       { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'FINANCEIRO'], actions: ['read'] },
   'ops.logs.view':         { roles: ['MASTER', 'ADM'], actions: ['read'] },
   'ops.vehicle_data.query': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['read', 'create'] },
+  'ops.panel':             { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'FINANCEIRO'], actions: ['read'] },
 }
 
 // ── API pública ───────────────────────────────────────────────────────────────

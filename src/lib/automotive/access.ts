@@ -12,7 +12,7 @@ export const OPS_PERMISSIONS = [
   'ops.fiscal.view', 'ops.fiscal.issue', 'ops.fiscal.cancel',
   'ops.transfer.view', 'ops.transfer.start',
   'ops.documents.view', 'ops.compliance.manage', 'ops.store_transfer',
-  'ops.settings', 'ops.costs.view', 'ops.margin.view', 'ops.logs.view', 'ops.vehicle_data.query',
+  'ops.settings', 'ops.costs.view', 'ops.margin.view', 'ops.logs.view', 'ops.vehicle_data.query', 'ops.panel',
 ] as const
 export type OpsPermission = typeof OPS_PERMISSIONS[number]
 
