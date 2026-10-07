@@ -13,6 +13,7 @@ import { Card, ErrorBox, KpiCard, brl, dateBR, inputClass } from '@/components/f
 import { MonthlyFlowChart, type MonthPoint } from '@/components/finance/center/dashboard/MonthlyFlowChart'
 import { ProjectionChart, type ProjectionPoint } from '@/components/finance/center/dashboard/ProjectionChart'
 import { TopExpensesBars, type TopExpense } from '@/components/finance/center/dashboard/TopExpensesBars'
+import FinanceSearch from '@/components/finance/center/FinanceSearch'
 
 interface DueWindow { count: number; total: number }
 interface Ops { transit: DueWindow; commissions: DueWindow; partners: { toPay: number; count: number }; stock: { count: number; capital: number } }
@@ -81,6 +82,7 @@ export default function FinancePanelPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <FinanceSearch />
           <Link href="/financeiro/extrato" className="btn-secondary text-sm"><FileText size={15} />Extrato</Link>
           <Link href="/financeiro/fluxo-de-caixa" className="btn-secondary text-sm"><LineChart size={15} />Fluxo de caixa</Link>
           <Link href="/financeiro/receber?novo=1" className="btn-secondary text-sm"><ArrowDownCircle size={15} className="text-teal-600" />Nova receita</Link>
