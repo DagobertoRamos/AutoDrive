@@ -10,6 +10,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
+import { onDealLinkedToLead } from '@/lib/evaluation/cancel-service'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,6 +56,8 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
       create: { tenantId, leadId: id, dealId, isPrimary: Boolean(b?.isPrimary), linkedByUserId: user.id },
       update: { isPrimary: Boolean(b?.isPrimary) },
     })
+    // Traz veículos (interesse/troca) e avaliações da negociação; registra no lead e na negociação.
+    await onDealLinkedToLead({ tenantId, leadId: id, dealId, actor: { id: user.id, name: user.name ?? null, role: user.role } }).catch(() => {})
     return NextResponse.json({ success: true, data: { ...link, deal } }, { status: 201 })
   } catch (err) { return handlePrismaError(err) }
 }

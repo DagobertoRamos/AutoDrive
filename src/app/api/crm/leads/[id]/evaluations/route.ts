@@ -28,7 +28,7 @@ export async function GET(req: Request, ctxArg: { params: { id: string } | Promi
     const evalIds = links.map(l => l.evaluationId)
     const evals = await prisma.vehicleEvaluation.findMany({
       where: { id: { in: evalIds } },
-      select: { id: true, status: true, plate: true, brand: true, model: true, modelYear: true, km: true, evaluatedValue: true, ownerName: true, createdAt: true },
+      select: { id: true, status: true, plate: true, brand: true, model: true, modelYear: true, km: true, evaluatedValue: true, ownerName: true, createdAt: true, cancelledAt: true, cancelReason: true, vehicleId: true },
     }).catch(() => [])
     const evalMap = new Map(evals.map(e => [e.id, e]))
     return NextResponse.json({ success: true, data: links.map(l => ({ ...l, evaluation: evalMap.get(l.evaluationId) ?? null })) })

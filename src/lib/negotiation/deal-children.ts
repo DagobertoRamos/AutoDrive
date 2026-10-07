@@ -80,6 +80,12 @@ export async function assertNoOtherEntryDeal(
   if (dup) throw new Error(`Este veículo já tem a negociação de entrada ${dup.deal.dealNumber ?? ''} (${String(dup.deal.status).toLowerCase().replace(/_/g, ' ')}). Abra-a em vez de criar outra.`.replace('  ', ' '))
 }
 
+/** Avaliação usada na troca: guarda a negociação nela (para cancelar junto se a venda cair). */
+export async function linkTradeEvaluation(tx: Tx, evaluationId: string | null | undefined, dealId: string) {
+  if (!evaluationId) return
+  await tx.vehicleEvaluation.updateMany({ where: { id: evaluationId }, data: { negotiationId: dealId } })
+}
+
 /** TROCA: só entra avaliação liberada pelo gerente, aceita pelo cliente e fora de outra troca ativa. */
 export async function assertTradeEvaluationUsable(tx: Tx, evaluationId: string, plate: string, excludeDealId?: string | null) {
   const ev: any = await tx.vehicleEvaluation.findUnique({
@@ -274,7 +280,7 @@ export async function syncDealVehicles(tx: Tx, args: {
     } else {
       const car = t as VehicleInput
       const keep = current && normPlate(current.plate) === normPlate(car.plate) && !!normPlate(car.plate)
-      if (!keep && car.evaluationId && normPlate(car.plate)) await assertTradeEvaluationUsable(tx, car.evaluationId, String(car.plate), deal.id)
+      if (!keep && car.evaluationId && normPlate(car.plate)) { await assertTradeEvaluationUsable(tx, car.evaluationId, String(car.plate), deal.id); await linkTradeEvaluation(tx, car.evaluationId, deal.id) }
       const data = vehicleData(car, {
         role: 'TROCA',
         ...(car.vehicleId !== undefined ? { vehicleId: car.vehicleId ?? null } : {}),
@@ -332,7 +338,7 @@ async function syncVehicleList(
     const idx = left.findIndex((r) => (isTrade ? !!normPlate(car.plate) && normPlate(r.plate) === normPlate(car.plate) : sameCar(r, car)))
     const current = idx >= 0 ? left.splice(idx, 1)[0] : null
     if (isTrade) {
-      if (!current && car.evaluationId && normPlate(car.plate)) await assertTradeEvaluationUsable(tx, car.evaluationId, String(car.plate), deal.id)
+      if (!current && car.evaluationId && normPlate(car.plate)) { await assertTradeEvaluationUsable(tx, car.evaluationId, String(car.plate), deal.id); await linkTradeEvaluation(tx, car.evaluationId, deal.id) }
       const data = vehicleData(car, {
         role: 'TROCA',
         ...(car.vehicleId !== undefined ? { vehicleId: car.vehicleId ?? null } : {}),
@@ -406,7 +412,7 @@ export async function createExtraDealVehicles(tx: Tx, args: {
       if (!car || !(normPlate(car.plate) || car.brand)) continue
       if (normPlate(car.plate) && usedPlates.has(normPlate(car.plate))) duplicated(car.plate)
       if (normPlate(car.plate)) usedPlates.add(normPlate(car.plate))
-      if (car.evaluationId && normPlate(car.plate)) await assertTradeEvaluationUsable(tx, car.evaluationId, String(car.plate))
+      if (car.evaluationId && normPlate(car.plate)) { await assertTradeEvaluationUsable(tx, car.evaluationId, String(car.plate)); await linkTradeEvaluation(tx, car.evaluationId, deal.id) }
       await tx.dealVehicle.create({ data: { ...vehicleData(car, { role: 'TROCA', vehicleId: car.vehicleId ?? null, agreedValue: numOrNull(car.agreedValue) }), dealId: deal.id } })
     }
   }

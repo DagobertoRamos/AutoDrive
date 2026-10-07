@@ -13,7 +13,7 @@ import { canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
 import { fieldLabels, loadCrmSettings, missingLeadFields, readLeadType } from '@/lib/crm/settings'
 import { fireAutomations } from '@/lib/crm/automations'
-import { syncDealVehiclesToLead } from '@/lib/crm/vehicle-sync'
+import { onDealLinkedToLead } from '@/lib/evaluation/cancel-service'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,8 +46,8 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
     await prisma.marketingLead.update({ where: { id }, data: { status: 'CONVERTED' as never, convertedDealId: dealId ?? undefined, convertedAt: now, lastContactAt: now } })
     if (dealId) {
       await prisma.crmLeadDeal.upsert({ where: { leadId_dealId: { leadId: id, dealId } }, create: { tenantId, leadId: id, dealId, isPrimary: true, linkedByUserId: user.id }, update: { isPrimary: true } }).catch(() => {})
-      // Sync veículos da negociação → lead (best-effort).
-      await syncDealVehiclesToLead(dealId, id, tenantId)
+      // Veículos, troca e avaliações da negociação → lead; vínculo no histórico da negociação.
+      await onDealLinkedToLead({ tenantId, leadId: id, dealId, actor: { id: user.id, name: user.name ?? null, role: user.role } }).catch(() => {})
     }
     await prisma.crmLeadInteraction.create({ data: { tenantId, leadId: id, type: 'NOTE', result: 'CONVERTED', summary: note ?? `Lead convertido${dealId ? ` — negociação ${dealId.slice(-8)}` : ''}.`, authorId: user.id, authorName: user.name, occurredAt: now }}).catch(() => {})
     await fireAutomations(tenantId, 'STAGE_ENTERED', id, { settings })

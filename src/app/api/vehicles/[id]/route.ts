@@ -20,6 +20,7 @@ import { feedOrigins } from '@/lib/site/feed-import'
 import { mergeOrigin } from '@/lib/stock/origin-core'
 import { syncIntake } from '@/lib/stock/intake'
 import { notifyStockChanged, syncLive } from '@/lib/publications/service'
+import { afterVehicleReturned } from '@/lib/evaluation/cancel-service'
 
 const OPEN_DEAL_STATUSES = ['RASCUNHO', 'AGUARDANDO_LIBERACAO', 'LIBERADA', 'EM_ANDAMENTO', 'REABERTA']
 
@@ -197,6 +198,11 @@ export async function PATCH(
     // Central de Publicações: mudou a situação no estoque → anúncios acompanham.
     if (existing.stockStatus !== updated.stockStatus || existing.active !== updated.active) {
       notifyStockChanged(existing.tenantId, [params.id], { id: user.id, name: user.name })
+    }
+    // Carro devolvido/cancelado no estoque → a avaliação dele vira CANCELADA (e vai para o lead).
+    if (existing.tenantId && existing.stockStatus !== updated.stockStatus && ['DEVOLVIDO', 'CANCELADO'].includes(String(updated.stockStatus))) {
+      await afterVehicleReturned(existing.tenantId, params.id, String(updated.stockStatus), { id: user.id, name: user.name ?? null, role: user.role })
+        .catch((e) => console.error('[vehicles] cancelar avaliação', e instanceof Error ? e.message : e))
     }
     // Ficha corrigida (modelo, versão, ano, km…) → anúncios publicados são atualizados.
     const CONTENT = ['brand', 'model', 'version', 'year', 'modelYear', 'km', 'color', 'fuel', 'transmission', 'doors', 'plate'] as const

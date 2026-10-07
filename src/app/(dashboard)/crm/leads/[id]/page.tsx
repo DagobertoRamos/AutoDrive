@@ -73,7 +73,7 @@ const TABS: { id: Tab; label: string }[] = [
 ]
 
 const INT_TYPES = ['CALL','WHATSAPP','EMAIL','NOTE','VISIT','PROPOSAL','FINANCING','NEGOTIATION','ATTENDANCE','NO_CONTACT','OTHER']
-const INT_LABELS: Record<string,string> = { CALL:'Ligação', WHATSAPP:'WhatsApp', EMAIL:'E-mail', NOTE:'Nota interna', VISIT:'Visita', PROPOSAL:'Proposta', FINANCING:'Financiamento', NEGOTIATION:'Negociação', ATTENDANCE:'Atendimento presencial', NO_CONTACT:'Sem contato', OTHER:'Outro' }
+const INT_LABELS: Record<string,string> = { EVALUATION:'Avaliação', CALL:'Ligação', WHATSAPP:'WhatsApp', EMAIL:'E-mail', NOTE:'Nota interna', VISIT:'Visita', PROPOSAL:'Proposta', FINANCING:'Financiamento', NEGOTIATION:'Negociação', ATTENDANCE:'Atendimento presencial', NO_CONTACT:'Sem contato', OTHER:'Outro' }
 const INT_RESULTS = ['NO_ANSWER','INVALID_NUMBER','MESSAGE_SENT','AWAITING_RESPONSE','CONTACT_MADE','PROPOSAL_SENT','VISIT_SCHEDULED','VISIT_DONE','FINANCING_STARTED','NO_INTEREST','LOST','CONVERTED','OTHER']
 const RESULT_LABELS: Record<string,string> = { NO_ANSWER:'Não atendeu', INVALID_NUMBER:'Número inválido', MESSAGE_SENT:'Mensagem enviada', AWAITING_RESPONSE:'Aguardando resposta', CONTACT_MADE:'Contato realizado', PROPOSAL_SENT:'Proposta enviada', VISIT_SCHEDULED:'Visita agendada', VISIT_DONE:'Visita realizada', FINANCING_STARTED:'Financiamento iniciado', NO_INTEREST:'Sem interesse', LOST:'Perdido para concorrente', CONVERTED:'Convertido', OTHER:'Outro' }
 const TRANSFER_REASONS = [['CLIENT_REQUEST','Solicitação do cliente'],['SELLER_EXPERTISE','Especialidade do vendedor'],['ABSENCE','Ausência'],['UNIT_CHANGE','Mudança de unidade'],['OVERLOAD','Sobrecarga'],['DISTRIBUTION_ERROR','Erro de distribuição'],['MANAGEMENT_REQUEST','Solicitação gerencial'],['OTHER','Outro']]
@@ -487,7 +487,9 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
 
 // ── VehiclesTab — CRUD completo: interesse + avaliação + editar + excluir ──────
 const BLANK_EVAL = { plate:'', brand:'', model:'', km:'', ownerName:'' }
-type EvalItem = { id:string; status:string; plate:string|null; brand:string|null; model:string|null; evaluatedValue:unknown; createdAt:string }
+type EvalItem = { id:string; status:string; plate:string|null; brand:string|null; model:string|null; evaluatedValue:unknown; createdAt:string; cancelledAt?:string|null; cancelReason?:string|null; vehicleId?:string|null }
+const EVAL_STATUS: Record<string,string> = { DRAFT:'Rascunho', IN_PROGRESS:'Em andamento', AGUARDANDO_APROVACAO:'Aguardando aprovação', LIBERADA:'Liberada', PENDING_REVIEW:'Em revisão', FINALIZED:'Finalizada', APPROVED:'Aprovada', REJECTED:'Recusada', REOPENED:'Reaberta', CANCELADA:'Cancelada', CANCELED:'Cancelada', AGUARDANDO_ENTRADA:'Aguardando entrada', NO_ESTOQUE:'No estoque' }
+const MANAGER_ROLES = ['MASTER','ADM','GERENTE_GERAL','GERENTE']
 
 function VehiclesTab({ leadId, workspace, onRefresh }: { leadId:string; workspace:Workspace; onRefresh:()=>void }) {
   const [showEvalForm, setShowEvalForm] = useState(false)
@@ -495,6 +497,23 @@ function VehiclesTab({ leadId, workspace, onRefresh }: { leadId:string; workspac
   const [evalBusy, setEvalBusy] = useState(false)
   const [evalErr, setEvalErr] = useState('')
   const [evals, setEvals] = useState<EvalItem[]>([])
+  const { data: vSession } = useSession()
+  const canCancelEval = MANAGER_ROLES.includes((vSession?.user as { role?: string })?.role ?? '')
+  const [cancelId, setCancelId] = useState<string|null>(null)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelErr, setCancelErr] = useState('')
+  const [cancelBusy, setCancelBusy] = useState(false)
+  const cancelEval = async () => {
+    if (!cancelId) return
+    if (!cancelReason.trim()) { setCancelErr('Informe o motivo.'); return }
+    setCancelBusy(true); setCancelErr('')
+    try {
+      const res = await fetch(`/api/evaluations/${cancelId}/cancel`, { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify({ reason: cancelReason.trim() }) })
+      const j = await res.json().catch(()=>({}))
+      if (!res.ok) { setCancelErr(j?.error ?? 'Não foi possível cancelar.'); return }
+      setCancelId(null); setCancelReason(''); reloadEvals(); onRefresh()
+    } finally { setCancelBusy(false) }
+  }
 
   const reloadEvals = useCallback(() => {
     fetch(`/api/crm/leads/${leadId}/evaluations`,{credentials:'include'}).then(r=>r.json()).then(j=>setEvals(j?.data?.map((l:{evaluation:unknown})=>l.evaluation).filter(Boolean)??[])).catch(()=>{})
@@ -551,15 +570,35 @@ function VehiclesTab({ leadId, workspace, onRefresh }: { leadId:string; workspac
 
         {evals.length===0 ? (
           <p className="text-[12px] text-gray-400 italic">Nenhuma avaliação vinculada.</p>
-        ) : evals.map(ev=>(
-          <div key={ev.id} className="mb-2 flex items-center justify-between rounded-lg border border-gray-100 p-2.5 dark:border-white/5">
-            <div className="min-w-0">
-              <p className="text-[13px] font-medium text-gray-900 dark:text-white">{[ev.brand,ev.model].filter(Boolean).join(' ')||ev.plate||'Avaliação'}</p>
-              <p className="text-[10px] tabular-nums text-gray-400">{fmtDT(ev.createdAt)} · {ev.status}</p>
+        ) : evals.map(ev=>{
+          const cancelled = !!ev.cancelledAt || ['CANCELADA','CANCELED'].includes(String(ev.status).toUpperCase())
+          return (
+          <div key={ev.id} className={cn('mb-2 rounded-lg border border-gray-100 p-2.5 dark:border-white/5', cancelled && 'bg-gray-50 dark:bg-white/5')}>
+            <div className="flex items-center justify-between">
+              <div className="min-w-0">
+                <p className={cn('text-[13px] font-medium text-gray-900 dark:text-white', cancelled && 'text-gray-500 line-through dark:text-gray-400')}>{[ev.brand,ev.model,ev.plate].filter(Boolean).join(' · ')||'Avaliação'}</p>
+                <p className="text-[10px] tabular-nums text-gray-400">
+                  {fmtDT(ev.createdAt)} · <span className={cn(cancelled && 'font-semibold text-red-600')}>{EVAL_STATUS[String(ev.status).toUpperCase()] ?? ev.status}</span>
+                  {cancelled && ev.cancelReason && <> · {ev.cancelReason}</>}
+                </p>
+              </div>
+              <div className="ml-3 flex shrink-0 items-center gap-3">
+                {canCancelEval && !cancelled && <button onClick={()=>{ setCancelId(ev.id); setCancelReason(''); setCancelErr('') }} className="text-[11px] font-medium text-red-600 hover:underline">Cancelar avaliação</button>}
+                <Link href={`/estoque/avaliacao/${ev.id}/inspecao`} className="text-[11px] font-medium text-sky-600 hover:underline dark:text-sky-400">Abrir →</Link>
+              </div>
             </div>
-            <Link href={`/estoque/avaliacao/${ev.id}/inspecao`} className="ml-3 shrink-0 text-[11px] font-medium text-sky-600 hover:underline dark:text-sky-400">Abrir →</Link>
+            {cancelId===ev.id && (
+              <div className="mt-2 space-y-2">
+                <input autoFocus value={cancelReason} onChange={e=>setCancelReason(e.target.value)} placeholder="Motivo do cancelamento" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                {cancelErr && <p className="text-[11px] text-red-600">{cancelErr}</p>}
+                <div className="flex justify-end gap-2">
+                  <button onClick={()=>setCancelId(null)} className="rounded px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100">Voltar</button>
+                  <button onClick={cancelEval} disabled={cancelBusy} className="flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50">{cancelBusy && <Loader2 size={12} className="animate-spin"/>}Cancelar avaliação</button>
+                </div>
+              </div>
+            )}
           </div>
-        ))}
+        )})}
       </div>
     </div>
   )

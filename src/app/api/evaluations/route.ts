@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
+import { linkNewEvaluationToDealLeads } from '@/lib/evaluation/cancel-service'
 import { prisma }               from '@/lib/prisma'
 import { ITEMS, type SectionKey } from '@/lib/evaluation/catalog'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
@@ -224,6 +225,11 @@ export async function POST(req: NextRequest) {
       )
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (prisma as any).evaluationItem.createMany({ data: rows }).catch(() => {})
+    }
+
+    // Avaliação aberta dentro de uma negociação: vai para os leads dela.
+    if (negotiationId && session.user.tenantId) {
+      await linkNewEvaluationToDealLeads({ tenantId: session.user.tenantId, evaluationId: ev.id, dealId: String(negotiationId), plate: ev.plate, actor: { id: session.user.id, name: session.user.name ?? null, role: session.user.role } }).catch(() => {})
     }
 
     await prisma.auditLog.create({

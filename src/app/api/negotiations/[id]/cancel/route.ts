@@ -9,6 +9,8 @@
 //   • Dinheiro: o que já entrou continua na conta (RECEBIDO); o que estava
 //     previsto é cancelado. O estorno é marcado depois (deal-refunds).
 //   • Finalizada: só ADM/MASTER cancelam (desfaz a venda).
+//   • Avaliação do carro de entrada devolvido (ou que nem entrou no estoque) vira
+//     CANCELADA e o cancelamento fica registrado nos leads da negociação.
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server'
@@ -28,6 +30,7 @@ import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 import { syncTenantFinance } from '@/lib/finance/finance-sync'
 import { notifyDealCancelled } from '@/services/notification.service'
 import { publishOpsEvent } from '@/lib/automotive/events'
+import { afterDealCancelled } from '@/lib/evaluation/cancel-service'
 
 export async function POST(
   req: NextRequest,
@@ -195,6 +198,13 @@ export async function POST(
         message: err instanceof Error ? err.message : 'Erro desconhecido',
       })
     }
+
+    // Avaliação do carro de entrada devolvido vira CANCELADA; tudo registrado nos leads.
+    await afterDealCancelled({
+      tenantId: deal.tenantId ?? '', deal: { id: params.id, dealNumber: deal.dealNumber, type: deal.type },
+      vehicles: deal.vehicles, returnEntering, returnedVehicleIds: returned, reason: body.reason!,
+      actor: { id: session.user.id, name: session.user.name ?? null, role: session.user.role },
+    }).catch((e) => console.error('[cancel] avaliação/lead', e))
 
     // Esteira de entrada: carro que entraria por esta negociação (e não foi devolvido)
     // volta a pedir a negociação de entrada.

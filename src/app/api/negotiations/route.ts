@@ -18,7 +18,7 @@ import {
 import { notifyStockChanged } from '@/lib/publications/service'
 import { resolveNegotiationGate } from '@/lib/stock/intake'
 import {
-  assertNoOtherEntryDeal, assertTradeEvaluationUsable, assertVehicleNotInOtherSale, createExtraDealVehicles,
+  assertNoOtherEntryDeal, assertTradeEvaluationUsable, linkTradeEvaluation, assertVehicleNotInOtherSale, createExtraDealVehicles,
   createWizardDebt, createWizardPayment,
 } from '@/lib/negotiation/deal-children'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
@@ -548,7 +548,7 @@ export async function POST(req: NextRequest) {
       // 5. Veículo de troca (TROCA)
       if (type === 'TROCA' && tradeInVehicle?.plate) {
         // ── Guard duplicidade: avaliação não pode entrar em 2 trocas ativas
-        if (tradeInVehicle.evaluationId) await assertTradeEvaluationUsable(tx, tradeInVehicle.evaluationId, tradeInVehicle.plate)
+        if (tradeInVehicle.evaluationId) { await assertTradeEvaluationUsable(tx, tradeInVehicle.evaluationId, tradeInVehicle.plate); await linkTradeEvaluation(tx, tradeInVehicle.evaluationId, deal.id) }
 
         await tx.dealVehicle.create({
           data: {

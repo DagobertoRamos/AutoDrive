@@ -4620,6 +4620,8 @@ export default function NovaNegociacaoPage() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const dealId       = searchParams.get('dealId') ?? ''
+  // Aberta pelo lead ("Nova negociação"): a negociação criada já sai vinculada a ele.
+  const fromLeadId   = searchParams.get('leadId') ?? ''
   const mode: 'create' | 'edit' = dealId ? 'edit' : 'create'
   const { data: sessionTop } = useSession()
   const userRole = sessionTop?.user?.role ?? ''
@@ -5299,6 +5301,7 @@ export default function NovaNegociacaoPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Erro ao criar negociação')
+      if (fromLeadId) await fetch(`/api/crm/leads/${fromLeadId}/deals`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dealId: data.data.id, isPrimary: true }) }).catch(() => undefined)
       if (draftId) await fetch(`/api/negotiations/drafts/${draftId}`, { method: 'DELETE' }).catch(() => undefined)
       router.replace(`/negociacoes/${data.data.id}`)
     } catch (e: unknown) {
