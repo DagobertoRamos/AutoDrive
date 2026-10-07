@@ -178,6 +178,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Recebimentos de vendas', href: '/financeiro/recebimentos', icon: HandCoins,       module: 'finance' },
       { label: 'Extrato',            href: '/financeiro/extrato',          icon: ScrollText,      module: 'finance' },
       { label: 'Conciliação',        href: '/financeiro/conciliacao',      icon: CheckCheck,      module: 'finance' },
+      { label: 'Aprovações',         href: '/financeiro/aprovacoes',       icon: ShieldCheck,     module: 'finance' },
       { label: 'Fluxo de caixa',     href: '/financeiro/fluxo-de-caixa',   icon: LineChart,       module: 'finance' },
       { label: 'DRE',                href: '/financeiro/dre',              icon: FileBarChart,    module: 'finance' },
       { label: 'Relatórios gerenciais', href: '/financeiro/relatorios',    icon: PieChart,        module: 'finance' },

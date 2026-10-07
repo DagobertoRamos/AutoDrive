@@ -13,7 +13,8 @@
 import { prisma } from '@/lib/prisma'
 import { applyStatusSideEffects } from './entry-settlement'
 import { noonUtc } from './recurrence-core'
-import { lockedDatesOf, periodError } from './period-lock'
+import { periodError } from './period-lock'
+import { approvalGate } from './approvals'
 import { partialBlockedReason, partialSource, planSettlement, principalOf } from './settlement-core'
 
 export interface SettleTitleInput {
@@ -53,6 +54,8 @@ export async function settleTitle(tenantId: string | null, entryId: string, inpu
   if (e.transferGroupId) return { error: 'Transferência não tem baixa.' }
   const closed = await periodError(e.tenantId, [input.paidDate])
   if (closed) return { error: closed }
+  const pending = await approvalGate(e, actor)
+  if (pending) return { error: pending }
   if (e.commissionCalculationId) {
     const c = await prisma.commissionCalculation.findUnique({ where: { id: e.commissionCalculationId }, select: { status: true } })
     if (c?.status === 'CANCELADO') return { error: 'Comissão cancelada: não pode ser paga.' }
