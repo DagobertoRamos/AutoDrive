@@ -7,6 +7,8 @@
 //         F&I do contrato (só FINANCIAMENTO). Líquido automático = bruto − ILA − IOF − IRRF.
 //   PATCH { action: 'FI_CALC', returnPct? } → NÃO grava: devolve bruto/ILA/IOF
 //         pelo padrão da loja (config de retorno/ILA/IOF por competência).
+//   PATCH { action: 'CHARGEBACK', amount, date, accountId, reason } | { action: 'CHARGEBACK_UNDO', reason }
+//         Banco cobrou de volta o F&I do contrato (lib/finance/fi-chargeback).
 //   POST  multipart file → anexa o comprovante ao pagamento.
 // Só quem tem finance.manage (ADM, gerência geral/administrativa, financeiro).
 // =============================================================================
@@ -23,6 +25,8 @@ import { logDealChild, payLabel, statusPt } from '@/lib/negotiation/children-syn
 import { buildFiUpdate, fiPatchSchema, round2 } from '@/lib/finance/fi-receipt-core'
 import { calculateReturn, validateReturnPercent } from '@/lib/finance/return-calc'
 import { resolveReturnSettingsForDate } from '@/lib/finance/return-settings'
+import { registerChargeback, undoChargeback } from '@/lib/finance/fi-chargeback'
+import { parseDateOnly } from '@/lib/negotiation/date-only'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -53,6 +57,17 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   if (rawAction === 'FI' || rawAction === 'FI_CALC') {
     if (p.type !== 'FINANCIAMENTO') return NextResponse.json({ error: 'F&I só se aplica a pagamentos de financiamento.' }, { status: 400 })
     return rawAction === 'FI' ? saveFi(raw, user, p) : calcFi(raw, p)
+  }
+  if (rawAction === 'CHARGEBACK' || rawAction === 'CHARGEBACK_UNDO') {
+    const tenantId = p.deal.tenantId
+    if (!tenantId) return NextResponse.json({ error: 'Negociação sem loja.' }, { status: 400 })
+    const actor = { id: user.id, name: user.name, role: user.role }
+    const reason = String(raw.reason ?? '').trim().slice(0, 300)
+    const err = rawAction === 'CHARGEBACK'
+      ? await registerChargeback(tenantId, p.id, { amount: Number(raw.amount ?? 0), date: parseDateOnly(raw.date) ?? new Date(), accountId: typeof raw.accountId === 'string' && raw.accountId ? raw.accountId : null, reason }, actor)
+      : await undoChargeback(tenantId, p.id, reason, actor)
+    if (err) return NextResponse.json({ error: err }, { status: 400 })
+    return NextResponse.json({ success: true })
   }
   const b = raw as { action?: string; paidAt?: string; authorizationCode?: string }
   const action = rawAction

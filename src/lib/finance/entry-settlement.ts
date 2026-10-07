@@ -43,6 +43,7 @@ export function sourceLabel(source: string | null) {
   if (source.startsWith('VEICULO_')) return 'Custo do veículo'
   if (source.startsWith('NEG_ESTORNO_')) return 'Estorno de negociação cancelada'
   if (source.startsWith('NEG_DEVOLUCAO_')) return 'Devolução de compra cancelada'
+  if (source.startsWith('NEG_CHARGEBACK_')) return 'Chargeback do F&I'
   return ({ VENDA: 'Venda', COMISSAO: 'Comissão', RETORNO: 'Comissão — retorno', GARANTIA: 'Comissão — garantia' } as Record<string, string>)[source] ?? source
 }
 

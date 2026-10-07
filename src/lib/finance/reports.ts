@@ -7,7 +7,7 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
-import { commissionEligibleDealWindowWhere } from '@/lib/commission/status'
+import { COMMISSION_ELIGIBLE_DEAL_STATUSES, commissionEligibleDealWindowWhere } from '@/lib/commission/status'
 import { DRE_GROUP_BY_KEY } from './dre-core'
 import { parseAddOns, summarizeFiContract } from './fi-receipt-core'
 import {
@@ -27,7 +27,7 @@ import {
 export const REPORT_VIEWS = [
   'resultado-centros', 'servicos', 'receitas-fi',
   'despesas-categoria', 'centro-custo', 'fornecedores', 'lucratividade-veiculo', 'lucratividade-vendedor',
-  'lucratividade-unidade', 'comparativo-mensal', 'orcado-realizado', 'aging', 'cancelamentos', 'resultado-negociacao',
+  'lucratividade-unidade', 'comparativo-mensal', 'orcado-realizado', 'aging', 'cancelamentos', 'resultado-negociacao', 'contratos-transito',
 ] as const
 export type ReportView = (typeof REPORT_VIEWS)[number]
 export const isReportView = (v: string | null): v is ReportView => !!v && (REPORT_VIEWS as readonly string[]).includes(v)
@@ -82,6 +82,7 @@ export async function getReport(p: ReportParams) {
     case 'aging': return { ...base, ...(await aging(p)) }
     case 'cancelamentos': return { ...base, ...(await cancellations(p)) }
     case 'resultado-negociacao': return { ...base, ...(await dealResultsReport(p, refs)) }
+    case 'contratos-transito': return { ...base, ...(await contractsInTransit(p)) }
   }
 }
 
@@ -320,7 +321,7 @@ async function servicesReport(p: ReportParams, onlyKinds?: Set<string>) {
 }
 
 // ── Receitas de F&I (por banco e por tipo; contratos) ───────────────────────
-const FI_PREFIXES = ['NEG_RETORNO_', 'NEG_PLUS_', 'NEG_AGREG_']
+const FI_PREFIXES = ['NEG_RETORNO_', 'NEG_PLUS_', 'NEG_AGREG_', 'NEG_CHARGEBACK_']
 const paymentIdOfFi = (s: string | null | undefined) => {
   const pre = FI_PREFIXES.find((x) => s?.startsWith(x))
   return pre && s ? s.slice(pre.length).split('_')[0] : null
@@ -738,6 +739,59 @@ async function cancellations(p: ReportParams) {
       count: rows.length, received: tot('received'), refunded: tot('refunded'), retained: tot('retained'),
       ownerPending: r2(tot('ownerPaid') - tot('ownerReturned')),
       withRetained: rows.filter((r) => r.retained > 0.009).length,
+    },
+  }
+}
+
+// ── Contratos em trânsito ────────────────────────────────────────────────────
+// Financiamentos de vendas aprovadas que o banco ainda não pagou (posição de hoje).
+export const TRANSIT_ALERT_DAYS = 7
+
+async function contractsInTransit(p: ReportParams) {
+  const rows = await prisma.dealPayment.findMany({
+    where: {
+      type: 'FINANCIAMENTO', OR: [{ status: null }, { status: { notIn: ['CONFIRMADO', 'PAGO', 'CANCELADO', 'ESTORNADO', 'RECUSADO'] } }],
+      deal: { tenantId: p.tenantId, status: { in: COMMISSION_ELIGIBLE_DEAL_STATUSES }, ...(p.unitId ? { unitId: p.unitId } : {}), ...(p.sellerId ? { sellerId: p.sellerId } : {}) },
+    },
+    select: {
+      id: true, value: true, bank: true, contractNumber: true, dueDate: true, createdAt: true, status: true,
+      deal: {
+        select: {
+          id: true, dealNumber: true, approvedAt: true, releasedAt: true, finalizedAt: true, saleDate: true, createdAt: true,
+          customer: { select: { name: true } }, person: { select: { nomeCompleto: true } }, seller: { select: { fullName: true, shortName: true } },
+          vehicles: { where: { role: 'VENDIDO' }, select: { plate: true, brand: true, model: true }, take: 1 },
+        },
+      },
+    },
+    take: 2000,
+  })
+  const list = rows.map((r) => {
+    const saleDate = r.deal.approvedAt ?? r.deal.releasedAt ?? r.deal.finalizedAt ?? r.deal.saleDate ?? r.deal.createdAt
+    const days = Math.max(0, daysBetweenSP(saleDate, p.now))
+    const v = r.deal.vehicles[0]
+    return {
+      paymentId: r.id, dealId: r.deal.id, dealNumber: r.deal.dealNumber, bank: r.bank?.trim() || 'Não informado', contract: r.contractNumber,
+      customer: r.deal.person?.nomeCompleto ?? r.deal.customer?.name ?? null,
+      vehicle: v ? [v.brand, v.model].filter(Boolean).join(' ') || null : null, plate: v?.plate ?? null,
+      seller: r.deal.seller ? r.deal.seller.shortName || r.deal.seller.fullName : null,
+      amount: r2(Number(r.value)), saleDate, expectedDate: r.dueDate, days, late: days > TRANSIT_ALERT_DAYS,
+    }
+  }).sort((a, b) => b.days - a.days)
+  const banks = new Map<string, { bank: string; count: number; amount: number; late: number }>()
+  for (const x of list) {
+    const k = norm(x.bank)
+    const b = banks.get(k) ?? { bank: x.bank, count: 0, amount: 0, late: 0 }
+    b.count++; b.amount = r2(b.amount + x.amount); if (x.late) b.late++
+    banks.set(k, b)
+  }
+  return {
+    alertDays: TRANSIT_ALERT_DAYS,
+    rows: list,
+    byBank: [...banks.values()].sort((a, b) => b.amount - a.amount),
+    totals: {
+      count: list.length, amount: r2(list.reduce((s, x) => s + x.amount, 0)),
+      late: list.filter((x) => x.late).length, lateAmount: r2(list.filter((x) => x.late).reduce((s, x) => s + x.amount, 0)),
+      avgDays: list.length ? Math.round(list.reduce((s, x) => s + x.days, 0) / list.length) : 0,
     },
   }
 }

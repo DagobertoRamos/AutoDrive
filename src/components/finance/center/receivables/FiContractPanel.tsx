@@ -25,6 +25,7 @@ export interface FiData {
   returnGrossValue: number | null; ilaValue: number | null; iofValue: number | null; irrfValue: number | null
   returnNetValue: number | null; plusValue: number | null; addOns: FiAddOn[]
   dealReturn: FiDealReturn | null
+  chargeback?: { amount: number; date: string | null; reason: string | null } | null
 }
 export interface FiProduct { name: string; kind: string | null; defaultValue: number | null }
 
@@ -199,6 +200,66 @@ export default function FiContractPanel({ paymentId, financed, bank, installment
             {busy === 'save' ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}Salvar F&I
           </button>
         )}
+      </div>
+      <Chargeback paymentId={paymentId} current={fi.chargeback ?? null} canEdit={canEdit} onSaved={onSaved} />
+    </div>
+  )
+}
+
+/** Chargeback: o banco cobrou de volta o F&I do contrato (sai da conta, reduz a receita de F&I). */
+function Chargeback({ paymentId, current, canEdit, onSaved }: { paymentId: string; current: { amount: number; date: string | null; reason: string | null } | null; canEdit: boolean; onSaved: Props['onSaved'] }) {
+  const [open, setOpen] = useState(false)
+  const [amount, setAmount] = useState<number | null>(null)
+  const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }))
+  const [accountId, setAccountId] = useState('')
+  const [reason, setReason] = useState('')
+  const [accounts, setAccounts] = useState<{ id: string; name: string }[]>([])
+  const [busy, setBusy] = useState(false)
+
+  const start = async () => {
+    setOpen(true)
+    const j = await fetch('/api/finance/accounts?active=true', { credentials: 'include' }).then((r) => r.json()).catch(() => null)
+    const list = (j?.data ?? []) as { id: string; name: string }[]
+    setAccounts(list)
+    if (list.length === 1) setAccountId(list[0].id)
+  }
+  const send = async (body: Record<string, unknown>) => {
+    setBusy(true)
+    const r = await fetch(`/api/finance/receivables/${paymentId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
+    const j = await r.json().catch(() => ({}))
+    setBusy(false)
+    if (!r.ok) { onSaved({ ok: false, text: j?.error ?? 'Não foi possível salvar.' }); return }
+    setOpen(false)
+    onSaved({ ok: true, text: body.action === 'CHARGEBACK' ? 'Chargeback registrado.' : 'Chargeback desfeito.' })
+  }
+
+  if (current) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-800">
+        <span className="inline-flex items-center gap-1">Chargeback <strong className="tabular-nums">{brl(current.amount)}</strong>{current.date && <> em {new Date(current.date).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</>}{current.reason && <span className="text-red-700/80"> · {current.reason}</span>}</span>
+        {canEdit && <button type="button" disabled={busy} onClick={() => { const why = window.prompt('Desfazer o chargeback? Informe o motivo:')?.trim(); if (why) void send({ action: 'CHARGEBACK_UNDO', reason: why }) }} className="font-medium underline">Desfazer</button>}
+      </div>
+    )
+  }
+  if (!canEdit) return null
+  if (!open) return <button type="button" onClick={() => void start()} className="self-start font-medium text-red-700 hover:underline">Registrar chargeback</button>
+  return (
+    <div className="grid gap-2 rounded-md border border-red-200 bg-white p-3 sm:grid-cols-[8rem_9rem_1fr]">
+      <label className="text-gray-600">Valor <RequiredMark /><MoneyInput value={amount} onChange={setAmount} className={inputCls} /></label>
+      <label className="text-gray-600">Data <RequiredMark /><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></label>
+      <label className="text-gray-600">Conta debitada <RequiredMark />
+        <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={inputCls}>
+          <option value="">Selecione</option>
+          {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+      </label>
+      <label className="text-gray-600 sm:col-span-3">Motivo <RequiredMark /><input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} className={inputCls} /></label>
+      <div className="flex justify-end gap-2 sm:col-span-3">
+        <button type="button" onClick={() => setOpen(false)} className="rounded-md px-3 py-1.5 text-gray-600 hover:bg-gray-100">Voltar</button>
+        <button type="button" disabled={busy || !(amount && amount > 0) || !accountId || !reason.trim()} onClick={() => void send({ action: 'CHARGEBACK', amount, date, accountId, reason })}
+          className="inline-flex items-center gap-1 rounded-md bg-red-600 px-3 py-1.5 font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+          {busy && <Loader2 size={13} className="animate-spin" />}Registrar
+        </button>
       </div>
     </div>
   )

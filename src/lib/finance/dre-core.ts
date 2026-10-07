@@ -54,6 +54,7 @@ export function sourceDreGroup(source: string | null | undefined, type: 'RECEITA
   if (s === 'VENDA' || s.startsWith('NEG_PGTO_') || s.startsWith('NEG_TROCA_')) return 'REC_VEICULOS'
   if (s === 'COMISSAO' || s === 'RETORNO' || s === 'GARANTIA') return 'DESP_COMISSOES'
   if (s.startsWith('NEG_DEBITO_')) return 'CMV_DOCUMENTACAO'
+  if (s.startsWith('NEG_CHARGEBACK_')) return 'REC_FI'
   if (s.startsWith('VEICULO_')) {
     const cat = s.slice('VEICULO_'.length)
     if (type === 'RECEITA') return cat === 'RETORNO' ? 'REC_FI' : 'REC_OUTRAS'

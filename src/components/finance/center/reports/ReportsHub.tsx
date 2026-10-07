@@ -13,11 +13,12 @@ import { GroupProfitReport, VehicleProfitReport } from './ProfitReports'
 import { AgingReport, BudgetReport, MonthlyComparisonReport } from './PeriodReports'
 import { CancellationReport } from './CancellationReport'
 import { DealResultReport } from './DealResultReport'
+import { TransitReport } from './TransitReport'
 import type { CsvSpec } from './types'
 
 type View =
   | 'resultado-centros' | 'servicos' | 'receitas-fi' | 'despesas-categoria' | 'fornecedores' | 'lucratividade-veiculo' | 'lucratividade-vendedor'
-  | 'lucratividade-unidade' | 'comparativo-mensal' | 'orcado-realizado' | 'aging' | 'cancelamentos' | 'resultado-negociacao'
+  | 'lucratividade-unidade' | 'comparativo-mensal' | 'orcado-realizado' | 'aging' | 'cancelamentos' | 'resultado-negociacao' | 'contratos-transito'
 
 type Filter = 'range' | 'to' | 'regime' | 'costCenter' | 'unit' | 'seller'
 
@@ -34,6 +35,7 @@ const REPORTS: { key: View; label: string; icon: typeof PieChart; filters: Filte
   { key: 'comparativo-mensal', label: 'Comparativo mensal', icon: BarChart3, filters: ['to', 'regime', 'costCenter', 'unit'] },
   { key: 'orcado-realizado', label: 'Orçado × realizado', icon: Target, filters: ['range', 'costCenter', 'unit'] },
   { key: 'aging', label: 'Aging', icon: CalendarClock, filters: ['costCenter', 'unit'] },
+  { key: 'contratos-transito', label: 'Contratos em trânsito', icon: Landmark, filters: ['unit', 'seller'] },
   { key: 'cancelamentos', label: 'Cancelamentos e estornos', icon: Ban, filters: ['range', 'unit', 'seller'] },
 ]
 
@@ -110,7 +112,7 @@ export default function ReportsHub() {
         {has('costCenter') && <SelectInput label="Área / centro" value={costCenterId} onChange={setCostCenterId} all="Todas" options={[...lists.costCenters, { id: 'none', name: 'Sem centro' }]} />}
         {has('unit') && lists.units.length > 1 && <SelectInput label="Unidade" value={unitId} onChange={setUnitId} all="Todas" options={lists.units} />}
         {has('seller') && <SelectInput label="Vendedor" value={sellerId} onChange={setSellerId} all="Todos" options={lists.sellers} />}
-        {!has('range') && !has('to') && <span className="flex items-center gap-1.5 self-center text-xs text-gray-500"><Scale size={13} />Contas em aberto na data de hoje</span>}
+        {!has('range') && !has('to') && <span className="flex items-center gap-1.5 self-center text-xs text-gray-500"><Scale size={13} />Posição de hoje</span>}
       </Toolbar>
 
       {view === 'resultado-centros' && <ResultByCenterReport key={view} {...props} />}
@@ -126,6 +128,7 @@ export default function ReportsHub() {
       {view === 'aging' && <AgingReport key={view} {...props} />}
       {view === 'cancelamentos' && <CancellationReport key={view} {...props} />}
       {view === 'resultado-negociacao' && <DealResultReport key={view} {...props} />}
+      {view === 'contratos-transito' && <TransitReport key={view} {...props} />}
     </div>
   )
 }

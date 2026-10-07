@@ -269,7 +269,7 @@ export type FiRevenueType = (typeof FI_REVENUE_TYPES)[number]['key']
 /** Tipo da receita de F&I: pela origem automática e, nos manuais, pela categoria 2.x. */
 export function fiRevenueType(source: string | null | undefined, categoryCode: string | null | undefined, serviceKind?: string | null): FiRevenueType {
   const s = baseSource(source) ?? ''
-  if (s.startsWith('NEG_RETORNO_') || s === 'VEICULO_RETORNO') return 'RETORNO'
+  if (s.startsWith('NEG_RETORNO_') || s.startsWith('NEG_CHARGEBACK_') || s === 'VEICULO_RETORNO') return 'RETORNO'
   if (s.startsWith('NEG_PLUS_')) return 'PLUS'
   if (s.startsWith('NEG_AGREG_')) return 'AGREGADO'
   if (serviceKind === 'SEGURO') return 'SEGURO'
