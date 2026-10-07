@@ -31,12 +31,15 @@ interface CrmCtx {
   scope: string; sellers: { id: string; name: string | null }[]; units: { id: string; name: string }[]
   canDelete?: boolean
 }
-/** Coluna do quadro: uma etapa do funil ou a coluna "Sem etapa". */
-interface Column { id: string | null; name: string; color: string }
+/** Coluna do quadro: uma etapa do funil, o "Resgate · Mesa SDR" ou "Sem etapa". */
+interface Column { id: string | null; key: string; name: string; color: string }
 interface MoveTarget { label: string; stageId?: string; pipelineId?: string }
 
 const PIPELINE_KEY = 'crm.kanban.pipeline'
 const UNMAPPED_COLOR = '#9ca3af'
+const RESCUE_COLOR = '#0ea5e9'
+const RESCUE_KEY = '__rescue__'
+const UNMAPPED_KEY = '__unmapped__'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtDate(iso: string) {
@@ -182,11 +185,20 @@ function DeleteModal({ lead, onClose, onDeleted }: { lead: LeadRow; onClose: () 
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { setErr(j?.error ?? 'Falha ao excluir.'); return }
       onDeleted()
+    } catch {
+      setErr('Sem conexão com o servidor. Tente de novo.')
     } finally { setBusy(false) }
   }
-  return (
-    <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-800" onClick={e => e.stopPropagation()}>
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose() }
+    document.addEventListener('keydown', esc)
+    return () => document.removeEventListener('keydown', esc)
+  }, [busy, onClose])
+  // Portal no <body>: dentro do card (que tem transform no hover) o
+  // position:fixed ficava preso ao card e o modal saía cortado/travado.
+  return createPortal(
+    <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/50 p-4" onMouseDown={() => { if (!busy) onClose() }}>
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-800" onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-sm font-bold text-gray-900 dark:text-white">
             Excluir lead{lead.leadNumber ? ` #${lead.leadNumber}` : ''}?
@@ -199,20 +211,21 @@ function DeleteModal({ lead, onClose, onDeleted }: { lead: LeadRow; onClose: () 
           <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Motivo <RequiredMark /></span>
           <textarea
             value={reason} onChange={e => setReason(e.target.value)}
-            rows={2}
+            rows={2} autoFocus maxLength={300}
             placeholder="Motivo da exclusão"
             className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-700 dark:text-white"
           />
         </label>
         {err && <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{err}</p>}
         <div className="mt-4 flex gap-2">
-          <button onClick={onClose} className="flex-1 rounded-lg border border-gray-300 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-white/10 dark:text-gray-300">Cancelar</button>
+          <button onClick={onClose} disabled={busy} className="flex-1 rounded-lg border border-gray-300 py-2 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-white/10 dark:text-gray-300">Cancelar</button>
           <button onClick={confirm} disabled={busy} className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
             {busy ? 'Excluindo…' : 'Excluir lead'}
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -348,6 +361,13 @@ export default function CrmKanbanPage() {
   const [error, setError]       = useState<string | null>(null)
   const { settings } = useCrmSettings()
   const [closing, setClosing]   = useState<{ row: LeadRow; target: MoveTarget; outcome: CloseOutcome } | null>(null)
+  const [notice, setNotice]     = useState<string | null>(null)
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const flash = (msg: string) => {
+    setNotice(msg)
+    if (noticeTimer.current) clearTimeout(noticeTimer.current)
+    noticeTimer.current = setTimeout(() => setNotice(null), 6000)
+  }
   const [movingId, setMovingId] = useState<string | null>(null)
   const [search, setSearch]     = useState('')
   const [debSearch, setDebSearch] = useState('')
@@ -366,8 +386,8 @@ export default function CrmKanbanPage() {
       .then(r => r.json())
       .then(j => {
         if (j?.data) {
-          // crm.lead.delete: verifica via scope (gerente+ já tem; permissão fina via UserModule)
-          setCtx({ ...j.data, canDelete: ['all'].includes(j.data.scope) })
+          // canDelete vem do servidor (crm.lead.delete: cargo + regra da loja + exceção do colaborador).
+          setCtx({ ...j.data, canDelete: j.data.canDelete === true })
         }
       }).catch(() => {})
   }, [])
@@ -406,7 +426,10 @@ export default function CrmKanbanPage() {
     setPipelineId(id)
     try { localStorage.setItem(PIPELINE_KEY, id) } catch { /* storage indisponível */ }
   }
-  useEffect(() => () => { if (debTimer.current) clearTimeout(debTimer.current) }, [])
+  useEffect(() => () => {
+    if (debTimer.current) clearTimeout(debTimer.current)
+    if (noticeTimer.current) clearTimeout(noticeTimer.current)
+  }, [])
 
   const pipeline = pipelines.find(p => p.id === pipelineId) ?? null
   const stages: PipelineStage[] = (pipeline?.stages ?? []).filter(s => s.active).sort((a, b) => a.order - b.order)
@@ -416,11 +439,17 @@ export default function CrmKanbanPage() {
     (pipeline?.stages ?? []).filter(s => !s.active && !stages.some(a => a.statusCode === s.statusCode)).map(s => s.statusCode),
   )
   const boardRows = rows.filter(r => r.stageId || !hiddenStatuses.has(r.status))
-  const hasUnmapped = boardRows.some(r => !r.stageId)
+  // Reciclado sem etapa no funil = lead perdido que voltou para a Mesa SDR.
+  const isRescue = (r: LeadRow) => !r.stageId && r.status === 'RECYCLED'
+  const hasRescue = boardRows.some(isRescue)
+  const hasUnmapped = boardRows.some(r => !r.stageId && !isRescue(r))
   const columns: Column[] = [
-    ...stages.map(s => ({ id: s.id, name: s.name, color: s.color })),
-    ...(hasUnmapped ? [{ id: null, name: 'Sem etapa neste funil', color: UNMAPPED_COLOR }] : []),
+    ...stages.map(s => ({ id: s.id, key: s.id, name: s.name, color: s.color })),
+    ...(hasRescue ? [{ id: null, key: RESCUE_KEY, name: 'Resgate · Mesa SDR', color: RESCUE_COLOR }] : []),
+    ...(hasUnmapped ? [{ id: null, key: UNMAPPED_KEY, name: 'Sem etapa neste funil', color: UNMAPPED_COLOR }] : []),
   ]
+  const rowsOf = (col: Column) => boardRows.filter(r =>
+    col.id ? r.stageId === col.id : col.key === RESCUE_KEY ? isRescue(r) : !r.stageId && !isRescue(r))
 
   const moveLead = async (row: LeadRow, target: MoveTarget, lostReason?: string) => {
     if (target.stageId && target.stageId === row.stageId && !target.pipelineId) return
@@ -438,8 +467,9 @@ export default function CrmKanbanPage() {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ stageId: target.stageId, pipelineId: target.pipelineId, lostReason }),
       })
-      const json = await res.json().catch(() => null) as { error?: string } | null
+      const json = await res.json().catch(() => null) as { error?: string; rescuedToSdr?: boolean } | null
       if (!res.ok) { setError(json?.error ?? 'Não foi possível mover o card.'); return }
+      if (json?.rescuedToSdr) flash(`${row.name ?? 'Lead'} foi para o resgate da Mesa SDR.`)
       await load()
     } finally { setMovingId(null) }
   }
@@ -535,6 +565,7 @@ export default function CrmKanbanPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {notice && <span title={notice} className="max-w-[300px] truncate rounded-md bg-sky-50 px-3 py-1 text-xs font-medium text-sky-800 dark:bg-sky-900/30 dark:text-sky-200">{notice}</span>}
           {error && <span title={error} className="max-w-[300px] truncate rounded-md bg-red-50 px-3 py-1 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">{error}</span>}
           <button onClick={() => scrollBoard(-1)} className="hidden sm:flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 dark:border-white/10 dark:bg-slate-800 dark:text-gray-400">
             <ChevronLeft size={15} />
@@ -576,8 +607,8 @@ export default function CrmKanbanPage() {
           ))
         ) : (
           columns.map((stage) => {
-            const stageRows = boardRows.filter(r => r.stageId === stage.id)
-            const colKey = stage.id ?? '__unmapped__'
+            const stageRows = rowsOf(stage)
+            const colKey = stage.key
             return (
               <div key={colKey}
                 onDragOver={stage.id ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dropCol !== colKey) setDropCol(colKey) } : undefined}

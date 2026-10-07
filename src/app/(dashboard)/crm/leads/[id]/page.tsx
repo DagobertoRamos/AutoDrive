@@ -622,6 +622,7 @@ function ActionModal({ action, lead, onClose, onDone }: { action: string; lead: 
   const [dealId, setDealId] = useState(lead.convertedDealId ?? '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [rescued, setRescued] = useState(false)
 
   const titles: Record<string,string> = { convert:'Marcar como sucesso', lose:'Marcar como perdido', recycle:'Reciclar / Compra futura', archive:'Arquivar lead', merge:'Unificar leads' }
 
@@ -639,9 +640,21 @@ function ActionModal({ action, lead, onClose, onDone }: { action: string; lead: 
       const res = await fetch(`/api/crm/leads/${lead.id}/${url}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { setErr(j?.error ?? 'Falha na operação.'); return }
+      if (j?.rescuedToSdr) { setRescued(true); return }
       onDone()
     } finally { setBusy(false) }
   }
+
+  // Perdido com Mesa SDR: o lead saiu do vendedor e foi para o resgate.
+  if (rescued) return (
+    <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-800">
+        <h3 className="text-sm font-bold text-gray-900 dark:text-white">Lead enviado para resgate</h3>
+        <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">O lead foi marcado como perdido e entrou na Caixa de Leads da Mesa SDR para uma nova tentativa. O motivo ficou registrado no histórico.</p>
+        <Link href="/crm/kanban" className="mt-4 block rounded-lg bg-brand-600 py-2 text-center text-sm font-semibold text-white hover:bg-brand-700">Voltar ao funil</Link>
+      </div>
+    </div>
+  )
 
   return (
     <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/50 p-4">
@@ -995,13 +1008,13 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
     return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', k) }
   }, [])
 
+  const [sentToSdr, setSentToSdr] = useState(false)
   const patchLead = async (body: Record<string, unknown>) => {
     setStageError(null)
     const res = await fetch(`/api/crm/leads/${leadId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
-    if (!res.ok) {
-      const j = await res.json().catch(() => null) as { error?: string } | null
-      setStageError(j?.error ?? 'Não foi possível alterar a etapa.')
-    }
+    const j = await res.json().catch(() => null) as { error?: string; rescuedToSdr?: boolean } | null
+    if (!res.ok) setStageError(j?.error ?? 'Não foi possível alterar a etapa.')
+    else if (j?.rescuedToSdr) setSentToSdr(true)
     void load()
   }
 
@@ -1019,6 +1032,10 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
 
   if (loading) return (
     <div className="flex h-64 items-center justify-center"><Loader2 size={24} className="animate-spin text-brand-600" /></div>
+  )
+  // Vendedor que perdeu o lead deixa de vê-lo: ele foi para o resgate do SDR.
+  if (!payload && sentToSdr) return (
+    <div className="rounded-xl border border-sky-200 bg-sky-50 p-8 text-center"><p className="font-semibold text-sky-800">Lead enviado para resgate na Mesa SDR</p><p className="mt-1 text-sm text-sky-700">O motivo da perda ficou registrado no histórico.</p><Link href="/crm/kanban" className="mt-4 inline-block text-sm text-brand-600 hover:underline">← Voltar ao funil</Link></div>
   )
   if (!payload) return (
     <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center"><p className="text-red-700">Lead não encontrado ou sem acesso.</p><Link href="/crm/leads" className="mt-4 inline-block text-sm text-brand-600 hover:underline">← Voltar para leads</Link></div>

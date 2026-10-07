@@ -35,6 +35,7 @@ export interface SlaCfg {
 export interface DistributionCfg {
   autoAssignNew: boolean        // lead criado no CRM sem responsável → motor de distribuição
   runSdrInTick: boolean         // roda SLA+distribuição da Mesa SDR no job periódico
+  rescueLostToSdr: boolean      // lead perdido volta sem dono p/ a Mesa SDR (só se a loja tem SDR)
 }
 
 export interface CrmSettings {
@@ -109,7 +110,7 @@ export function defaultCrmSettings(): CrmSettings {
     // Defaults = comportamento atual (nada exigido, SLA e distribuição desligados).
     requiredFields: { onCreate: [], onConvert: [] },
     sla: { enabled: false, firstContactMinutes: 30, noContactHours: 48, createFollowUpTask: true, escalateToManagers: true },
-    distribution: { autoAssignNew: false, runSdrInTick: false },
+    distribution: { autoAssignNew: false, runSdrInTick: false, rescueLostToSdr: true },
     automations: [],
     rolePermissions: {},
   }
@@ -192,7 +193,7 @@ export function sanitizeCrmSettings(input: unknown): CrmSettings {
   }
 
   const di = (b.distribution && typeof b.distribution === 'object' ? b.distribution : {}) as Record<string, unknown>
-  const distribution = { autoAssignNew: bool(di.autoAssignNew, false), runSdrInTick: bool(di.runSdrInTick, false) }
+  const distribution = { autoAssignNew: bool(di.autoAssignNew, false), runSdrInTick: bool(di.runSdrInTick, false), rescueLostToSdr: bool(di.rescueLostToSdr, true) }
 
   return { temperatures, leadTypes, sources, closeReasons, requiredFields, sla, distribution, automations: sanitizeAutomations(b.automations), rolePermissions: sanitizeRolePermissions(b.rolePermissions) }
 }

@@ -119,6 +119,10 @@ export function DistributionTab({ canManage }: { canManage: boolean }) {
             <input type="checkbox" disabled={!canManage} checked={s.items.runSdrInTick} onChange={(e) => set({ runSdrInTick: e.target.checked })} className={cn(checkCls, 'mt-0.5')} />
             <span>Redistribuir sozinho: rodar o SLA e a distribuição da Mesa SDR a cada minuto <HelpHint {...opsHint('SDR')} /></span>
           </label>
+          <label className="flex items-start gap-2 text-sm text-gray-700">
+            <input type="checkbox" disabled={!canManage} checked={s.items.rescueLostToSdr} onChange={(e) => set({ rescueLostToSdr: e.target.checked })} className={cn(checkCls, 'mt-0.5')} />
+            <span>Resgate: lead perdido volta para a Mesa SDR tentar de novo <HelpHint title="Resgate pela Mesa SDR" text="Ao marcar um lead como perdido, ele sai do vendedor e entra na Caixa de Leads do SDR como reciclado (o motivo da perda fica no histórico). Só vale se a loja tem a Mesa SDR com pelo menos um SDR ativo; sem SDR, o lead fica em Perdido." /></span>
+          </label>
         </div>
         {(s.items.autoAssignNew || s.items.runSdrInTick) && info && !activeAuto && (
           <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Nenhuma política automática ativa. Ative uma em Mesa SDR → Políticas.</p>

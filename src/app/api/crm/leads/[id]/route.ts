@@ -13,6 +13,7 @@ import { validateStageTransition } from '@/lib/crm/transitions'
 import { clearsReturn, unseenReturn } from '@/lib/crm/lead-return'
 import { isMaterialized, loadPipelines, loadPlacement, planLeadMove, resolveLeadPipeline, resolveLeadStage, savePlacement, type MovePlan } from '@/lib/crm/pipelines'
 import { identityLockError } from '@/lib/identity-lock'
+import { rescueLostLeadToSdr } from '@/lib/crm/sdr-rescue'
 
 /** Situação da atribuição no histórico (em português). */
 const ASSIGNMENT_LABEL: Record<string, string> = {
@@ -473,7 +474,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }).catch(() => {})
     }
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'UPDATE', entity: 'MarketingLead', entityId: updated.id, userName: user.name, userRole: user.role })
-    return NextResponse.json({ success: true, data: updated })
+    // Perdido + loja com Mesa SDR → volta para o resgate do SDR.
+    const rescuedToSdr = statusChanges && nextStatus === 'LOST'
+      ? await rescueLostLeadToSdr({ tenantId, leadId: id, reason: String(body.lostReason ?? ''), actor: { id: user.id, name: user.name } })
+      : false
+    return NextResponse.json({ success: true, data: updated, rescuedToSdr })
   } catch (err) {
     return handlePrismaError(err)
   }

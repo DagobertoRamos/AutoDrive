@@ -11,6 +11,7 @@ import { prisma } from '@/lib/prisma'
 import { generateDealNumber } from '@/lib/negotiation-service'
 import { Prisma, type LeadStatus } from '@prisma/client'
 import { OPEN_LEAD_STATUSES } from '@/lib/crm/settings-core'
+import { rescueLostLeadToSdr } from '@/lib/crm/sdr-rescue'
 
 const RESULT_TO_STATUS: Record<string, LeadStatus> = {
   CONVERTED_TO_NEGOTIATION: 'CONVERTED',
@@ -147,6 +148,7 @@ export async function ensureAttendanceLead(opts: AttendanceLeadInput): Promise<A
 
   if (leadId) {
     await prisma.marketingLead.updateMany({ where: { id: leadId, tenantId: opts.tenantId }, data: common }).catch(() => null)
+    if (common.status === 'LOST') await rescueLostLeadToSdr({ tenantId: opts.tenantId, leadId, reason: opts.result, actor: { id: opts.actorId } })
     return { leadId, dealId, customerId }
   }
 
@@ -158,5 +160,6 @@ export async function ensureAttendanceLead(opts: AttendanceLeadInput): Promise<A
       ...common,
     },
   }).catch(() => null)
+  if (created && common.status === 'LOST') await rescueLostLeadToSdr({ tenantId: opts.tenantId, leadId: created.id, reason: opts.result, actor: { id: opts.actorId } })
   return { leadId: created?.id ?? null, dealId, customerId }
 }

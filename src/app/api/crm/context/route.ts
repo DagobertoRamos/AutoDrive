@@ -20,9 +20,11 @@ export async function GET(req: Request) {
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
 
-  const [scope, attendanceScope] = await Promise.all([
+  const [scope, attendanceScope, canDelete] = await Promise.all([
     resolveCrmScope(user),
     resolveCrmAttendanceScope(user),
+    // Excluir lead: gerente+ (Vendedor Líder só se a loja liberar no CRM).
+    canAccessModuleForUser(user, 'crm.lead.delete'),
   ])
   if (!scope && !attendanceScope) return forbiddenResponse('Sem acesso ao CRM.')
   // Usa o scope mais amplo para carregar as listas de filtros.
@@ -57,6 +59,7 @@ export async function GET(req: Request) {
       unitId: user.unitId,
       sellers,
       units,
+      canDelete,
     },
   })
 }

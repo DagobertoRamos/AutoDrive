@@ -11,6 +11,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
 import { fireAutomations } from '@/lib/crm/automations'
+import { rescueLostLeadToSdr } from '@/lib/crm/sdr-rescue'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,6 +48,10 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
     }
     if (lead.status !== outcome) await fireAutomations(tenantId, 'STAGE_ENTERED', id)
     await createSafeAuditLog({ userId: user.id, tenantId, action: outcome, entity: 'MarketingLead', entityId: id, userName: user.name, userRole: user.role, afterData: { reason, competitor, recycleAt } })
-    return NextResponse.json({ success: true })
+    // Perdido + loja com Mesa SDR → volta para o resgate do SDR.
+    const rescuedToSdr = outcome === 'LOST' && lead.status !== 'LOST'
+      ? await rescueLostLeadToSdr({ tenantId, leadId: id, reason, actor: { id: user.id, name: user.name } })
+      : false
+    return NextResponse.json({ success: true, rescuedToSdr })
   } catch (err) { return handlePrismaError(err) }
 }

@@ -57,7 +57,7 @@ describe('Fase B — regras', () => {
     const s = sanitizeCrmSettings({ sla: { enabled: true, firstContactMinutes: 1, noContactHours: 'x' }, requiredFields: { onCreate: ['phone', 'hack', 'phone'] }, distribution: { autoAssignNew: 1 } })
     expect(s.sla).toMatchObject({ enabled: true, firstContactMinutes: 5, noContactHours: 48 })
     expect(s.requiredFields).toEqual({ onCreate: ['phone'], onConvert: [] })
-    expect(s.distribution).toEqual({ autoAssignNew: true, runSdrInTick: false })
+    expect(s.distribution).toEqual({ autoAssignNew: true, runSdrInTick: false, rescueLostToSdr: true })
     expect(sanitizeCrmSettings({}).sla.enabled).toBe(false)
   })
 
