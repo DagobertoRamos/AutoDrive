@@ -46,7 +46,13 @@ async function walk(
   steps: Map<string, PurgeStep>, cache: Map<string, FkRef[]>, depth: number,
 ): Promise<void> {
   if (depth > MAX_DEPTH) throw new Error(`Cadeia de dependências profunda demais em ${table}.`)
-  for (const ref of await refsTo(tx, table, cache)) {
+  const refs = await refsTo(tx, table, cache)
+  // Auto-referência obrigatória (ex.: resposta presa a um comentário): os
+  // descendentes entram no mesmo conjunto, senão o DELETE do pai falha.
+  for (const self of refs.filter((r) => r.table === table && r.notNull)) {
+    where = `${q(self.refColumn)} in (with recursive t as (select ${q(self.refColumn)} as k from ${q(table)} where ${where} union select c.${q(self.refColumn)} from ${q(table)} c join t on c.${q(self.column)} = t.k) select k from t)`
+  }
+  for (const ref of refs) {
     const sub = `${q(ref.column)} in (select ${q(ref.refColumn)} from ${q(table)} where ${where})`
     if (!ref.notNull) {
       const key = `${ref.table}.${ref.column}`
@@ -55,7 +61,7 @@ async function walk(
         : Number((await tx.$queryRawUnsafe<{ n: bigint }[]>(`select count(*) as n from ${q(ref.table)} where ${sub}`, ...params))[0]?.n ?? 0)
       if (n) steps.set(key, { table: ref.table, action: 'unlink', count: (steps.get(key)?.count ?? 0) + n })
     } else if (ref.table === table) {
-      // Auto-referência obrigatória: não há como desvincular — o DELETE abaixo falha e aborta tudo.
+      // Auto-referência obrigatória: já incluída no conjunto acima.
       continue
     } else {
       await walk(tx, ref.table, sub, params, apply, steps, cache, depth + 1)

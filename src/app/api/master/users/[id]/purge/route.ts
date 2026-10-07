@@ -8,7 +8,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireMaster, logMasterAction } from '@/lib/master-guards'
-import { handlePrismaError } from '@/lib/prisma-errors'
 import { prisma } from '@/lib/prisma'
 import { purgeUser, PURGE_TABLE_LABELS } from '@/lib/master/purge-user'
 
@@ -44,7 +43,7 @@ export async function GET(_req: NextRequest, ctxArg: Ctx) {
     const steps = await prisma.$transaction((tx) => purgeUser(tx, r.user.id, false), { timeout: 30_000 })
     return NextResponse.json({ success: true, data: steps.map((s) => ({ ...s, label: label(s.table) })) })
   } catch (err) {
-    return handlePrismaError(err)
+    return purgeError(err)
   }
 }
 
@@ -75,6 +74,17 @@ export async function POST(req: NextRequest, ctxArg: Ctx) {
     })
   } catch (err) {
     console.error('[purge user]', err)
-    return handlePrismaError(err)
+    return purgeError(err)
   }
+}
+
+/** Erro do banco legível para o MASTER (tabela/regra que bloqueou), nada é apagado. */
+function purgeError(err: unknown) {
+  const e = err as { code?: string; message?: string; meta?: { message?: string; code?: string } }
+  const raw = String(e.meta?.message ?? e.message ?? '')
+  const fk = raw.match(/on table "([^"]+)" violates foreign key constraint "([^"]+)" on table "([^"]+)"/)
+  const text = fk
+    ? `A exclusão foi bloqueada: registros em "${label(fk[3])}" ainda apontam para "${label(fk[1])}" (${fk[2]}). Nada foi apagado.`
+    : `Falha no banco${e.meta?.code ? ` (${e.meta.code})` : e.code ? ` (${e.code})` : ''}: ${raw.split(/\r?\n/).filter(Boolean).slice(-1)[0]?.slice(0, 300) || 'erro desconhecido'}. Nada foi apagado.`
+  return NextResponse.json({ success: false, error: text }, { status: 409 })
 }
