@@ -7,6 +7,7 @@
 // Body: { stockType?: PROPRIO|CONSIGNADO, salePrice?, purchasePrice?, notes? }
 // =============================================================================
 
+import { publishOpsEvent } from '@/lib/automotive/events'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -140,6 +141,8 @@ export async function POST(req: NextRequest, ctxArg: { params: Promise<{ id: str
     await notifySeller(ev, 'Veículo liberado para o estoque',
       `${evalLabel(ev)} entrou no estoque (pendente de recebimento).`, `/estoque/${vehicle.id}`)
 
+    // Operação de entrada (TXN): RENAVE de entrada e NF-e de entrada passam a ser acompanhados.
+    await publishOpsEvent('vehicle.stock_entered', vehicle.id, { vehicleId: vehicle.id, actor: { id: session.user.id, name: session.user.name ?? null, role: session.user.role } }, ev.tenantId ?? null)
     return NextResponse.json({ data: { vehicleId: vehicle.id, evaluationId: id, pendencies: pendencies.map((p) => p.label) } }, { status: 201 })
   } catch (err) {
     if (err instanceof Error && err.message === 'ALREADY_IN_STOCK') {

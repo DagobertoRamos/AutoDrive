@@ -36,6 +36,7 @@ import { LedgerPanel } from '@/components/estoque/prep/LedgerPanel'
 import { DealPeekLink } from '@/components/deals/DealPeek'
 import { HelpHint, WithHint } from '@/components/ui/help-hint'
 import { opsText } from '@/lib/glossary-ops'
+import { VehicleOperationsCard } from '@/components/operations/VehicleOperationsCard'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -429,6 +430,8 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
 
         {/* ── Resumo ── */}
         {activeTab === 'resumo' && (
+          <div className="space-y-6">
+          <VehicleOperationsCard vehicleId={vehicle.id} stockType={vehicle.stockType} onGoToTab={setActiveTab} />
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div>
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
@@ -488,6 +491,7 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
                 </div>
               )}
             </div>
+          </div>
           </div>
         )}
 

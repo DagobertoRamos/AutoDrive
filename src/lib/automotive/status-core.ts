@@ -124,12 +124,16 @@ export function overallStatus(op: OperationDimensions): OverallStatus {
 
   // 5) Fluxo pós-fechamento, na ordem real de execução.
   if (sale) {
-    if (!isDone('financialStatus', op.financialStatus)) return { label: 'VENDIDO', tone: 'progress', message: 'Aguardando pagamento.', nextAction: { key: 'finance.view', label: 'Ver pagamentos' } }
-    if (op.financingStatus !== 'NOT_APPLICABLE' && op.financingStatus !== 'BANK_PAID' && op.financingStatus !== 'LIEN_REGISTERED') {
-      return { label: 'VENDIDO', tone: 'progress', message: op.financingStatus === 'CONTRACT_SIGNED' ? 'Aguardando inclusão do gravame.' : 'Aguardando contrato do financiamento.', nextAction: { key: 'finance.view', label: 'Ver financiamento' } }
+    // À vista: pagamento antes de tudo. Financiada: F&I até o gravame, e o
+    // dinheiro do banco só depois da nota e do RENAVE.
+    const financed = op.financingStatus !== 'NOT_APPLICABLE'
+    if (!financed && !isDone('financialStatus', op.financialStatus)) return { label: 'VENDIDO', tone: 'progress', message: 'Aguardando pagamento.', nextAction: { key: 'finance.view', label: 'Ver pagamentos' } }
+    if (financed && op.financingStatus !== 'BANK_PAID' && op.financingStatus !== 'LIEN_REGISTERED') {
+      return { label: 'VENDIDO', tone: 'progress', message: op.financingStatus === 'CONTRACT_SIGNED' ? 'Aguardando inclusão do gravame.' : 'Aguardando contrato do financiamento.', nextAction: op.financingStatus === 'CONTRACT_SIGNED' ? { key: 'financing.lien', label: 'Informar gravame' } : { key: 'finance.view', label: 'Ver financiamento' } }
     }
     if (!isDone('fiscalStatus', op.fiscalStatus)) return { label: 'VENDIDO', tone: 'attention', message: op.fiscalStatus === 'PROCESSING' ? 'NF-e de saída em processamento.' : 'NF-e de saída pendente.', nextAction: op.fiscalStatus === 'PROCESSING' ? null : { key: 'fiscal.issue', label: 'Vincular NF-e' } }
     if (!renaveDoneFor(k, op.renaveStatus)) return { label: 'VENDIDO', tone: 'attention', message: op.renaveStatus === 'EXIT_SUBMITTED' ? 'Saída enviada ao RENAVE, aguardando confirmação.' : 'Saída no RENAVE pendente.', nextAction: op.renaveStatus === 'EXIT_SUBMITTED' ? null : { key: 'renave.exit', label: 'Registrar saída' } }
+    if (financed && op.financingStatus !== 'BANK_PAID' && !isDone('financialStatus', op.financialStatus)) return { label: 'VENDIDO', tone: 'progress', message: 'Aguardando pagamento do banco.', nextAction: { key: 'finance.view', label: 'Ver financiamento' } }
     if (!isDone('transferStatus', op.transferStatus)) {
       const stage = op.transferStatus as TransferStage
       const waitingBuyer = stage === 'SELLER_SIGNED'

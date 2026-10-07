@@ -11,6 +11,7 @@ import {
   Plus, Car, RotateCcw, X, Tag,
 } from 'lucide-react'
 import Link from 'next/link'
+import { StockComplianceStrip } from '@/components/operations/StockComplianceStrip'
 import { VehicleCard } from '@/components/estoque/VehicleCard'
 import { VehicleListTable } from '@/components/estoque/VehicleListTable'
 import { canAccessModule } from '@/lib/permissions'
@@ -321,6 +322,9 @@ export default function EstoquePage() {
           )}
         </div>
       </div>
+
+      {/* Indicadores críticos: estoque × RENAVE × fiscal */}
+      <StockComplianceStrip />
 
       {/* Barra de busca + controles */}
       <div className="flex flex-wrap items-center gap-3">

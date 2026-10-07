@@ -208,6 +208,21 @@ export type Module =
   | 'queue.force_skip_turn'
   | 'queue.vacations.manage'    // gerir férias/ausências da fila (gestão)
   | 'queue.sellers.manage'      // gerir participação dos vendedores na fila (gestão)
+  // ── Operações veiculares (RENAVE, fiscal, transferência, compliance) ──
+  | 'ops.renave.view'           // ver situação RENAVE
+  | 'ops.renave.operate'        // registrar/cancelar entrada e saída no RENAVE
+  | 'ops.fiscal.view'           // ver notas fiscais da operação
+  | 'ops.fiscal.issue'          // emitir/vincular NF-e
+  | 'ops.fiscal.cancel'         // cancelar NF-e
+  | 'ops.transfer.view'         // ver transferência de propriedade
+  | 'ops.transfer.start'        // iniciar/avançar transferência
+  | 'ops.documents.view'        // dossiê de documentos do veículo
+  | 'ops.compliance.manage'     // restrições, gravame, vistorias, consignação
+  | 'ops.store_transfer'        // transferir veículo entre lojas
+  | 'ops.settings'              // configurar provedores, regras e certificado
+  | 'ops.costs.view'            // ver custo do veículo
+  | 'ops.margin.view'           // ver margem da operação
+  | 'ops.logs.view'             // ver detalhes técnicos das integrações
 
 // ── Hierarquia numérica de roles ─────────────────────────────────────────────
 // Quanto maior, mais alto na hierarquia
@@ -854,6 +869,22 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   'queue.force_skip_turn': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['update'] },
   'queue.vacations.manage': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['read', 'create', 'update', 'delete'] },
   'queue.sellers.manage': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['read', 'update', 'configure'] },
+
+  // ── Operações veiculares ───────────────────────────────────────────────────
+  'ops.renave.view':       { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO'], actions: ['read'] },
+  'ops.renave.operate':    { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['read', 'create', 'update'] },
+  'ops.fiscal.view':       { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO'], actions: ['read'] },
+  'ops.fiscal.issue':      { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'FINANCEIRO'], actions: ['read', 'create'] },
+  'ops.fiscal.cancel':     { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'FINANCEIRO'], actions: ['read', 'update'] },
+  'ops.transfer.view':     { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO'], actions: ['read'] },
+  'ops.transfer.start':    { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['read', 'create', 'update'] },
+  'ops.documents.view':    { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO'], actions: ['read'] },
+  'ops.compliance.manage': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['read', 'create', 'update'] },
+  'ops.store_transfer':    { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'], actions: ['read', 'create', 'update'] },
+  'ops.settings':          { roles: ['MASTER', 'ADM'], actions: ['read', 'update', 'configure'] },
+  'ops.costs.view':        { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE', 'FINANCEIRO'], actions: ['read'] },
+  'ops.margin.view':       { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'FINANCEIRO'], actions: ['read'] },
+  'ops.logs.view':         { roles: ['MASTER', 'ADM'], actions: ['read'] },
 }
 
 // ── API pública ───────────────────────────────────────────────────────────────

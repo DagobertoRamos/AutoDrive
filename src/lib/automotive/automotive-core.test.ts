@@ -112,6 +112,7 @@ describe('chamadas externas', () => {
     expect(planExternalCall({ state: 'UNKNOWN', attempts: 1 })).toBe('CHECK_STATUS')
     expect(planExternalCall({ state: 'SUBMITTED', attempts: 1 })).toBe('CHECK_STATUS')
     expect(planExternalCall({ state: 'REJECTED', attempts: 1 })).toBe('RESUBMIT')
+    expect(planExternalCall({ state: 'CANCELLED', attempts: 1 })).toBe('RESUBMIT')
   })
   it('timeout = UNKNOWN; recusa = REJECTED', () => {
     expect(stateFromError(new Error('ETIMEDOUT'))).toBe('UNKNOWN')

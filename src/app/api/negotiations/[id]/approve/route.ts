@@ -2,6 +2,8 @@
 // POST /api/negotiations/[id]/approve — Aprovar negociação
 // =============================================================================
 
+import { saleBlockers, saleBlockedMessage } from '@/lib/automotive/overview'
+import { publishOpsEvent } from '@/lib/automotive/events'
 import { NextResponse, type NextRequest } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma }               from '@/lib/prisma'
@@ -43,6 +45,11 @@ export async function POST(
 
     if (!APPROVABLE_STATUSES.has(deal.status)) {
       return NextResponse.json({ error: await alreadyApprovedMessage(params.id, deal.status) }, { status: 409 })
+    }
+
+    {
+      const blocked = await saleBlockers(deal.vehicles.filter((v) => v.role === 'VENDIDO' && v.vehicleId).map((v) => v.vehicleId!))
+      if (blocked.length) return NextResponse.json({ error: saleBlockedMessage(blocked), blockers: blocked }, { status: 409 })
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -166,6 +173,8 @@ export async function POST(
     // as comissões recém-geradas viram lançamentos.
     await syncDealFinanceSafe(params.id)
     await syncTenantFinance(deal.tenantId ?? null).catch((e) => console.error('[approve] financeiro', e))
+    // Operações veiculares (TXN): venda reservada + entrada do carro da troca.
+    await publishOpsEvent('deal.approved', `${params.id}:${Date.now()}`, { dealId: params.id, actor: { id: session.user.id, name: session.user.name ?? null, role: session.user.role } }, deal.tenantId ?? null)
 
     return NextResponse.json({
       data: updated,

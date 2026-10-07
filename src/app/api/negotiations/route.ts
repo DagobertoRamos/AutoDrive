@@ -2,6 +2,7 @@
 // /api/negotiations — Listar e criar negociações
 // =============================================================================
 
+import { saleBlockers, saleBlockedMessage } from '@/lib/automotive/overview'
 import { NextResponse, type NextRequest } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma }               from '@/lib/prisma'
@@ -316,6 +317,12 @@ export async function POST(req: NextRequest) {
       if (!vid) continue
       const ok = await prisma.vehicle.findFirst({ where: { id: String(vid), tenantId: session.user.tenantId ?? undefined }, select: { id: true } })
       if (!ok) return NextResponse.json({ error: 'Veículo inválido para esta loja.' }, { status: 400 })
+    }
+
+    // Compliance: carro com pendência que impede a venda não entra em negociação de venda.
+    if (vehicle?.vehicleId && (type === 'VENDA' || type === 'TROCA')) {
+      const blocked = await saleBlockers([String(vehicle.vehicleId), ...(Array.isArray(extraVehicles) ? extraVehicles.map((v: { vehicleId?: string }) => v?.vehicleId).filter(Boolean) as string[] : [])])
+      if (blocked.length) return NextResponse.json({ error: saleBlockedMessage(blocked), blockers: blocked }, { status: 409 })
     }
 
     let heldExtra: string[] = []

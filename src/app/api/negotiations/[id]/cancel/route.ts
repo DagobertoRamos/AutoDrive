@@ -27,6 +27,7 @@ import { notifySaleCancelled, notifyStockChanged } from '@/lib/publications/serv
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 import { syncTenantFinance } from '@/lib/finance/finance-sync'
 import { notifyDealCancelled } from '@/services/notification.service'
+import { publishOpsEvent } from '@/lib/automotive/events'
 
 export async function POST(
   req: NextRequest,
@@ -85,8 +86,10 @@ export async function POST(
   const returned: string[] = []
   try {
     const updated = await prisma.$transaction(async (tx) => {
-      const d = await tx.deal.update({
-        where: { id: params.id },
+      // Trava: só cancela se o status ainda é o validado (dois cliques/abas não
+      // devolvem estoque nem estornam comissão duas vezes).
+      const locked = await tx.deal.updateMany({
+        where: { id: params.id, status: deal.status },
         data: {
           status:          'CANCELADA',
           cancelledAt:     new Date(),
@@ -94,6 +97,8 @@ export async function POST(
           cancelledReason: body.reason,
         },
       })
+      if (locked.count !== 1) throw new Error('DEAL_STATUS_CHANGED')
+      const d = await tx.deal.findUniqueOrThrow({ where: { id: params.id } })
 
       // Devolve ao estoque o carro que esta venda segurava (em negociação/reservado
       // ou já vendido, se finalizada) e que nenhuma outra venda segura.
@@ -171,6 +176,9 @@ export async function POST(
     const actor = { id: session.user.id, name: session.user.name ?? null }
     notifySaleCancelled(deal.tenantId, deal.vehicles.map((dv) => (dv.role === 'VENDIDO' ? dv.vehicleId : null)), actor)
     notifyStockChanged(deal.tenantId, returned, actor)
+    // Operações veiculares: marca canceladas; o que já foi feito fora (NF-e, RENAVE)
+    // vira pendência de cancelamento — nunca é apagado.
+    await publishOpsEvent('deal.cancelled', `${params.id}:${updated.cancelledAt?.toISOString() ?? Date.now()}`, { dealId: params.id, actor: { id: session.user.id, name: session.user.name ?? null, role: session.user.role } }, deal.tenantId ?? null)
 
     let commissionCancelResult: Awaited<ReturnType<typeof cancelCommissionsForDeal>> | null = null
     try {
@@ -213,6 +221,7 @@ export async function POST(
     await syncTenantFinance(deal.tenantId ?? null).catch((e) => console.error('[cancel] financeiro', e))
     return NextResponse.json({ data: updated, commissionCancelResult })
   } catch (err) {
+    if (err instanceof Error && err.message === 'DEAL_STATUS_CHANGED') return NextResponse.json({ error: 'A negociação mudou enquanto cancelava. Atualize a tela.' }, { status: 409 })
     return handlePrismaError(err)
   }
 }

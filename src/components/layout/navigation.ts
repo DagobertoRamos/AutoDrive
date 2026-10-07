@@ -471,6 +471,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Loja',       href: '/configuracoes/loja',       icon: Building2,  module: 'settings' },
       { label: 'Identidade', href: '/configuracoes/identidade', icon: Palette,    module: 'settings.identity' },
       { label: 'F&I',        href: '/configuracoes/fi',         icon: Banknote,   module: 'financing.config' },
+      { label: 'Operações',  href: '/configuracoes/operacoes',  icon: ShieldCheck, module: 'ops.settings' },
       { label: 'Perfil',     href: '/perfil',                   icon: UserCircle, module: 'profile' },
     ],
   },

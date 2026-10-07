@@ -11,14 +11,15 @@ export type CallPlan =
   | 'SUBMIT'           // nunca enviado → enviar
   | 'RETURN_EXISTING'  // já concluído → devolver o que existe (clique duplo)
   | 'CHECK_STATUS'     // enviado sem resposta final → consultar o provedor, NÃO reenviar
-  | 'RESUBMIT'         // recusado → pode enviar de novo (nova tentativa, nova chave)
+  | 'RESUBMIT'         // recusado/revertido → pode enviar de novo (nova tentativa, nova chave)
 
 export function planExternalCall(existing: { state: string; attempts: number } | null): CallPlan {
   if (!existing) return 'SUBMIT'
   switch (existing.state) {
-    case 'CONFIRMED':
-    case 'CANCELLED': return 'RETURN_EXISTING'
-    case 'REJECTED': return 'RESUBMIT'
+    case 'CONFIRMED': return 'RETURN_EXISTING'
+    // Recusado ou revertido (ex.: saída cancelada): refazer é nova tentativa.
+    case 'REJECTED':
+    case 'CANCELLED': return 'RESUBMIT'
     case 'PENDING': return existing.attempts === 0 ? 'SUBMIT' : 'CHECK_STATUS'
     default: return 'CHECK_STATUS'
   }

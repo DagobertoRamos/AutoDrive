@@ -18,6 +18,8 @@ import { notifyStockChanged } from '@/lib/publications/service'
 import { resolveNegotiationGate } from '@/lib/stock/intake'
 import { generateOnFinalize } from '@/lib/negotiation/contracts/generate'
 import { runTracked } from '@/lib/finance/integration-retry'
+import { saleBlockers, saleBlockedMessage } from '@/lib/automotive/overview'
+import { publishOpsEvent } from '@/lib/automotive/events'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,6 +63,13 @@ export async function POST(
       { error: `Apenas negociações nos status ${Array.from(FINALIZABLE_STATUSES).join(', ')} podem ser finalizadas` },
       { status: 409 },
     )
+  }
+
+  // Compliance: pendência crítica (restrição judicial, roubo/furto, régua BLOCK da loja)
+  // impede concluir a venda — nem o "forçar" do saldo passa por cima.
+  {
+    const blocked = await saleBlockers(deal.vehicles.filter((v) => v.role === 'VENDIDO' && v.vehicleId).map((v) => v.vehicleId!))
+    if (blocked.length) return NextResponse.json({ error: saleBlockedMessage(blocked), blockers: blocked }, { status: 409 })
   }
 
   // Bloqueio de saldo em aberto
@@ -194,6 +203,10 @@ export async function POST(
     // Contrato de compra e venda (e termo de intermediação, se a loja intermedeia)
     // gerado com os dados da venda — aparece na aba Contratos. Não bloqueia.
     await generateOnFinalize(params.id, session.user.id)
+
+    // Operações veiculares: venda vendida → NF-e de saída, saída RENAVE e
+    // transferência ficam pendentes; carro da troca → entrada. Não bloqueia.
+    await publishOpsEvent('deal.finalized', `${params.id}:${updated.finalizedAt?.toISOString() ?? Date.now()}`, { dealId: params.id, actor: { id: session.user.id, name: session.user.name ?? null, role: session.user.role } }, deal.tenantId ?? null)
 
     const cr = commissionResult as Awaited<ReturnType<typeof generateCommissionsForDeal>> | null
     return NextResponse.json({

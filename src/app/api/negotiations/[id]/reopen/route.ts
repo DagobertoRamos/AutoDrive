@@ -15,6 +15,7 @@ import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 import { revertClawbacksForDeal } from '@/lib/commission/sync'
 import { syncTenantFinance } from '@/lib/finance/finance-sync'
+import { publishOpsEvent } from '@/lib/automotive/events'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,6 +52,9 @@ export async function POST(
   const previousStatus = deal.status
   try {
     const updated = await prisma.$transaction(async (tx) => {
+      // Trava: dois cliques não reabrem (nem registram reabertura) duas vezes.
+      const locked = await tx.deal.updateMany({ where: { id: params.id, status: previousStatus }, data: { status: 'REABERTA' as any, finalizedAt: null } })
+      if (locked.count !== 1) throw new Error('DEAL_STATUS_CHANGED')
       await tx.dealReopenLog.create({
         data: {
           dealId:         params.id,
@@ -60,10 +64,7 @@ export async function POST(
           previousStatus,
         },
       })
-      const d = await tx.deal.update({
-        where: { id: params.id },
-        data:  { status: 'REABERTA' as any, finalizedAt: null },
-      })
+      const d = await tx.deal.findUniqueOrThrow({ where: { id: params.id } })
       await createStatusHistory(tx as any, params.id, previousStatus, 'REABERTA', session.user.id!, `Reaberta: ${reason}`)
       await createDealAudit(tx as any, {
         dealId:   params.id,
@@ -92,6 +93,10 @@ export async function POST(
       await syncTenantFinance(deal.tenantId).catch((e) => console.error('[reopen] financeiro', e))
     }
     await syncDealFinanceSafe(params.id)
+    await publishOpsEvent('deal.reopened', `${params.id}:${Date.now()}`, { dealId: params.id, actor: { id: session.user.id!, name: session.user.name ?? null, role: session.user.role } }, deal.tenantId ?? null)
     return NextResponse.json({ data: updated })
-  } catch (err) { return handlePrismaError(err) }
+  } catch (err) {
+    if (err instanceof Error && err.message === 'DEAL_STATUS_CHANGED') return NextResponse.json({ error: 'A negociação mudou enquanto reabria. Atualize a tela.' }, { status: 409 })
+    return handlePrismaError(err)
+  }
 }
