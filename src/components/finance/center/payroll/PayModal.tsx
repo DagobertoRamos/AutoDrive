@@ -54,13 +54,14 @@ export default function PayModal({ employee, month, accounts, onClose, onPaid }:
     if (!accountId || !paidDate) { setError('Informe a conta e a data do pagamento.'); return }
     if (!entryIds.size && !comIds.size) { setError('Selecione o que pagar.'); return }
     setSaving(true); setError(null)
-    const r = await api<{ result: { paidEntries: number; paidCommissions: number; discounted: number; total: number } }>('/api/finance/payroll/pay', {
+    const r = await api<{ result: { paidEntries: number; paidCommissions: number; discounted: number; total: number; held?: string[] } }>('/api/finance/payroll/pay', {
       method: 'POST',
       body: { month, userId: employee.userId, accountId, paidDate, entryIds: [...entryIds], commissionIds: [...comIds], discountAdvances: discount, note: note.trim() || null },
     })
     setSaving(false)
     if (!r.ok) { setError(r.error); return }
-    onPaid(`Pagamento de ${employee.name} registrado: ${brl(r.data?.result.total ?? 0)}.`)
+    const held = r.data?.result.held ?? []
+    onPaid(`Pagamento de ${employee.name} registrado: ${brl(r.data?.result.total ?? 0)}.${held.length ? ` ${held.length} comissão(ões) aguardando recebimento.` : ''}`)
   }
 
   const Check = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (

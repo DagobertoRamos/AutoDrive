@@ -15,6 +15,7 @@ import { applyStatusSideEffects } from './entry-settlement'
 import { noonUtc } from './recurrence-core'
 import { periodError } from './period-lock'
 import { approvalGate } from './approvals'
+import { commissionHoldReason } from './commission-release'
 import { partialBlockedReason, partialSource, planSettlement, principalOf } from './settlement-core'
 
 export interface SettleTitleInput {
@@ -59,6 +60,8 @@ export async function settleTitle(tenantId: string | null, entryId: string, inpu
   if (e.commissionCalculationId) {
     const c = await prisma.commissionCalculation.findUnique({ where: { id: e.commissionCalculationId }, select: { status: true } })
     if (c?.status === 'CANCELADO') return { error: 'Comissão cancelada: não pode ser paga.' }
+    const hold = await commissionHoldReason(e.tenantId, e.commissionCalculationId)
+    if (hold) return { error: hold }
   }
 
   // Valor negativo (vale/débito de comissão): só quitação integral, sem juros/desconto.

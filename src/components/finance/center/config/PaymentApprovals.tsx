@@ -9,13 +9,14 @@ import { cn } from '@/lib/utils'
 import { MoneyInput } from '@/components/ui/money-input'
 import { APPROVER_ROLES, ROLE_LABEL, type ApprovalConfig } from '@/lib/finance/approvals-core'
 import { PageHeader, Toggle, api, brl } from './ui'
+import { HelpHint } from '@/components/ui/help-hint'
 
 interface Item {
   id: string; entryId: string; amount: number; roles: string[]; status: 'PENDENTE' | 'APROVADO' | 'RECUSADO'; reason: string | null
   requestedById: string | null; requestedBy: string | null; createdAt: string; decidedBy: string | null; decidedAt: string | null
   entry: { description: string; dueDate: string | null; counterparty: string | null; status: string } | null
 }
-interface Data { config: ApprovalConfig; items: Item[]; ready: boolean; canConfigure: boolean; role: string; userId: string }
+interface Data { config: ApprovalConfig; commissionRelease: 'APROVACAO' | 'RECEBIMENTO'; items: Item[]; ready: boolean; canConfigure: boolean; role: string; userId: string }
 
 const ST: Record<Item['status'], [string, string]> = { PENDENTE: ['Pendente', 'bg-amber-100 text-amber-800'], APROVADO: ['Aprovado', 'bg-green-100 text-green-700'], RECUSADO: ['Recusado', 'bg-red-100 text-red-700'] }
 const dt = (s: string | null) => (s ? new Date(s).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—')
@@ -49,6 +50,12 @@ export default function PaymentApprovals() {
     setBusy(null)
     setMsg(r.ok ? { ok: true, text: 'Alçadas salvas.' } : { ok: false, text: r.error ?? 'Erro.' })
     if (r.ok) { setEditing(false); void load() }
+  }
+
+  const saveRelease = async (mode: string) => {
+    const r = await api('/api/finance/center/approvals', { method: 'POST', body: { action: 'COMMISSION_RELEASE', mode } })
+    setMsg(r.ok ? { ok: true, text: 'Liberação de comissão salva.' } : { ok: false, text: r.error ?? 'Erro.' })
+    if (r.ok) void load()
   }
 
   const canDecide = (it: Item) => !!d && it.status === 'PENDENTE' && (['ADM', 'MASTER'].includes(d.role) || (it.roles.includes(d.role) && it.requestedById !== d.userId))
@@ -89,6 +96,13 @@ export default function PaymentApprovals() {
             ))}
             <button type="button" onClick={() => setCfg({ ...cfg, bands: [...cfg.bands.slice(0, -1), { upTo: null, roles: ['FINANCEIRO'] }, cfg.bands[cfg.bands.length - 1]].map((x, k, all) => (k === all.length - 2 ? { ...x, upTo: (all[k - 1]?.upTo ?? cfg.exemptUpTo) * 2 || 1000 } : x)) })} className="inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:underline"><Plus size={14} />Faixa</button>
           </div>
+          <label className="flex items-center justify-between gap-3 border-t border-gray-100 pt-4 text-sm text-gray-700">
+            <span className="inline-flex items-center gap-1">Pagar comissão<HelpHint size={13} text="Na aprovação: a comissão pode ser paga assim que a venda é aprovada. Após o recebimento: só depois que o financeiro conciliou todo o valor da venda (bônus e descontos não dependem disso)." /></span>
+            <select className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={d?.commissionRelease ?? 'APROVACAO'} onChange={(e) => void saveRelease(e.target.value)}>
+              <option value="APROVACAO">Na aprovação da venda</option>
+              <option value="RECEBIMENTO">Após o recebimento</option>
+            </select>
+          </label>
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => { setEditing(false); setCfg(d?.config ?? null) }} className="btn-secondary text-sm">Voltar</button>
             <button type="button" disabled={busy === 'cfg'} onClick={() => void saveCfg()} className="btn-primary text-sm">{busy === 'cfg' && <Loader2 size={14} className="animate-spin" />}Salvar</button>

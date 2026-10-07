@@ -12,6 +12,8 @@
 
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { periodError } from './period-lock'
+import { commissionHoldReason } from './commission-release'
 import { ensureFinanceSetup } from './setup'
 import { applyStatusSideEffects } from './entry-settlement'
 import { syncTenantFinance } from './finance-sync'
@@ -213,14 +215,18 @@ export interface PayInput {
   note?: string | null
 }
 
-export interface PayResult { paidEntries: number; paidCommissions: number; discounted: number; total: number }
+export interface PayResult { paidEntries: number; paidCommissions: number; discounted: number; total: number; /** Comissões não pagas por aguardarem o recebimento. */ held: string[] }
 
 const noon = (ymd: string) => new Date(`${ymd.slice(0, 10)}T12:00:00.000Z`)
 
-async function settle(id: string, paidDate: Date, accountId: string, extra: Prisma.FinancialEntryUncheckedUpdateInput = {}) {
-  const existing = await prisma.financialEntry.findUnique({ where: { id }, select: { status: true, paidDate: true, source: true, commissionCalculationId: true } })
-  if (!existing || existing.status === 'PAGO' || existing.status === 'CANCELADO') return false
-  await prisma.financialEntry.update({ where: { id }, data: { ...extra, status: 'PAGO', paidDate, accountId } })
+/** Baixa da folha: só título em aberto (trava otimista); comissão respeita a liberação da loja. */
+async function settle(id: string, paidDate: Date, accountId: string, extra: Prisma.FinancialEntryUncheckedUpdateInput = {}): Promise<boolean | string> {
+  const existing = await prisma.financialEntry.findUnique({ where: { id }, select: { tenantId: true, status: true, paidDate: true, source: true, commissionCalculationId: true } })
+  if (!existing || existing.status !== 'PREVISTO') return false
+  const hold = await commissionHoldReason(existing.tenantId, existing.commissionCalculationId)
+  if (hold) return hold
+  const r = await prisma.financialEntry.updateMany({ where: { id, status: 'PREVISTO' }, data: { ...extra, status: 'PAGO', paidDate, accountId } })
+  if (r.count !== 1) return false
   await applyStatusSideEffects(existing, 'PAGO', paidDate)
   return true
 }
@@ -246,6 +252,8 @@ export async function payEmployee(tenantId: string, input: PayInput): Promise<{ 
 
   const paidDate = noon(input.paidDate)
   const note = input.note?.trim() || null
+  const closed = await periodError(tenantId, [input.paidDate])
+  if (closed) return { error: closed }
 
   // Desconto dos adiantamentos no salário.
   const salaryEntries = pendingPay.filter((e) => e.kind === 'SALARIO')
@@ -261,16 +269,19 @@ export async function payEmployee(tenantId: string, input: PayInput): Promise<{ 
       const tag = `Desconto de adiantamentos na folha ${monthLabel(input.month)}: ${(cut.original - cut.amount).toFixed(2).replace('.', ',')}`
       const notes = [row?.notes, tag, note].filter(Boolean).join('\n').slice(0, 2000)
       // amount 0 = salário inteiro coberto por adiantamentos (o custo já está neles).
-      if (await settle(e.id, paidDate, input.accountId, { amount: cut.amount, chargedAmount: row?.chargedAmount ?? cut.original, notes })) { paidEntries++; total += cut.amount }
+      if ((await settle(e.id, paidDate, input.accountId, { amount: cut.amount, chargedAmount: row?.chargedAmount ?? cut.original, notes })) === true) { paidEntries++; total += cut.amount }
       continue
     }
     const extra = note ? { notes: [e.notes, note].filter(Boolean).join('\n').slice(0, 2000) } : {}
-    if (await settle(e.id, paidDate, input.accountId, extra)) { paidEntries++; total += e.amount }
+    if ((await settle(e.id, paidDate, input.accountId, extra)) === true) { paidEntries++; total += e.amount }
   }
 
   let paidCommissions = 0
+  const held: string[] = []
   for (const c of coms) {
-    if (c.entryId && (await settle(c.entryId, paidDate, input.accountId))) { paidCommissions++; total += c.value }
+    if (!c.entryId) continue
+    const r = await settle(c.entryId, paidDate, input.accountId)
+    if (r === true) { paidCommissions++; total += c.value } else if (typeof r === 'string') held.push(r)
   }
 
   for (const id of plan.advanceIds) {
@@ -278,5 +289,5 @@ export async function payEmployee(tenantId: string, input: PayInput): Promise<{ 
     await prisma.financialEntry.update({ where: { id }, data: { notes: withDiscountTag(a?.notes, input.month, note) } })
   }
 
-  return { result: { paidEntries, paidCommissions, discounted: plan.total, total: Math.round(total * 100) / 100 } }
+  return { result: { paidEntries, paidCommissions, discounted: plan.total, total: Math.round(total * 100) / 100, held } }
 }
