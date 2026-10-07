@@ -12,6 +12,7 @@ import { prisma } from '@/lib/prisma'
 import { notifyMany } from '@/services/notification.service'
 import { hasFinanceAccess } from './access'
 import { COMMISSION_ELIGIBLE_DEAL_STATUSES } from '@/lib/commission/status'
+import { loadTracks } from './fi-contract-track'
 
 const spYmd = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(d)
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -34,7 +35,7 @@ export async function computeAlerts(tenantId: string, now = new Date()): Promise
         type: 'FINANCIAMENTO', OR: [{ status: null }, { status: { notIn: ['CONFIRMADO', 'PAGO', 'CANCELADO', 'ESTORNADO', 'RECUSADO'] } }],
         deal: { tenantId, status: { in: COMMISSION_ELIGIBLE_DEAL_STATUSES } },
       },
-      select: { value: true, deal: { select: { approvedAt: true, releasedAt: true, finalizedAt: true, saleDate: true, createdAt: true } } },
+      select: { id: true, value: true, deal: { select: { approvedAt: true, releasedAt: true, finalizedAt: true, saleDate: true, createdAt: true } } },
     }),
     prisma.financialEntry.findMany({
       where: { tenantId, status: { not: 'CANCELADO' }, transferGroupId: null, parentEntryId: null, createdAt: { gte: new Date(now.getTime() - 86_400_000) } },
@@ -42,7 +43,12 @@ export async function computeAlerts(tenantId: string, now = new Date()): Promise
     }),
   ])
   const limit = now.getTime() - TRANSIT_DAYS * 86_400_000
-  const late = transit.filter((t) => +(t.deal.approvedAt ?? t.deal.releasedAt ?? t.deal.finalizedAt ?? t.deal.saleDate ?? t.deal.createdAt) < limit)
+  const tracks = await loadTracks(transit.map((t) => t.id))
+  // Atrasado: passou do crédito previsto; sem previsão, mais de 7 dias da venda.
+  const late = transit.filter((t) => {
+    const exp = tracks.get(t.id)?.expectedCreditAt
+    return exp ? +new Date(exp) < now.getTime() - 86_400_000 : +(t.deal.approvedAt ?? t.deal.releasedAt ?? t.deal.finalizedAt ?? t.deal.saleDate ?? t.deal.createdAt) < limit
+  })
   const seen = new Map<string, number>()
   for (const e of recent) {
     const k = [e.type, Number(e.amount).toFixed(2), e.dueDate ? spYmd(e.dueDate) : '', (e.counterparty ?? e.description).trim().toLowerCase()].join('|')

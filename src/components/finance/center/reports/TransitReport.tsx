@@ -10,7 +10,7 @@ import type { ReportViewProps } from './types'
 
 interface Row {
   paymentId: string; dealId: string; dealNumber: string | null; bank: string; contract: string | null; customer: string | null
-  vehicle: string | null; plate: string | null; seller: string | null; amount: number; saleDate: string; expectedDate: string | null; days: number; late: boolean
+  vehicle: string | null; plate: string | null; seller: string | null; amount: number; saleDate: string; expectedDate: string | null; days: number; late: boolean; stageLabel: string | null
 }
 interface Data {
   alertDays: number; rows: Row[]; byBank: { bank: string; count: number; amount: number; late: number }[]
@@ -23,8 +23,8 @@ export function TransitReport({ url, onData, registerCsv }: ReportViewProps) {
   useEffect(() => {
     registerCsv(data ? {
       name: 'contratos-em-transito',
-      headers: ['Banco', 'Negociação', 'Cliente', 'Veículo', 'Placa', 'Contrato', 'Valor', 'Data da venda', 'Dias aguardando', 'Vendedor'],
-      rows: data.rows.map((r) => [r.bank, r.dealNumber, r.customer, r.vehicle, r.plate, r.contract, r.amount, fmtDate(r.saleDate), r.days, r.seller]),
+      headers: ['Banco', 'Negociação', 'Cliente', 'Veículo', 'Placa', 'Contrato', 'Etapa', 'Valor', 'Data da venda', 'Crédito previsto', 'Dias aguardando', 'Vendedor'],
+      rows: data.rows.map((r) => [r.bank, r.dealNumber, r.customer, r.vehicle, r.plate, r.contract, r.stageLabel, r.amount, fmtDate(r.saleDate), fmtDate(r.expectedDate), r.days, r.seller]),
     } : null)
   }, [data, registerCsv])
   const t = data?.totals
@@ -33,7 +33,7 @@ export function TransitReport({ url, onData, registerCsv }: ReportViewProps) {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="A receber dos bancos" value={loading ? '—' : fmt(t?.amount ?? 0)} tone="blue" />
         <Kpi label="Contratos" value={loading ? '—' : String(t?.count ?? 0)} />
-        <Kpi label={`Acima de ${data?.alertDays ?? 7} dias`} value={loading ? '—' : fmt(t?.lateAmount ?? 0)} tone={t?.late ? 'red' : 'default'} hint={t?.late ? `${t.late} contrato(s)` : undefined} />
+        <Kpi label="Atrasados" value={loading ? '—' : fmt(t?.lateAmount ?? 0)} tone={t?.late ? 'red' : 'default'} hint={t?.late ? `${t.late} contrato(s)` : undefined} />
         <Kpi label="Espera média" value={loading ? '—' : `${t?.avgDays ?? 0} dias`} />
       </div>
 
@@ -56,7 +56,7 @@ export function TransitReport({ url, onData, registerCsv }: ReportViewProps) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50"><tr>
-                <th className={th}>Banco</th><th className={th}>Negociação</th><th className={th}>Cliente / veículo</th><th className={th}>Vendedor</th><th className={thR}>Valor</th><th className={thR}>Venda</th><th className={thR}>Dias</th>
+                <th className={th}>Banco</th><th className={th}>Negociação</th><th className={th}>Cliente / veículo</th><th className={th}>Etapa</th><th className={thR}>Valor</th><th className={thR}>Venda</th><th className={thR}>Previsto</th><th className={thR}>Dias</th>
               </tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {data.rows.map((r) => (
@@ -64,9 +64,10 @@ export function TransitReport({ url, onData, registerCsv }: ReportViewProps) {
                     <td className={td}>{r.bank}{r.contract && <span className="block font-mono text-xs text-gray-500">{r.contract}</span>}</td>
                     <td className={td}><DealPeekLink dealId={r.dealId} className="font-mono font-medium text-brand-700 hover:underline">{r.dealNumber ?? r.dealId.slice(0, 8)}</DealPeekLink></td>
                     <td className={td}>{r.customer ?? '—'}<span className="block text-xs text-gray-500">{[r.vehicle, r.plate].filter(Boolean).join(' · ')}</span></td>
-                    <td className={td}>{r.seller ?? '—'}</td>
+                    <td className={td}>{r.stageLabel ?? '—'}<span className="block text-xs text-gray-500">{r.seller ?? ''}</span></td>
                     <td className={tdR}>{fmt(r.amount)}</td>
                     <td className={tdR}>{fmtDate(r.saleDate)}</td>
+                    <td className={cn(tdR, r.late && r.expectedDate && 'text-red-600')}>{r.expectedDate ? fmtDate(r.expectedDate) : '—'}</td>
                     <td className={cn(tdR, 'font-semibold', r.late ? 'text-red-600' : 'text-gray-700')}>{r.days}</td>
                   </tr>
                 ))}

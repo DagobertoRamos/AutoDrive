@@ -19,6 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { loadTracks } from '@/lib/finance/fi-contract-track'
 import { legacyFinanceGuard, canManage } from '@/app/api/finance/center/entries/_lib/shared'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { parseAddOns } from '@/lib/finance/fi-receipt-core'
@@ -99,6 +100,7 @@ export async function GET(req: NextRequest) {
     const atts = ids.length ? await prisma.dealAttachment.findMany({ where: { paymentId: { in: ids } }, select: { id: true, paymentId: true, fileName: true, publicUrl: true, fileType: true }, orderBy: { uploadedAt: 'desc' } }) : []
     const finIds = rows.filter((r) => r.type === 'FINANCIAMENTO').map((r) => r.id)
     const cbs = finIds.length ? await prisma.financialEntry.findMany({ where: { source: { in: finIds.map((id) => `NEG_CHARGEBACK_${id}`) }, status: { not: 'CANCELADO' } }, select: { source: true, amount: true, paidDate: true, notes: true } }) : []
+    const tracks = await loadTracks(finIds)
     const cbOf = new Map(cbs.map((c) => [String(c.source).slice('NEG_CHARGEBACK_'.length), { amount: Number(c.amount), date: c.paidDate, reason: c.notes }]))
     const n = (v: unknown) => (v == null ? null : Number(v))
     const data = rows.map((r) => ({
@@ -115,6 +117,7 @@ export async function GET(req: NextRequest) {
         returnGrossValue: n(r.returnGrossValue), ilaValue: n(r.ilaValue), iofValue: n(r.iofValue), irrfValue: n(r.irrfValue),
         returnNetValue: n(r.returnNetValue), plusValue: n(r.plusValue), addOns: parseAddOns(r.addOns),
         chargeback: cbOf.get(r.id) ?? null,
+        track: tracks.get(r.id) ?? null,
         dealReturn: r.deal._count.payments <= 1 ? {
           financedAmount: n(r.deal.financedAmount), returnRatePercent: n(r.deal.returnRatePercent), returnGrossValue: n(r.deal.returnGrossValue),
           ilaPercent: n(r.deal.ilaPercent), ilaValue: n(r.deal.ilaValue), iofPercent: n(r.deal.iofPercent), iofValue: n(r.deal.iofValue),

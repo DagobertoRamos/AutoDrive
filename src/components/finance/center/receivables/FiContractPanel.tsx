@@ -26,6 +26,7 @@ export interface FiData {
   returnNetValue: number | null; plusValue: number | null; addOns: FiAddOn[]
   dealReturn: FiDealReturn | null
   chargeback?: { amount: number; date: string | null; reason: string | null } | null
+  track?: { stage: string; proposalNumber: string | null; approvedAt: string | null; signedAt: string | null; sentToBankAt: string | null; expectedCreditAt: string | null; creditedAt: string | null; notes: string | null } | null
 }
 export interface FiProduct { name: string; kind: string | null; defaultValue: number | null }
 
@@ -201,6 +202,7 @@ export default function FiContractPanel({ paymentId, financed, bank, installment
           </button>
         )}
       </div>
+      <ContractTrack paymentId={paymentId} track={fi.track ?? null} canEdit={canEdit} onSaved={onSaved} />
       <Chargeback paymentId={paymentId} current={fi.chargeback ?? null} canEdit={canEdit} onSaved={onSaved} />
     </div>
   )
@@ -261,6 +263,50 @@ function Chargeback({ paymentId, current, canEdit, onSaved }: { paymentId: strin
           {busy && <Loader2 size={13} className="animate-spin" />}Registrar
         </button>
       </div>
+    </div>
+  )
+}
+
+const STAGES: [string, string][] = [
+  ['SIMULACAO', 'Simulação'], ['ENVIADO', 'Enviado'], ['EM_ANALISE', 'Em análise'], ['APROVADO', 'Aprovado'], ['FORMALIZACAO', 'Formalização'],
+  ['ASSINADO', 'Assinado'], ['ENVIADO_BANCO', 'Enviado ao banco'], ['AGUARDANDO_PAGAMENTO', 'Aguardando pagamento'], ['PAGO', 'Pago'], ['CANCELADO', 'Cancelado'],
+]
+
+/** Etapa do contrato e datas até o crédito do banco. */
+function ContractTrack({ paymentId, track, canEdit, onSaved }: { paymentId: string; track: NonNullable<FiData['track']> | null; canEdit: boolean; onSaved: Props['onSaved'] }) {
+  const d = (s: string | null | undefined) => (s ? s.slice(0, 10) : '')
+  const initial = { stage: track?.stage ?? 'ENVIADO', approvedAt: d(track?.approvedAt), signedAt: d(track?.signedAt), sentToBankAt: d(track?.sentToBankAt), expectedCreditAt: d(track?.expectedCreditAt) }
+  const [f, setF] = useState(initial)
+  const [busy, setBusy] = useState(false)
+  const dirty = JSON.stringify(f) !== JSON.stringify(initial)
+  const save = async () => {
+    setBusy(true)
+    const r = await fetch(`/api/finance/receivables/${paymentId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'TRACK', ...f }) })
+    const j = await r.json().catch(() => ({}))
+    setBusy(false)
+    onSaved(r.ok ? { ok: true, text: 'Contrato atualizado.' } : { ok: false, text: j?.error ?? 'Não foi possível salvar.' })
+  }
+  const field = (k: keyof typeof f, label: string) => (
+    <label className="text-gray-600">{label}<input type="date" disabled={!canEdit} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} className={inputCls} /></label>
+  )
+  return (
+    <div className="grid gap-2 border-t border-gray-200 pt-2 sm:grid-cols-5">
+      <label className="text-gray-600">Etapa
+        <select disabled={!canEdit} value={f.stage} onChange={(e) => setF({ ...f, stage: e.target.value })} className={inputCls}>
+          {STAGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+      </label>
+      {field('approvedAt', 'Aprovação')}
+      {field('signedAt', 'Assinatura')}
+      {field('sentToBankAt', 'Envio ao banco')}
+      {field('expectedCreditAt', 'Crédito previsto')}
+      {canEdit && dirty && (
+        <div className="flex justify-end sm:col-span-5">
+          <button type="button" disabled={busy} onClick={() => void save()} className="inline-flex items-center gap-1 rounded-md bg-brand-700 px-3 py-1.5 font-semibold text-white hover:bg-brand-800 disabled:opacity-50">
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}Salvar contrato
+          </button>
+        </div>
+      )}
     </div>
   )
 }

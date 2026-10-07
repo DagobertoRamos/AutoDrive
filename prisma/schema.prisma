@@ -4213,6 +4213,29 @@ model BankStatementLine {
   @@map("bank_statement_lines")
 }
 
+/// Acompanhamento do contrato de financiamento (DealPayment FINANCIAMENTO) até o
+/// dinheiro entrar: etapa e datas (lib/finance/fi-contract-track).
+model FinanceContractTrack {
+  id               String    @id @default(cuid())
+  tenantId         String
+  paymentId        String    @unique
+  /// SIMULACAO | ENVIADO | EM_ANALISE | APROVADO | FORMALIZACAO | ASSINADO | ENVIADO_BANCO | AGUARDANDO_PAGAMENTO | PAGO | CANCELADO
+  stage            String    @default("ENVIADO")
+  proposalNumber   String?
+  approvedAt       DateTime?
+  signedAt         DateTime?
+  sentToBankAt     DateTime?
+  expectedCreditAt DateTime?
+  creditedAt       DateTime?
+  notes            String?
+  updatedById      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([tenantId, stage])
+  @@map("finance_contract_tracks")
+}
+
 /// Aprovação de pagamento por alçada (lib/finance/approvals).
 model FinancialApproval {
   id            String    @id @default(cuid())

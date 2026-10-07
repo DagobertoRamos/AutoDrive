@@ -9,6 +9,8 @@
 //         pelo padrão da loja (config de retorno/ILA/IOF por competência).
 //   PATCH { action: 'CHARGEBACK', amount, date, accountId, reason } | { action: 'CHARGEBACK_UNDO', reason }
 //         Banco cobrou de volta o F&I do contrato (lib/finance/fi-chargeback).
+//   PATCH { action: 'TRACK', stage?, proposalNumber?, approvedAt?, signedAt?, sentToBankAt?,
+//           expectedCreditAt?, notes? } → etapa/datas do contrato (lib/finance/fi-contract-track).
 //   POST  multipart file → anexa o comprovante ao pagamento.
 // Só quem tem finance.manage (ADM, gerência geral/administrativa, financeiro).
 // =============================================================================
@@ -27,6 +29,7 @@ import { buildFiUpdate, fiPatchSchema, round2 } from '@/lib/finance/fi-receipt-c
 import { calculateReturn, validateReturnPercent } from '@/lib/finance/return-calc'
 import { resolveReturnSettingsForDate } from '@/lib/finance/return-settings'
 import { registerChargeback, undoChargeback } from '@/lib/finance/fi-chargeback'
+import { markTrackPaid, saveTrack } from '@/lib/finance/fi-contract-track'
 import { parseDateOnly } from '@/lib/negotiation/date-only'
 
 export const runtime = 'nodejs'
@@ -63,6 +66,12 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     const perm = await requireFinance(user, ['CONFIRMAR', 'CHARGEBACK'].includes(rawAction) ? 'finance.settle' : 'finance.reverse')
     if (perm) return perm
   }
+  if (rawAction === 'TRACK') {
+    if (p.type !== 'FINANCIAMENTO') return NextResponse.json({ error: 'Só contratos de financiamento.' }, { status: 400 })
+    if (!p.deal.tenantId) return NextResponse.json({ error: 'Negociação sem loja.' }, { status: 400 })
+    const err = await saveTrack(p.deal.tenantId, p.id, raw, { id: user.id, name: user.name, role: user.role })
+    return err ? NextResponse.json({ error: err }, { status: 400 }) : NextResponse.json({ success: true })
+  }
   if (rawAction === 'CHARGEBACK' || rawAction === 'CHARGEBACK_UNDO') {
     const tenantId = p.deal.tenantId
     if (!tenantId) return NextResponse.json({ error: 'Negociação sem loja.' }, { status: 400 })
@@ -94,6 +103,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     const updated = await prisma.dealPayment.update({ where: { id: paymentId }, data })
     await createSafeAuditLog({ userId: user.id, tenantId: user.tenantId ?? null, action: action ? `PAYMENT_${action}` : 'PAYMENT_AUTH_CODE', entity: 'DealPayment', entityId: paymentId, userName: user.name ?? null, userRole: user.role })
     if (updated.status !== p.status) await logDealChild(p.dealId, { id: user.id, name: user.name ?? null, role: user.role }, 'pagamento', `${payLabel(p)} (${statusPt(p.status)})`, `${payLabel(updated)} (${statusPt(updated.status)})`)
+    if (action === 'CONFIRMAR' && p.type === 'FINANCIAMENTO') await markTrackPaid(p.deal.tenantId, p.id, (data.paidAt as Date) ?? new Date())
     await syncDealFinanceSafe(p.dealId)
     return NextResponse.json({ success: true, data: updated })
   } catch (err) { return handlePrismaError(err) }

@@ -18,6 +18,7 @@ import { loadDealRefundLines } from './deal-refunds'
 import { costOf, loadDealCommissions, type CostEntry, type DealCommission } from './deal-costs'
 import { dealResultsReport } from './deal-result'
 import { partnersReport } from './partners-report'
+import { FI_STAGE_LABEL, loadTracks } from './fi-contract-track'
 import { SALE_DEAL_TYPES, loadAllocated, loadFinanceRefs, monthBounds, type EntryFilters, type FinanceRefs } from './dre'
 import {
   AGING_BUCKETS, addMonths, agingBucket, agingSummary, aggregateProfit, budgetVsActual, buildCategoryTree, daysBetweenSP,
@@ -767,16 +768,22 @@ async function contractsInTransit(p: ReportParams) {
     },
     take: 2000,
   })
+  const tracks = await loadTracks(rows.map((r) => r.id))
   const list = rows.map((r) => {
     const saleDate = r.deal.approvedAt ?? r.deal.releasedAt ?? r.deal.finalizedAt ?? r.deal.saleDate ?? r.deal.createdAt
     const days = Math.max(0, daysBetweenSP(saleDate, p.now))
+    const tr = tracks.get(r.id)
+    const expected = tr?.expectedCreditAt ? new Date(tr.expectedCreditAt) : r.dueDate
     const v = r.deal.vehicles[0]
     return {
       paymentId: r.id, dealId: r.deal.id, dealNumber: r.deal.dealNumber, bank: r.bank?.trim() || 'Não informado', contract: r.contractNumber,
       customer: r.deal.person?.nomeCompleto ?? r.deal.customer?.name ?? null,
       vehicle: v ? [v.brand, v.model].filter(Boolean).join(' ') || null : null, plate: v?.plate ?? null,
       seller: r.deal.seller ? r.deal.seller.shortName || r.deal.seller.fullName : null,
-      amount: r2(Number(r.value)), saleDate, expectedDate: r.dueDate, days, late: days > TRANSIT_ALERT_DAYS,
+      amount: r2(Number(r.value)), saleDate, expectedDate: expected, days,
+      stage: tr?.stage ?? null, stageLabel: tr ? FI_STAGE_LABEL[tr.stage] ?? tr.stage : null,
+      // Atrasado: passou do crédito previsto; sem previsão, mais de 7 dias da venda.
+      late: expected ? +expected < +p.now - 86_400_000 : days > TRANSIT_ALERT_DAYS,
     }
   }).sort((a, b) => b.days - a.days)
   const banks = new Map<string, { bank: string; count: number; amount: number; late: number }>()
