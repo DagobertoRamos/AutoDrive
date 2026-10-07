@@ -2,7 +2,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getSiteContext } from '@/lib/site/context'
-import { listSiteVehicles, siteVehicleRef } from '@/lib/site/vehicles'
+import { listAllSiteVehicles, siteVehicleRef } from '@/lib/site/vehicles'
 import { money } from '@/lib/site/listing-core'
 import { SiteFinanceSimulator } from '@/components/site/SiteFinanceSimulator'
 
@@ -12,12 +12,13 @@ export default async function SiteFinancing({ params, searchParams }: { params: 
   const [{ site }, sp] = await Promise.all([params, searchParams])
   const ctx = await getSiteContext(site)
   if (!ctx.on('financiamento')) notFound()
-  const { items } = await listSiteVehicles(ctx.tenantId, { page: 1, sort: 'name' }).catch(() => ({ items: [] }))
-  const choices = items.map((v) => ({ id: v.id, label: `${v.title}${v.modelYear ? ` ${v.modelYear}` : ''} — ${money(v.price)}`, price: v.price ?? null }))
-  // Veículo vindo do anúncio que não está na primeira página do estoque.
+  // Estoque inteiro do site (antes só a 1ª página da vitrine, 24 carros).
+  const items = (await listAllSiteVehicles(ctx.tenantId).catch(() => [])).filter((v) => v.state !== 'HIDDEN').sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'))
+  const choices = items.map((v) => ({ id: v.id, label: `${v.title}${v.modelYear ? ` ${v.modelYear}` : ''} — ${money(v.price)}`, price: v.price ?? null, search: [v.brand, v.model, v.version, v.title, v.modelYear, v.year].filter(Boolean).join(' ') }))
+  // Veículo vindo do anúncio que não está visível no site (ex.: reservado).
   if (sp.veiculo && !choices.some((c) => c.id === sp.veiculo)) {
     const v = await siteVehicleRef(ctx.tenantId, sp.veiculo).catch(() => null)
-    if (v) choices.unshift({ id: v.id, label: `${v.title}${v.modelYear ? ` ${v.modelYear}` : ''} — ${money(v.price)}`, price: v.price ?? null })
+    if (v) choices.unshift({ id: v.id, label: `${v.title}${v.modelYear ? ` ${v.modelYear}` : ''} — ${money(v.price)}`, price: v.price ?? null, search: v.title })
   }
   return (
     <>

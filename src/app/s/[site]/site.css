@@ -2255,6 +2255,16 @@
 .autodrive-site .vlead-form .vlead-full, .autodrive-site .vlead-form .vlead-chips { grid-column: 1 / -1; }
 .autodrive-site .vlead-form input:not([type=radio]):not([type=checkbox]), .autodrive-site .vlead-form select, .autodrive-site .vlead-form textarea { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid #cbd9dd; border-radius: 8px; background: #fff; color: #071c29; font-size: .95rem; font-weight: 400; }
 .autodrive-site .vlead-form input:focus, .autodrive-site .vlead-form select:focus, .autodrive-site .vlead-form textarea:focus { outline: 2px solid rgba(7,156,166,.35); border-color: var(--brand); }
+/* Busca do carro no simulador de financiamento */
+.autodrive-site .fin-picker { position: relative; }
+.autodrive-site .fin-picker-list { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); max-height: 280px; overflow-y: auto; background: #fff; border: 1px solid #cbd9dd; border-radius: 10px; box-shadow: 0 14px 30px rgba(7,28,41,.14); padding: 4px; }
+.autodrive-site .fin-picker-list button { display: block; width: 100%; text-align: left; padding: 9px 10px; border: 0; border-radius: 7px; background: transparent; color: #071c29; font-size: .9rem; cursor: pointer; }
+.autodrive-site .fin-picker-list button.active, .autodrive-site .fin-picker-list button:hover { background: #eefcfd; }
+.autodrive-site .fin-picker-list button.other { color: var(--brand); font-weight: 700; border-top: 1px solid #e3edf0; border-radius: 0 0 7px 7px; }
+.autodrive-site .fin-picker-list p { margin: 0; padding: 9px 10px; color: #5b7079; font-size: .88rem; }
+.autodrive-site .fin-picker-chosen { display: flex; align-items: center; gap: 10px; justify-content: space-between; min-height: 42px; padding: 9px 11px; border: 1px solid var(--brand); border-radius: 8px; background: #eefcfd; color: #071c29; font-size: .95rem; }
+.autodrive-site .fin-picker-chosen button { border: 0; background: none; color: var(--brand); font-weight: 800; cursor: pointer; padding: 0; white-space: nowrap; flex-shrink: 0; }
+
 .autodrive-site .vlead-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .autodrive-site .vlead-chips label { position: relative; display: inline-flex; align-items: center; min-height: 38px; padding: 7px 14px; border: 1px solid #cbd9dd; border-radius: 999px; background: #fff; color: #344b56; cursor: pointer; transition: all .15s ease; }
 .autodrive-site .vlead-chips label:hover { border-color: var(--brand); }

@@ -8,11 +8,11 @@
 // Visual do site da loja (SiteFormKit), sem iframe.
 // =============================================================================
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, MessageCircle } from 'lucide-react'
 import { Chips, FormCard, Section, onMoney } from './SiteFormKit'
 
-export interface SimVehicle { id: string; label: string; price: number | null }
+export interface SimVehicle { id: string; label: string; price: number | null; /** Marca, modelo, versão e ano — para a busca. */ search?: string }
 interface Estimate { installments: number; installmentValue: number }
 
 const toNumber = (s: string) => Number(s.replace(/[^\d,]/g, '').replace(',', '.')) || 0
@@ -125,12 +125,7 @@ export function SiteFinanceSimulator({ simulateUrl, vehicles, preselected, priva
     <FormCard {...head}>
       <form key="valores" className="vlead-form" method="post" onSubmit={goValues}>
         <Section legend="Veículo">
-          <label className="vlead-full">Carro do estoque
-            <select value={vehicleId} onChange={(e) => { const v = vehicles.find((x) => x.id === e.target.value); setVehicleId(e.target.value); if (v?.price) setValue(fmtInput(v.price)) }}>
-              <option value="">Outro veículo</option>
-              {vehicles.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
-            </select>
-          </label>
+          <VehiclePicker vehicles={vehicles} value={chosen} onChange={(v) => { setVehicleId(v?.id ?? ''); if (v?.price) setValue(fmtInput(v.price)) }} />
         </Section>
         <Section legend="Valores">
           <label>Valor do veículo *<input required inputMode="numeric" placeholder="R$ 0,00" value={value} onChange={(e) => { onMoney(e); setValue(e.currentTarget.value) }} /></label>
@@ -141,5 +136,66 @@ export function SiteFinanceSimulator({ simulateUrl, vehicles, preselected, priva
         {error && <p className="form-status error" role="alert">{error}</p>}
       </form>
     </FormCard>
+  )
+}
+
+const fold = (t: string) => t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+
+/** Busca no estoque: digite modelo, fabricante ou ano; "Outro veículo" para carro fora do estoque. */
+function VehiclePicker({ vehicles, value, onChange }: { vehicles: SimVehicle[]; value: SimVehicle | null; onChange: (v: SimVehicle | null) => void }) {
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+  const box = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const close = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
+    window.addEventListener('pointerdown', close)
+    return () => window.removeEventListener('pointerdown', close)
+  }, [])
+
+  const found = useMemo(() => {
+    const words = fold(q).split(/\s+/).filter(Boolean)
+    if (!words.length) return vehicles.slice(0, 60)
+    return vehicles.filter((v) => { const hay = fold(`${v.search ?? ''} ${v.label}`); return words.every((w) => hay.includes(w)) }).slice(0, 60)
+  }, [q, vehicles])
+
+  const pick = (v: SimVehicle | null) => { onChange(v); setQ(''); setOpen(false) }
+
+  if (value) {
+    return (
+      <div className="vlead-full fin-picker-chosen">
+        <span>{value.label}</span>
+        <button type="button" onClick={() => pick(null)}>Trocar</button>
+      </div>
+    )
+  }
+  return (
+    <div className="vlead-full fin-picker" ref={box}>
+      <label>Carro do estoque
+        <input
+          value={q}
+          placeholder="Digite o modelo ou o fabricante"
+          autoComplete="off"
+          onFocus={() => setOpen(true)}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); setActive(0) }}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, found.length - 1)) }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)) }
+            else if (e.key === 'Enter' && open && found[active]) { e.preventDefault(); pick(found[active]) }
+            else if (e.key === 'Escape') setOpen(false)
+          }}
+        />
+      </label>
+      {open && (
+        <div className="fin-picker-list" role="listbox">
+          {found.map((v, i) => (
+            <button type="button" key={v.id} role="option" aria-selected={i === active} className={i === active ? 'active' : ''} onMouseEnter={() => setActive(i)} onClick={() => pick(v)}>{v.label}</button>
+          ))}
+          {!found.length && <p>Nenhum carro do estoque com esse nome.</p>}
+          <button type="button" className="other" onClick={() => pick(null)}>Outro veículo (informar o valor)</button>
+        </div>
+      )}
+    </div>
   )
 }
