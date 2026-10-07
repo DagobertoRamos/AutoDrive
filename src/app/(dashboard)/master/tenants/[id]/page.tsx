@@ -25,6 +25,7 @@ import {
   ChevronUp, BadgeAlert, CheckCircle2, UserRound,
 } from 'lucide-react'
 import { useImpersonationStore } from '@/store/impersonationStore'
+import DeleteTenantModal from '@/components/master/DeleteTenantModal'
 import { maskCNPJ, maskPhone } from '@/lib/masks'
 import { isValidCNPJ } from '@/lib/br-docs/cnpj'
 import { isValidPhone } from '@/lib/br-docs/phone'
@@ -451,23 +452,8 @@ export default function TenantDetailPage() {
 
   // ── Delete tenant ─────────────────────────────────────────────────────────
 
-  const handleDelete = async () => {
-    try {
-      // Prévia: quanto será apagado (e se algo bloquearia).
-      const pre = await fetch(`/api/master/tenants/${id}?dryRun=1`, { method: 'DELETE' })
-      const p = await pre.json().catch(() => ({}))
-      if (!pre.ok) throw new Error(p.error ?? 'Erro ao simular a exclusão')
-      const typed = window.prompt(`EXCLUIR DEFINITIVAMENTE a loja "${tenant?.name}"?\n\nSerão apagados ${p.data.rows} registro(s) — usuários, negociações, estoque, financeiro, documentos — e ${p.data.files} arquivo(s). Não há como desfazer.\n\nDigite o nome da loja para confirmar:`)
-      if (!typed) return
-      const res = await fetch(`/api/master/tenants/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmName: typed }) })
-      const d = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(d.error ?? 'Erro ao excluir')
-      alert(d.message ?? 'Loja excluída.')
-      router.replace('/master/tenants')
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Erro ao excluir')
-    }
-  }
+  const [showDelete, setShowDelete] = useState(false)
+  const handleDelete = () => setShowDelete(true)
 
   // ── Field helper ──────────────────────────────────────────────────────────
 
@@ -508,6 +494,10 @@ export default function TenantDetailPage() {
       )}
 
       {/* ── Modal de impersonation ─────────────────────────────────────────── */}
+      {showDelete && tenant && (
+        <DeleteTenantModal tenantId={id} tenantName={tenant.name} onClose={() => setShowDelete(false)}
+          onDeleted={(msg) => { setShowDelete(false); alert(msg); router.replace('/master/tenants') }} />
+      )}
       {showImpModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white shadow-xl p-6 flex flex-col gap-4">
