@@ -24,6 +24,7 @@ import { reasonsFor, sourceLabelOf, temperatureOf, type CloseOutcome } from '@/l
 import CloseReasonModal from '@/components/crm/CloseReasonModal'
 import type { Pipeline } from '@/lib/crm/pipelines-core'
 import { DealPeekLink } from '@/components/deals/DealPeek'
+import { DealSearchPicker, type DealOption } from '@/components/crm/DealSearchPicker'
 import { HelpHint, WithHint } from '@/components/ui/help-hint'
 import { opsHint, opsText } from '@/lib/glossary-ops'
 
@@ -564,17 +565,24 @@ function VehiclesTab({ leadId, workspace, onRefresh }: { leadId:string; workspac
   )
 }
 
+const humanEnum = (v: string) => { const t = v.toLowerCase().replace(/_/g, ' '); return t.charAt(0).toUpperCase() + t.slice(1) }
+
 // ── DealsTab (Fase D/E) ────────────────────────────────────────────────────────
 function DealsTab({ leadId, workspace, lead, onRefresh }: { leadId: string; workspace: Workspace; lead: LeadDetail; onRefresh: () => void }) {
-  const [linkId, setLinkId] = useState('')
   const [linking, setLinking] = useState(false)
+  const [linkError, setLinkError] = useState('')
+  const [justLinked, setJustLinked] = useState<Workspace['linkedDeals']>([])
+  const linked = [...workspace.linkedDeals, ...justLinked.filter((j) => !workspace.linkedDeals.some((l) => l.dealId === j.dealId))]
 
-  const linkDeal = async () => {
-    if (!linkId.trim()) return
-    setLinking(true)
+  const linkDeal = async (deal: DealOption) => {
+    setLinking(true); setLinkError('')
     try {
-      await fetch(`/api/crm/leads/${leadId}/deals`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ dealId: linkId.trim() }) })
-      setLinkId(''); onRefresh()
+      const res = await fetch(`/api/crm/leads/${leadId}/deals`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ dealId: deal.id }) })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { setLinkError(j?.error ?? 'Não foi possível vincular.'); return }
+      // Aparece na hora; o recarregamento do lead confirma em seguida.
+      setJustLinked((prev) => [...prev, { id: deal.id, dealId: deal.id, isPrimary: false, linkedAt: new Date().toISOString(), deal: { id: deal.id, dealNumber: deal.number, status: deal.status, type: deal.type } }])
+      onRefresh()
     } finally { setLinking(false) }
   }
 
@@ -585,14 +593,14 @@ function DealsTab({ leadId, workspace, lead, onRefresh }: { leadId: string; work
         <Link href={`/negociacoes/nova?leadId=${leadId}`} className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"><Plus size={12} />Nova negociação</Link>
       </div>
 
-      {workspace.linkedDeals.length === 0 ? (
+      {linked.length === 0 ? (
         <p className="py-6 text-center text-sm text-gray-400">Nenhuma negociação vinculada.</p>
-      ) : workspace.linkedDeals.map(dl => (
+      ) : linked.map(dl => (
         <div key={dl.id} className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-slate-800">
           <Handshake size={18} className="shrink-0 text-gray-400" />
           <div className="flex-1 min-w-0">
             <p className="font-medium text-gray-900 dark:text-white">{dl.deal?.dealNumber ?? `NEG-${dl.dealId.slice(-8)}`}</p>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400">{dl.deal?.status ?? '—'} · {dl.deal?.type ?? '—'}</p>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">{dl.deal ? `${humanEnum(dl.deal.status)} · ${humanEnum(dl.deal.type)}` : '—'}</p>
           </div>
           <div className="flex items-center gap-2">
             {dl.isPrimary && <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[9px] font-bold text-brand-700 dark:bg-brand-900 dark:text-brand-300">Principal</span>}
@@ -602,9 +610,9 @@ function DealsTab({ leadId, workspace, lead, onRefresh }: { leadId: string; work
       ))}
 
       {/* Vincular existente */}
-      <div className="flex gap-2">
-        <input value={linkId} onChange={e => setLinkId(e.target.value)} placeholder="Número da negociação" className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-700 dark:text-white" />
-        <button onClick={linkDeal} disabled={linking || !linkId.trim()} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-white/10 dark:bg-slate-800 dark:text-gray-300">Vincular</button>
+      <div>
+        <DealSearchPicker leadId={leadId} disabled={linking} onSelect={(d) => void linkDeal(d)} placeholder="Vincular negociação: número, cliente, CPF, placa ou veículo" />
+        {linkError && <p className="mt-1 text-xs text-red-600">{linkError}</p>}
       </div>
     </div>
   )
@@ -621,6 +629,7 @@ function ActionModal({ action, lead, onClose, onDone }: { action: string; lead: 
   const [recycleAt, setRecycleAt] = useState('')
   const [mergeId, setMergeId] = useState('')
   const [dealId, setDealId] = useState(lead.convertedDealId ?? '')
+  const [dealLabel, setDealLabel] = useState(lead.convertedDealId ? 'Negociação já vinculada' : '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [rescued, setRescued] = useState(false)
@@ -671,7 +680,14 @@ function ActionModal({ action, lead, onClose, onDone }: { action: string; lead: 
               <p className="text-[12px] text-gray-500 dark:text-gray-400">Sucesso = conversão em negociação. Não libera comissão ou ranking.</p>
               <div>
                 <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Negociação</label>
-                <input value={dealId} onChange={e => setDealId(e.target.value)} placeholder="Número da negociação" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                {dealId && dealLabel ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-700 dark:text-white">
+                    <span className="flex-1 truncate">{dealLabel}</span>
+                    <button type="button" onClick={() => { setDealId(''); setDealLabel('') }} className="text-gray-400 hover:text-gray-600" aria-label="Trocar negociação"><X size={14} /></button>
+                  </div>
+                ) : (
+                  <DealSearchPicker leadId={lead.id} onSelect={(d) => { setDealId(d.id); setDealLabel([d.number, d.customer].filter(Boolean).join(' · ')) }} />
+                )}
               </div>
             </>
           )}

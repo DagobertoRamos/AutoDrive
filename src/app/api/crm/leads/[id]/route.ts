@@ -250,6 +250,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       prisma.crmLeadDeal.findMany({ where: { tenantId, leadId: lead.id }, orderBy: [{ isPrimary: 'desc' }, { linkedAt: 'desc' }] }).catch(() => []),
     ])
     const tags = appliedTags.filter((t) => t.tag).map((t) => ({ id: t.tag!.id, name: t.tag!.name, color: t.tag!.color }))
+    // Negociações vinculadas com número, status e tipo (a tela mostrava só o id).
+    const linkedDealRows = linkedDeals.length
+      ? await prisma.deal.findMany({ where: { id: { in: linkedDeals.map((l) => l.dealId) }, tenantId }, select: { id: true, dealNumber: true, status: true, type: true } }).catch(() => [])
+      : []
+    const linkedDealMap = new Map(linkedDealRows.map((d) => [d.id, d]))
     // CRM Pipelines — funil/etapa efetivos do lead.
     const pipelines = await loadPipelines(tenantId)
     const placement = isMaterialized(pipelines) ? await loadPlacement(lead.id) : null
@@ -295,7 +300,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         workspace: {
           nextVisit,
           vehicleInterests,
-          linkedDeals,
+          linkedDeals: linkedDeals.map((l) => ({ ...l, deal: linkedDealMap.get(l.dealId) ?? null })),
           latestSummary,
         },
         relations: { customer, vehicle, deal, attendance },
