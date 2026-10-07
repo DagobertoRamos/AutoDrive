@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { lineFingerprint, matchScore, parseCsv, parseMoney, parseOfx, sumsMatch } from './bank-statement-core'
 
+// Fuso do banco montado em partes: o Tailwind lê os arquivos de src e trataria
+// o trecho literal como classe CSS (quebrou o build).
+const TZ = ['[', '-3', ':BRT', ']'].join('')
 const OFX = `OFXHEADER:100
 <OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>
-<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261005120000[-3:BRT]<TRNAMT>-1500.00<FITID>ABC1<MEMO>PIX ENVIADO DESPACHANTE
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261005120000${TZ}<TRNAMT>-1500.00<FITID>ABC1<MEMO>PIX ENVIADO DESPACHANTE
 </STMTTRN>
 <STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20261006<TRNAMT>60000.00<FITID>ABC2<NAME>BANCO TESTE SA<MEMO>TED FINANCIAMENTO
 </STMTTRN>
