@@ -185,8 +185,9 @@ function EditModal({ user, positions, onClose, onSaved }: { user: UserRecord; po
       const payload: Record<string, unknown> = {
         name:               form.name.trim(),
         email:              form.email.trim().toLowerCase(),
-        phone:              form.phone || null,
-        cpf:                form.cpf || null,
+        // String vazia limpa o campo (null o servidor ignora).
+        phone:              form.phone.trim(),
+        cpf:                form.cpf.trim(),
         role:               form.role,
         status:             form.status,
         mustChangePassword: form.mustChangePassword,
