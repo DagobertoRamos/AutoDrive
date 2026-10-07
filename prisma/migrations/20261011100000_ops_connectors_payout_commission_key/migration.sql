@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS "vehicle_data_queries" (
     "uf" TEXT,
     "providerId" TEXT NOT NULL,
     "connectionId" TEXT,
+    "externalId" TEXT,
     "kind" TEXT NOT NULL DEFAULT 'FULL',
     "status" TEXT NOT NULL DEFAULT 'PROCESSING',
     "debtsTotal" DECIMAL(12,2),
@@ -62,3 +63,5 @@ CREATE TABLE IF NOT EXISTS "vehicle_data_queries" (
 );
 CREATE INDEX IF NOT EXISTS "vehicle_data_queries_tenantId_vehicleId_createdAt_idx" ON "vehicle_data_queries"("tenantId", "vehicleId", "createdAt");
 CREATE INDEX IF NOT EXISTS "vehicle_data_queries_tenantId_plate_idx" ON "vehicle_data_queries"("tenantId", "plate");
+ALTER TABLE "vehicle_data_queries" ADD COLUMN IF NOT EXISTS "externalId" TEXT;
+CREATE INDEX IF NOT EXISTS "vehicle_data_queries_providerId_externalId_idx" ON "vehicle_data_queries"("providerId", "externalId");

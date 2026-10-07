@@ -28,7 +28,7 @@ export function serializeOperation<T extends Record<string, any>>(op: T) {
 export async function vehicleReadiness(vehicleId: string): Promise<{ readiness: Readiness; facts: Awaited<ReturnType<typeof vehicleRenaveFacts>> & { crlv: boolean } } | null> {
   const v = await prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { id: true, tenantId: true, unitId: true, stockStatus: true, stockType: true, isAvailableForSale: true, active: true, cautelarStatus: true } })
   if (!v?.tenantId) return null
-  const [ctx, restrictions, inspection, consignment, renave, crlv, openDeal] = await Promise.all([
+  const [ctx, restrictions, inspection, consignment, renave, crlv, openDeal, lastQuery] = await Promise.all([
     opsContext(v.tenantId, v.unitId),
     prisma.vehicleRestriction.findMany({ where: { vehicleId, status: 'ACTIVE' }, select: { kind: true, blocking: true, description: true } }),
     prisma.vehicleInspection.findFirst({ where: { vehicleId, cancelledAt: null, type: { in: ['VISTORIA_TRANSFERENCIA', 'LAUDO_ECV'] } }, orderBy: { performedAt: 'desc' }, select: { status: true, validUntil: true } }),
@@ -36,6 +36,7 @@ export async function vehicleReadiness(vehicleId: string): Promise<{ readiness: 
     vehicleRenaveFacts(vehicleId),
     hasCrlv(vehicleId),
     prisma.dealVehicle.findFirst({ where: { vehicleId, role: 'VENDIDO', deal: { status: { in: OPEN_DEAL as never[] } } }, select: { deal: { select: { id: true, dealNumber: true, status: true } } } }),
+    prisma.vehicleDataQuery.findFirst({ where: { vehicleId, status: 'DONE' }, orderBy: { createdAt: 'desc' }, select: { debtsTotal: true, debtsCount: true } }).catch(() => null),
   ])
   const consigned = v.stockType === 'CONSIGNADO'
   const req = operationRequirements(consigned ? 'CONSIGNMENT' : 'PURCHASE', ctx.cfg, ctx.caps)
@@ -45,6 +46,7 @@ export async function vehicleReadiness(vehicleId: string): Promise<{ readiness: 
     restrictions, renaveStock: renave.renave, renaveRequired: req.renave,
     fiscalEntry: renave.fiscalEntry, fiscalRequired: req.fiscal,
     cautelarStatus: v.cautelarStatus, inspection, hasCrlv: crlv, consigned, consignment,
+    debts: lastQuery ? { total: Number(lastQuery.debtsTotal ?? 0), count: lastQuery.debtsCount } : null,
   }, ctx.cfg)
   return { readiness, facts: { ...renave, crlv } }
 }

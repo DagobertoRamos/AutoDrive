@@ -26,6 +26,7 @@ export const MODULE_CATALOG: ModuleGroup[] = [
     { key: 'ops.documents.view', label: 'Ver documentos do veículo' },
     { key: 'ops.compliance.manage', label: 'Restrições, vistorias e consignação' },
     { key: 'ops.store_transfer', label: 'Transferir veículo entre lojas' },
+    { key: 'ops.vehicle_data.query', label: 'Consultar débitos e restrições' },
     { key: 'ops.costs.view', label: 'Ver custos do veículo', sensitive: true },
     { key: 'ops.margin.view', label: 'Ver margem da operação', sensitive: true },
     { key: 'ops.settings', label: 'Configurar operações e certificado', sensitive: true },

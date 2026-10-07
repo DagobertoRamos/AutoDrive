@@ -20,11 +20,13 @@ export interface ReadinessFacts {
   hasCrlv: boolean
   consigned: boolean
   consignment: { status: string; endsAt: Date | string | null } | null
+  /** Última consulta de débitos (null = não consultado). */
+  debts?: { total: number; count: number } | null
   now?: Date
 }
 
 export interface ReadinessCheck {
-  key: 'stock' | 'restrictions' | 'renave' | 'fiscal' | 'inspection' | 'documents' | 'consignment'
+  key: 'stock' | 'restrictions' | 'renave' | 'fiscal' | 'inspection' | 'documents' | 'consignment' | 'debts'
   label: string
   ok: boolean
   /** true = impede a venda. */
@@ -94,6 +96,11 @@ export function evaluateSaleReadiness(f: ReadinessFacts, cfg: Pick<OpsConfig, 'e
     const active = f.consignment && f.consignment.status === 'ACTIVE'
     const expired = active && f.consignment!.endsAt && new Date(f.consignment!.endsAt) < now
     checks.push({ key: 'consignment', label: 'Consignação', ok: !!active && !expired, blocking: false, reason: !active ? 'Sem contrato de consignação ativo.' : expired ? 'Contrato de consignação vencido.' : null, action: !active || expired ? { key: 'consignment.view', label: 'Ver contrato' } : null })
+  }
+
+  if (f.debts && f.debts.count > 0) {
+    const brl = f.debts.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    checks.push({ key: 'debts', label: 'Débitos', ok: false, blocking: false, reason: `${f.debts.count} débito(s) em aberto, total ${brl}.`, action: { key: 'debts.view', label: 'Ver débitos' } })
   }
 
   const blockers = checks.filter((c) => !c.ok && c.blocking)

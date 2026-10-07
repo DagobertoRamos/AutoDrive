@@ -13,6 +13,9 @@ import { opsContext } from './config'
 import { nextCheckDelayMs } from './external-core'
 import { fiscalProvider, renaveProvider, transferProvider } from './gateways/registry'
 import { processPendingOpsEvents } from './events'
+import { providerContext } from './connections'
+import { refreshPendingFiscal } from './fiscal-emission'
+import { pollVehicleQueries } from './vehicle-data'
 import { applyToOperation, recordEvent, SYSTEM_ACTOR } from './operations'
 import { syncConsignmentPayouts } from './vehicle-registry'
 import { fiscalEntryState, renaveStockState } from './orchestrator-core'
@@ -52,10 +55,12 @@ export async function stockSummary(tenantId: string) {
 
 /** Consulta o provedor das chamadas sem resposta final (UNKNOWN/SUBMITTED/PROCESSING). */
 export async function pollExternalOperations(limit = 50): Promise<number> {
-  const due = await prisma.externalOperation.findMany({ where: { state: { in: ['SUBMITTED', 'PROCESSING', 'UNKNOWN'] }, nextCheckAt: { lte: new Date() } }, orderBy: { nextCheckAt: 'asc' }, take: limit })
+  // Notas fiscais têm a própria rotina (refreshPendingFiscal), que também baixa e confere o XML.
+  const due = await prisma.externalOperation.findMany({ where: { state: { in: ['SUBMITTED', 'PROCESSING', 'UNKNOWN'] }, domain: { not: 'FISCAL' }, nextCheckAt: { lte: new Date() } }, orderBy: { nextCheckAt: 'asc' }, take: limit })
   let changed = 0
   for (const e of due) {
-    const ctx = { tenantId: e.tenantId }
+    const op = e.operationId ? await prisma.vehicleOperation.findUnique({ where: { id: e.operationId }, select: { unitId: true } }) : null
+    const { ctx } = await providerContext(e.tenantId, e.domain as 'RENAVE' | 'TRANSFER', op?.unitId ?? null, e.providerId)
     let r = null
     try {
       if (e.externalId) {
@@ -139,6 +144,8 @@ export async function recordDivergences(tenantId: string): Promise<number> {
 export async function runOpsJob(): Promise<Record<string, number>> {
   const events = await processPendingOpsEvents()
   const polled = await pollExternalOperations()
+  const fiscal = await refreshPendingFiscal().catch((e) => { console.error('[operacoes] notas pendentes', e); return 0 })
+  const queries = await pollVehicleQueries().catch((e) => { console.error('[operacoes] consultas veiculares', e); return 0 })
   const tenants = await prisma.tenant.findMany({ where: { status: { not: 'BANIDO' } as never }, select: { id: true } }).catch(async () => prisma.tenant.findMany({ select: { id: true } }))
   let alerts = 0, divergences = 0
   for (const t of tenants) {
@@ -147,5 +154,5 @@ export async function runOpsJob(): Promise<Record<string, number>> {
       alerts += await runTenantAlerts(t.id)
     } catch (e) { console.error('[operacoes] job da loja', t.id, e) }
   }
-  return { events: events.processed, eventsFailed: events.failed, polled, alerts, divergences, tenants: tenants.length }
+  return { events: events.processed, eventsFailed: events.failed, polled, fiscal, queries, alerts, divergences, tenants: tenants.length }
 }

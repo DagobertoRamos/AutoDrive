@@ -10,6 +10,10 @@ import { useEffect, useRef, useState } from 'react'
 import { ShieldCheck, Upload } from 'lucide-react'
 import { FieldLabel } from '@/components/ui/field'
 import { btn, ErrorLine, fmtDate, Hint, input, Modal, postJson, Section, StatusBadge } from '@/components/operations/ui'
+import { ConnectionsPanel, type Connection } from '@/components/operations/ConnectionsPanel'
+import { FiscalRulesPanel } from '@/components/operations/FiscalRulesPanel'
+import type { FiscalRules } from '@/lib/automotive/fiscal-rules'
+import type { ProviderEntry } from '@/lib/automotive/providers-catalog'
 
 type Enf = 'OFF' | 'WARN' | 'BLOCK'
 interface Config {
@@ -18,6 +22,7 @@ interface Config {
   enforcement: { renaveEntry: Enf; fiscalEntry: Enf; inspection: Enf; documents: Enf }
   capabilities: Record<string, boolean>
   units: Record<string, { ie?: string | null; im?: string | null; fiscalSeries?: string | null; uf?: string | null }>
+  fiscalRules: FiscalRules | null
 }
 interface Data {
   tenant: string | null
@@ -30,6 +35,11 @@ interface Data {
   capabilityKeys: string[]
   capabilityLabels: Record<string, string>
   global?: Record<string, Record<string, boolean>>
+  fiscalRules: FiscalRules
+  fiscalDefaults: FiscalRules
+  catalog: ProviderEntry[]
+  domainLabels: Record<string, string>
+  connections: Connection[]
 }
 
 const ENF_LABEL: Record<Enf, string> = { OFF: 'Não verificar', WARN: 'Avisar', BLOCK: 'Impedir a venda' }
@@ -45,7 +55,7 @@ export default function OperacoesConfigPage() {
   const load = async () => {
     const r = await fetch('/api/settings/operations', { cache: 'no-store' }).then((x) => x.json()).catch(() => null)
     if (!r?.success) return setError(r?.error ?? 'Não foi possível carregar.')
-    setData(r.data); setCfg(r.data.config ?? null)
+    setData(r.data); setCfg(r.data.config ? { ...r.data.config, fiscalRules: r.data.fiscalRules } : null)
   }
   useEffect(() => { load() }, [])
 
@@ -86,17 +96,12 @@ export default function OperacoesConfigPage() {
         </div>
       </div>
 
-      <Section title="Integrações" hint="PROVEDOR_INTEGRACAO" defaultOpen>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {(['renave', 'fiscal', 'transfer'] as const).map((k) => (
-            <div key={k}>
-              <FieldLabel>{k === 'renave' ? 'RENAVE' : k === 'fiscal' ? 'Notas fiscais' : 'Transferência'}</FieldLabel>
-              <select className={input} value={cfg.providers[k]} onChange={(e) => set('providers', { ...cfg.providers, [k]: e.target.value })}>
-                {data.providers[k].map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-              </select>
-            </div>
-          ))}
-        </div>
+      <Section title="Conexões" hint="PROVEDOR_INTEGRACAO" defaultOpen>
+        <ConnectionsPanel catalog={data.catalog} labels={data.domainLabels} connections={data.connections} units={data.units} onChanged={load} />
+      </Section>
+
+      <Section title="Regras fiscais" hint="NFE_OPERACAO" defaultOpen={!cfg.fiscalRules?.confirmedAt}>
+        {cfg.fiscalRules && <FiscalRulesPanel rules={cfg.fiscalRules} defaults={data.fiscalDefaults} onChange={(r) => set('fiscalRules', r)} />}
       </Section>
 
       <Section title="Acompanhar" defaultOpen>

@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
-import { opsContext } from './config'
+import { providerContext } from './connections'
 import { runExternal } from './external'
 import { renaveProvider } from './gateways/registry'
 import type { ManualInput } from './gateways/types'
@@ -40,8 +40,8 @@ export async function renaveEntryForVehicle(vehicleId: string, tenantId: string 
 export async function renaveAction(opId: string, tenantId: string | null, action: RenaveAction, manualIn: ManualInput | undefined, actor: Actor, reason?: string) {
   const { op, vehicle } = await loadOp(opId, tenantId)
   const manual = cleanManual(manualIn)
-  const { cfg } = await opsContext(op.tenantId, op.unitId)
-  const providerId = op.renaveProviderId ?? cfg.providers.renave
+  // Ciclo já iniciado numa integradora continua nela (Res. 1.026/2026).
+  const { providerId, ctx } = await providerContext(op.tenantId, 'RENAVE', op.unitId, op.renaveProviderId)
   const provider = renaveProvider(providerId)
   if (op.renaveStatus === 'NOT_REQUIRED') throw new OpsError('Esta operação não exige RENAVE.', 409)
   if (provider.info.mode === 'MANUAL' && action !== 'CANCEL' && !manual.protocol) throw new OpsError('Informe o protocolo do RENAVE.', 400)
@@ -71,11 +71,10 @@ export async function renaveAction(opId: string, tenantId: string | null, action
 
   const verb = action === 'ENTRY' ? 'ENTER_STOCK' : action === 'EXIT' ? 'EXIT_STOCK' : sale ? 'CANCEL_EXIT' : 'CANCEL_ENTRY'
   const ext = await prisma.externalOperation.findFirst({ where: { operationId: op.id, domain: 'RENAVE', state: 'CONFIRMED', action: sale ? 'EXIT_STOCK' : 'ENTER_STOCK' }, orderBy: { createdAt: 'desc' }, select: { externalId: true } })
-  const ctx = { tenantId: op.tenantId, unitId: op.unitId }
   const out = await runExternal(
-    { tenantId: op.tenantId, operationId: op.id, vehicleId: op.vehicleId, domain: 'RENAVE', action: verb, providerId, providerMode: provider.info.mode, baseKey: `RENAVE:${verb}:${op.id}`, actor, request: { vehicle: vref, manual, reason: reason ?? null } },
-    () => action === 'ENTRY' ? provider.enterStock(ctx, { vehicle: vref, fiscalKey: fiscal?.accessKey ?? null, manual })
-      : action === 'EXIT' ? provider.exitStock(ctx, { vehicle: vref, fiscalKey: fiscal?.accessKey ?? null, manual })
+    { tenantId: op.tenantId, operationId: op.id, vehicleId: op.vehicleId, domain: 'RENAVE', action: verb, providerId, providerMode: provider.info.mode, baseKey: `RENAVE:${verb}:${op.id}`, actor, request: { vehicle: vref, manual, reason: reason ?? null, connectionId: ctx.connectionId } },
+    () => action === 'ENTRY' ? provider.enterStock(ctx, { vehicle: vref, fiscalKey: fiscal?.accessKey ?? null, manual, reference: `RENAVE:${verb}:${op.id}` })
+      : action === 'EXIT' ? provider.exitStock(ctx, { vehicle: vref, fiscalKey: fiscal?.accessKey ?? null, manual, reference: `RENAVE:${verb}:${op.id}` })
       : sale ? provider.cancelExit(ctx, ext?.externalId ?? null, manual) : provider.cancelEntry(ctx, ext?.externalId ?? null, manual),
     (e) => (e.externalId ? provider.getStatus(ctx, e.externalId) : Promise.resolve(null)),
   )

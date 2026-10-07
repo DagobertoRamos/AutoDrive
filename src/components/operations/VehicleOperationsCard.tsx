@@ -15,6 +15,7 @@ import type { Readiness, ReadinessCheck } from '@/lib/automotive/readiness-core'
 import { restrictionKindText } from '@/lib/automotive/readiness-core'
 import type { OverallStatus } from '@/lib/automotive/status-core'
 import { OperationActionModal, type OpAction } from './ActionModals'
+import { VehicleDebtsSection, type VehicleQuery } from './VehicleDebtsSection'
 import { btn, Drawer, EmptyState, ErrorLine, fmtBRL, fmtDate, fmtDateTime, Hint, input, Modal, postJson, Section, StatusBadge, StatusRow } from './ui'
 
 interface Dim { key: string; label: string; value: string; text: string }
@@ -37,6 +38,8 @@ interface Overview {
   fiscalDocs: { id: string; number: string | null; series: string | null; direction: string; status: string; amount: number | null; authorizedAt: string | null }[]
   units: { id: string; name: string }[]
   canDecideTransfer: boolean
+  vehicleQuery: VehicleQuery | null
+  vehicleDataConnected: boolean
   permissions: Record<string, boolean>
 }
 
@@ -80,7 +83,7 @@ export function VehicleOperationsCard({ vehicleId, stockType, onGoToTab, onChang
     if (key === 'fiscal.issue') { const id = await intakeOpId(); if (id) setAction({ kind: 'fiscal.issue', opId: id, direction: 'IN' }); return }
     if (key === 'documents.view') return onGoToTab?.('documentacao')
     if (key === 'inspection.view') return onGoToTab?.('cautelar')
-    setFocus(key.startsWith('restriction') ? 'restrictions' : key.startsWith('inspection') ? 'inspections' : key.startsWith('consignment') ? 'consignment' : null)
+    setFocus(key.startsWith('restriction') ? 'restrictions' : key.startsWith('inspection') ? 'inspections' : key.startsWith('consignment') ? 'consignment' : key.startsWith('debts') ? 'debts' : null)
     setOpen(true)
   }
 
@@ -134,6 +137,18 @@ export function VehicleOperationsCard({ vehicleId, stockType, onGoToTab, onChang
               <span className="inline-flex items-center gap-2">{RENAVE_TEXT[data.renave]}{p['ops.renave.operate'] && data.renave !== 'PENDING' && data.renave !== 'OUT' && <button className={btn.link} onClick={() => runAction('renave.entry')}>Registrar</button>}</span>
             )} ok={renaveOk} tone={renaveOk ? undefined : 'attention'} />
         )}
+        {(data.vehicleDataConnected || data.vehicleQuery) && (() => {
+          const q = data.vehicleQuery
+          const done = q?.status === 'DONE'
+          return (
+            <StatusRow label="Débitos" hint="CONSULTA_VEICULAR" ok={done && q!.debtsCount === 0 && !q!.blocking} tone={done && q!.debtsCount > 0 ? 'attention' : undefined}
+              value={!q ? <button className={btn.link} onClick={() => runAction('debts.view')}>Consultar</button>
+                : q.status === 'PROCESSING' ? 'Consultando…'
+                : !done ? <button className={btn.link} onClick={() => runAction('debts.view')}>Ver</button>
+                : q.debtsCount ? <button className="font-medium text-amber-800 hover:underline" onClick={() => runAction('debts.view')}>{fmtBRL(q.debtsTotal)}</button>
+                : 'Nada consta'} />
+          )
+        })()}
         {data.cost != null && <StatusRow label="Custo" value={fmtBRL(data.cost)} />}
       </div>
 
@@ -191,6 +206,7 @@ function VehicleOperationsDrawer({ open, focus, data, vehicleId, stockType, onCl
         </Section>
       )}
 
+      <VehicleDebtsSection key={`d-${focus}`} vehicleId={vehicleId} query={data.vehicleQuery} connected={data.vehicleDataConnected} canQuery={!!p['ops.vehicle_data.query']} defaultOpen={focus === 'debts'} onReload={onReload} />
       <RestrictionsSection key={`r-${focus}`} data={data} vehicleId={vehicleId} canManage={p['ops.compliance.manage']} defaultOpen={focus === 'restrictions' || activeRestrictions.some((x) => x.blocking)} onReload={onReload} />
       <InspectionsSection key={`i-${focus}`} data={data} vehicleId={vehicleId} canManage={p['ops.compliance.manage']} defaultOpen={focus === 'inspections'} onReload={onReload} />
       {stockType === 'CONSIGNADO' && <ConsignmentSection key={`c-${focus}`} data={data} vehicleId={vehicleId} canManage={p['ops.compliance.manage']} defaultOpen={focus === 'consignment'} onReload={onReload} />}

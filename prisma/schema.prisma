@@ -6914,6 +6914,8 @@ model VehicleDataQuery {
   uf            String?
   providerId    String
   connectionId  String?
+  /// Protocolo/ID da consulta no provedor (casa o webhook com a consulta).
+  externalId    String?
   kind          String    @default("FULL") // DEBTS | RESTRICTIONS | FULL
   status        String    @default("PROCESSING") // PROCESSING | DONE | PARTIAL | ERROR
   debtsTotal    Decimal?  @db.Decimal(12, 2)
@@ -6928,5 +6930,6 @@ model VehicleDataQuery {
 
   @@index([tenantId, vehicleId, createdAt])
   @@index([tenantId, plate])
+  @@index([providerId, externalId])
   @@map("vehicle_data_queries")
 }

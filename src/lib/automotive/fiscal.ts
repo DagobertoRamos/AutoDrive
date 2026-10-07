@@ -6,9 +6,11 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
-import { opsContext, storeDocs } from './config'
+import { storeDocs } from './config'
+import { providerContext } from './connections'
 import { runExternal } from './external'
 import { fiscalProvider } from './gateways/registry'
+import { manualFiscal } from './gateways/manual'
 import { checkNfeForOperation, parseNfeXml, type NfeIssue } from './nfe-xml-core'
 import { applyToOperation, OpsError, recordEvent, type Actor } from './operations'
 
@@ -62,8 +64,8 @@ export async function attachFiscalXml(opId: string, tenantId: string | null, xml
     }
   }
 
-  const { cfg } = await opsContext(op.tenantId, op.unitId)
-  const provider = fiscalProvider(cfg.providers.fiscal)
+  // Importar XML é sempre o caminho "nota emitida fora": confere e vincula.
+  const provider = manualFiscal
   const out = await runExternal(
     { tenantId: op.tenantId, operationId: op.id, vehicleId: op.vehicleId, domain: 'FISCAL', action: 'EMIT', providerId: provider.info.id, providerMode: provider.info.mode, baseKey: `FISCAL:EMIT:${parsed.accessKey}`, actor, request: { accessKey: parsed.accessKey, number: parsed.number } },
     () => provider.emit({ tenantId: op.tenantId, unitId: op.unitId }, { model: 'NFE', reference: op.code, xml }),
@@ -101,10 +103,13 @@ export async function cancelFiscalDocument(docId: string, tenantId: string | nul
   if (doc.status === 'CANCELLED') return doc
   if (!input.reason?.trim() || input.reason.trim().length < 15) throw new OpsError('Informe o motivo do cancelamento (mínimo 15 caracteres).', 400)
   const provider = fiscalProvider(doc.providerId)
+  const { ctx } = await providerContext(doc.tenantId, 'FISCAL', doc.unitId, doc.providerId)
+  // Nota emitida pela API: o cancelamento vai pelo emissor, com a referência dele.
+  const ref = provider.info.mode === 'API' && doc.externalOperationId ? (await prisma.externalOperation.findUnique({ where: { id: doc.externalOperationId }, select: { externalId: true } }))?.externalId ?? doc.accessKey ?? doc.id : doc.accessKey ?? doc.id
   if (provider.info.mode === 'MANUAL' && !input.eventXml && !input.protocol?.trim()) throw new OpsError('Envie o XML do cancelamento ou informe o protocolo.', 400)
   const out = await runExternal(
     { tenantId: doc.tenantId, operationId: doc.operationId, vehicleId: doc.vehicleId, domain: 'FISCAL', action: 'CANCEL', providerId: provider.info.id, providerMode: provider.info.mode, baseKey: `FISCAL:CANCEL:${doc.accessKey ?? doc.id}`, actor, request: { reason: input.reason } },
-    () => provider.cancel({ tenantId: doc.tenantId, unitId: doc.unitId }, doc.accessKey ?? doc.id, input.reason, { eventXml: input.eventXml ?? null, protocol: input.protocol ?? null }),
+    () => provider.cancel(ctx, ref, input.reason, { eventXml: input.eventXml ?? null, protocol: input.protocol ?? null }),
   )
   if (out.ext.state !== 'CANCELLED' && out.ext.state !== 'CONFIRMED') throw new OpsError(out.ext.userMessage ?? 'Não foi possível cancelar a nota.', 422)
   const updated = await prisma.fiscalDocument.update({ where: { id: doc.id }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: input.reason.trim().slice(0, 500) } })

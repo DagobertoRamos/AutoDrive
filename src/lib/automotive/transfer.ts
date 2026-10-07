@@ -6,6 +6,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { opsContext } from './config'
+import { providerContext } from './connections'
 import { runExternal } from './external'
 import { transferProvider } from './gateways/registry'
 import type { ManualInput } from './gateways/types'
@@ -32,14 +33,13 @@ export async function advanceTransfer(opId: string, tenantId: string | null, sta
   const ok = canAdvance(op.transferStatus, stage, rules)
   if (!ok.ok) throw new OpsError(ok.reason, 409)
 
-  const { cfg } = await opsContext(op.tenantId, op.unitId)
-  const provider = transferProvider(cfg.providers.transfer)
-  const ctx = { tenantId: op.tenantId, unitId: op.unitId }
+  const { providerId: transferProviderId, ctx } = await providerContext(op.tenantId, 'TRANSFER', op.unitId)
+  const provider = transferProvider(transferProviderId)
   const started = await prisma.externalOperation.findFirst({ where: { operationId: op.id, domain: 'TRANSFER', action: 'START_TRANSFER', state: 'CONFIRMED' }, select: { externalId: true } })
   const out = await runExternal(
     { tenantId: op.tenantId, operationId: op.id, vehicleId: op.vehicleId, domain: 'TRANSFER', action: stage === 'INTENT_REGISTERED' ? 'START_TRANSFER' : `STAGE_${stage}`, providerId: provider.info.id, providerMode: provider.info.mode, baseKey: `TRANSFER:${stage}:${op.id}`, actor, request: { stage, manual } },
     () => stage === 'INTENT_REGISTERED'
-      ? provider.startTransfer(ctx, { vehicle: { vehicleId: op.vehicleId }, buyer: {}, manual })
+      ? provider.startTransfer(ctx, { vehicle: { vehicleId: op.vehicleId }, buyer: {}, manual, reference: `TRANSFER:${op.id}` })
       : provider.recordStage(ctx, started?.externalId ?? null, stage, manual),
   )
   if (out.ext.state !== 'CONFIRMED') throw new OpsError(out.ext.userMessage ?? 'Não foi possível registrar a etapa.', 422)

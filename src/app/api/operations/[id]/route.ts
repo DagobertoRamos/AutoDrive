@@ -5,6 +5,7 @@
 //   POST { action, ... }:
 //     renave.entry | renave.exit | renave.cancel   { manual: { protocol, date, notes }, reason? }
 //     fiscal.attach                                { xml }
+//     fiscal.preview | fiscal.emit | fiscal.refresh  (emissor conectado da loja)
 //     transfer.advance                             { stage, manual? }
 //     transfer.instructions                        → { text, phone }
 //     financing.lien                               { protocol? }  (gravame incluído)
@@ -14,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { opsPermissions } from '@/lib/automotive/access'
 import { attachFiscalXml } from '@/lib/automotive/fiscal'
+import { emitFiscal, fiscalPreview, refreshFiscalDocument } from '@/lib/automotive/fiscal-emission'
 import { applyToOperation, OpsError } from '@/lib/automotive/operations'
 import { serializeOperation } from '@/lib/automotive/overview'
 import { renaveAction } from '@/lib/automotive/renave'
@@ -75,6 +77,19 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       const d = await requireOps(s, 'ops.fiscal.issue'); if (d) return d
       const r = await attachFiscalXml(op.id, s.tenantId, String(b.xml ?? ''), s.actor)
       return NextResponse.json({ success: true, data: r })
+    }
+    if (action === 'fiscal.preview') {
+      const d = await requireOps(s, 'ops.fiscal.view'); if (d) return d
+      return NextResponse.json({ success: true, data: await fiscalPreview(op.id, s.tenantId) })
+    }
+    if (action === 'fiscal.emit') {
+      const d = await requireOps(s, 'ops.fiscal.issue'); if (d) return d
+      return NextResponse.json({ success: true, data: await emitFiscal(op.id, s.tenantId, s.actor) })
+    }
+    if (action === 'fiscal.refresh') {
+      const d = await requireOps(s, 'ops.fiscal.view'); if (d) return d
+      if (op.fiscalDocumentId) await refreshFiscalDocument(op.fiscalDocumentId, s.actor)
+      return NextResponse.json({ success: true })
     }
     if (action === 'transfer.advance') {
       const d = await requireOps(s, 'ops.transfer.start'); if (d) return d

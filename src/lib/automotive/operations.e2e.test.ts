@@ -33,6 +33,7 @@ describe.skipIf(!LOCAL)('operações veiculares (banco real)', () => {
   const actor = { id: null, name: 'Teste E2E', role: 'ADM' }
   const extraVehicles: string[] = []
   const extraDeals: string[] = []
+  const extraPersons: string[] = []
   let tenantId = '', unitA = '', unitB = '', customerId = '', carA = '', carB = '', dealId = '', dvTrade = ''
 
   function withDv(k43: string): string {
@@ -91,6 +92,9 @@ describe.skipIf(!LOCAL)('operações veiculares (banco real)', () => {
     }
     await prisma.financialEntry.deleteMany({ where: { tenantId } })
     await prisma.vehicle.deleteMany({ where: { id: { in: [...vids, ...extraVehicles] } } })
+    await prisma.person.deleteMany({ where: { id: { in: extraPersons } } })
+    await prisma.vehicleDataQuery.deleteMany({ where: { tenantId } })
+    await prisma.integrationConnection.deleteMany({ where: { tenantId } })
     await prisma.financialCategory.deleteMany({ where: { tenantId } }).catch(() => {})
     await prisma.customer.deleteMany({ where: { tenantId } })
     await prisma.unit.deleteMany({ where: { tenantId } })
@@ -277,6 +281,90 @@ describe.skipIf(!LOCAL)('operações veiculares (banco real)', () => {
     await prisma.commissionCalculation.create({ data })
     await expect(prisma.commissionCalculation.create({ data })).rejects.toMatchObject({ code: 'P2002' })
     await prisma.commissionCalculation.deleteMany({ where: { dedupKey: key } })
+  })
+
+  it('conectores: credencial cifrada, teste, ativação; consulta com RENAJUD trava a venda', async () => {
+    const conns = await import('./connections')
+    const vdata = await import('./vehicle-data')
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).endsWith('/health')) return new Response('{}', { status: 200 })
+      return new Response(JSON.stringify({ id: 'ext-1', status: 'DONE', debts: [{ type: 'IPVA', description: 'IPVA 2026', amount: 1200 }], restrictions: [{ kind: 'RENAJUD', description: 'Bloqueio judicial de circulação', blocking: true, reference: 'R1' }] }), { status: 200 })
+    }))
+    try {
+      const saved = await conns.saveConnection(tenantId, { domain: 'VEHICLE_DATA', providerId: 'INFOSIMPLES', environment: 'PRODUCAO', fields: { baseUrl: 'https://provedor.test', apiKey: 'segredo-123456' } }, actor)
+      const row = (await prisma.integrationConnection.findUnique({ where: { id: saved.id } }))!
+      expect(row.secretsEncrypted).not.toContain('segredo-123456')
+      expect((row.maskedHints as Record<string, string>).apiKey).toBe('••••3456')
+      await expect(conns.activateConnection(tenantId, saved.id, actor)).rejects.toThrow(/Teste/)
+      const { testProvider } = await import('./gateways/registry')
+      const c = (await conns.connectionById(saved.id))!
+      const t = await testProvider('VEHICLE_DATA', 'INFOSIMPLES', { tenantId, credentials: c.credentials, connectionId: c.id })
+      expect(t.ok).toBe(true)
+      await conns.recordTest(saved.id, true, null)
+      await conns.activateConnection(tenantId, saved.id, actor)
+      expect((await conns.activeConnection(tenantId, 'VEHICLE_DATA')).credentials.apiKey).toBe('segredo-123456')
+
+      const car = (await prisma.vehicle.create({ data: { tenantId, unitId: unitA, brand: 'VW', model: 'Gol', plate: 'QRY1A23', stockStatus: 'DISPONIVEL', isAvailableForSale: true } })).id
+      extraVehicles.push(car)
+      const r = await vdata.requestVehicleQuery(car, tenantId, {}, actor)
+      expect(r.query?.status).toBe('DONE')
+      expect(Number(r.query?.debtsTotal)).toBe(1200)
+      const again = await vdata.requestVehicleQuery(car, tenantId, {}, actor)
+      expect(again.cached).toBe(true)
+      expect((await overview.saleBlockers([car]))[0]?.reasons[0]).toMatch(/Bloqueio judicial/)
+      const ready = await overview.vehicleReadiness(car)
+      expect(ready?.readiness.warnings.some((w) => w.key === 'debts')).toBe(true)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('NF-e pela Focus: prévia aponta o que falta; emissão vai a autorizada e vincula', async () => {
+    const conns = await import('./connections')
+    const fe = await import('./fiscal-emission')
+    const cfg = await import('./config')
+    const current = await cfg.loadOpsConfig(tenantId)
+    await cfg.saveOpsConfig(tenantId, { ...current, fiscalRules: { regime: 'NORMAL', ncmDefault: '87032310', confirmedAt: new Date().toISOString() } }, null)
+    const car = (await prisma.vehicle.create({ data: { tenantId, unitId: unitA, brand: 'Fiat', model: 'Argo', plate: 'NFE1B23', chassi: '9BD358A1NMYH12345', stockStatus: 'DISPONIVEL', isAvailableForSale: true, purchasePrice: 60000 } })).id
+    extraVehicles.push(car)
+    const person = await prisma.person.create({ data: { tenantId, type: 'FISICA', nomeCompleto: 'Ana Compradora', cpf: '52998224725', logradouro: 'Rua B', numero: '20', bairro: 'Centro', cidade: 'São Paulo', estado: 'SP', cep: '01001000' } as never })
+    extraPersons.push(person.id)
+    const d = await prisma.deal.create({ data: { tenantId, unitId: unitA, type: 'VENDA', status: 'FINALIZADA', finalizedAt: new Date(), personId: person.id, saleAmount: 75000, dealNumber: `NEG-F-${tag}` } as never })
+    extraDeals.push(d.id)
+    await prisma.dealVehicle.create({ data: { dealId: d.id, vehicleId: car, role: 'VENDIDO', agreedValue: 75000 } })
+    const [op] = (await ops.syncDealOperations(d.id, actor)).filter((o) => o.kind === 'SALE')
+
+    let pv = await fe.fiscalPreview(op.id, tenantId)
+    expect(pv.mode).toBe('MANUAL')
+
+    let authorized = false
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('viacep')) return new Response(JSON.stringify({ ibge: '3550308' }))
+      if (u.includes('autodrive-teste-conexao')) return new Response('{}', { status: 404 })
+      if (u.includes('?ref=')) return new Response(JSON.stringify({ status: 'processando_autorizacao' }), { status: 202 })
+      if (u.includes('/arquivos/')) return new Response('<nfeProc><NFe><infNFe Id="NFe00"><ide><mod>55</mod><nNF>77</nNF><serie>1</serie><tpNF>1</tpNF></ide><emit><CNPJ>11222333000181</CNPJ></emit><dest><CPF>52998224725</CPF></dest><det><prod><CFOP>5102</CFOP></prod></det></infNFe></NFe><protNFe><infProt><cStat>100</cStat><nProt>1</nProt></infProt></protNFe></nfeProc>')
+      authorized = true
+      return new Response(JSON.stringify({ status: 'autorizado', chave_nfe: `35${tag}`.padEnd(44, '1').slice(0, 44), numero: '77', serie: '1', caminho_xml_nota_fiscal: '/arquivos/x.xml' }))
+    }))
+    try {
+      const saved = await conns.saveConnection(tenantId, { domain: 'FISCAL', providerId: 'FOCUS_NFE', environment: 'HOMOLOGACAO', fields: { token: 'tok-focus' } }, actor)
+      await conns.recordTest(saved.id, true, null)
+      await conns.activateConnection(tenantId, saved.id, actor)
+      pv = await fe.fiscalPreview(op.id, tenantId)
+      expect(pv).toMatchObject({ mode: 'API', missing: [] })
+      expect(pv.summary).toMatchObject({ cfop: '5102', amount: 75000 })
+      const r = await fe.emitFiscal(op.id, tenantId, actor)
+      expect(r.status).toBe('PROCESSING')
+      expect(authorized).toBe(true)
+      const doc = (await prisma.fiscalDocument.findFirst({ where: { operationId: op.id } }))!
+      expect(doc.status).toBe('AUTHORIZED')
+      expect(doc.number).toBe('77')
+      expect((await prisma.vehicleOperation.findUnique({ where: { id: op.id } }))!.fiscalStatus).toBe('AUTHORIZED')
+      await expect(fe.emitFiscal(op.id, tenantId, actor)).rejects.toThrow(/já tem NF-e/)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('23 · webhook duplicado é processado uma vez', async () => {

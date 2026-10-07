@@ -13,6 +13,8 @@ import { opsPermissions } from '@/lib/automotive/access'
 import { dealOperations } from '@/lib/automotive/overview'
 import { syncDealOperations } from '@/lib/automotive/operations'
 import { opsError, opsSession, requireOps } from '@/lib/automotive/route-helpers'
+import { activeConnection } from '@/lib/automotive/connections'
+import { providerEntry } from '@/lib/automotive/providers-catalog'
 
 export const dynamic = 'force-dynamic'
 type Ctx = { params: Promise<{ id: string }> }
@@ -30,7 +32,10 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     if (!deal) return NextResponse.json({ success: false, error: 'Negociação não encontrada.' }, { status: 404 })
     const perms = await opsPermissions(s.user)
     const data = await dealOperations(deal.id, s.actor)
-    return NextResponse.json({ success: true, data: { ...data, fiscalDocs: perms['ops.fiscal.view'] ? data.fiscalDocs : [], customer: deal.customer, permissions: perms } })
+    const tenantOfDeal = (await prisma.deal.findUnique({ where: { id: deal.id }, select: { tenantId: true, unitId: true } }))
+    const fiscalConn = tenantOfDeal?.tenantId ? await activeConnection(tenantOfDeal.tenantId, 'FISCAL', tenantOfDeal.unitId) : null
+    const fiscalMode = providerEntry('FISCAL', fiscalConn?.providerId)?.mode === 'API' ? 'API' : 'MANUAL'
+    return NextResponse.json({ success: true, data: { ...data, fiscalMode, fiscalDocs: perms['ops.fiscal.view'] ? data.fiscalDocs : [], customer: deal.customer, permissions: perms } })
   } catch (err) {
     return opsError(err)
   }

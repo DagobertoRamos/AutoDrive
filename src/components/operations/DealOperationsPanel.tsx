@@ -21,7 +21,7 @@ interface Op {
   vehicle: { brand: string | null; model: string | null; plate: string | null } | null; cancelledAt: string | null
 }
 interface FiscalDoc { id: string; operationId: string | null; number: string | null; series: string | null; direction: string; status: string }
-interface Data { operations: Op[]; legacy: boolean; fiscalDocs: FiscalDoc[]; permissions: Record<string, boolean> }
+interface Data { operations: Op[]; legacy: boolean; fiscalDocs: FiscalDoc[]; permissions: Record<string, boolean>; fiscalMode: 'API' | 'MANUAL' }
 
 const dim = (op: Op, key: string) => op.dimensions.find((d) => d.key === key)
 
@@ -63,7 +63,10 @@ export default function DealOperationsPanel({ dealId, onGoToTab }: { dealId: str
   const open = (op: Op, key: string) => {
     const sale = op.kind === 'SALE'
     switch (key) {
-      case 'fiscal.issue': return setAction({ kind: 'fiscal.issue', opId: op.id, direction: sale ? 'OUT' : 'IN' })
+      case 'fiscal.issue': return data.fiscalMode === 'API'
+        ? setAction({ kind: 'fiscal.emit', opId: op.id, onUseXml: () => setAction({ kind: 'fiscal.issue', opId: op.id, direction: sale ? 'OUT' : 'IN' }) })
+        : setAction({ kind: 'fiscal.issue', opId: op.id, direction: sale ? 'OUT' : 'IN' })
+      case 'fiscal.refresh': { postJson(`/api/operations/${op.id}`, { action: 'fiscal.refresh' }).then(() => load()); return }
       case 'renave.exit': return setAction({ kind: 'renave.exit', opId: op.id })
       case 'renave.entry': return setAction({ kind: 'renave.entry', opId: op.id })
       case 'renave.cancel': return setAction({ kind: 'renave.cancel', opId: op.id, sale })
@@ -80,6 +83,7 @@ export default function DealOperationsPanel({ dealId, onGoToTab }: { dealId: str
   const allowed = (key: string) => {
     if (key.startsWith('renave.')) return p['ops.renave.operate']
     if (key === 'fiscal.issue') return p['ops.fiscal.issue']
+    if (key === 'fiscal.refresh') return p['ops.fiscal.view']
     if (key === 'fiscal.cancel') return p['ops.fiscal.cancel']
     if (key === 'transfer.advance') return p['ops.transfer.start']
     if (key === 'transfer.instructions') return p['ops.transfer.view']
@@ -163,6 +167,8 @@ function OperationCard({ op, perms, canRun, onAction }: { op: Op; perms: Record<
             {!sale && op.raw.renaveStatus !== 'ENTRY_CONFIRMED' && op.raw.renaveStatus !== 'NOT_REQUIRED' && canRun('renave.entry') && <button className={btn.link} onClick={() => onAction('renave.entry')}>Registrar entrada no RENAVE</button>}
             {!sale && op.raw.fiscalStatus !== 'AUTHORIZED' && op.raw.fiscalStatus !== 'NOT_REQUIRED' && canRun('fiscal.issue') && <button className={btn.link} onClick={() => onAction('fiscal.issue')}>Vincular NF-e de entrada</button>}
             {op.raw.fiscalStatus === 'AUTHORIZED' && canRun('fiscal.cancel') && <button className={btn.link} onClick={() => onAction('fiscal.cancel')}>Cancelar NF-e</button>}
+            {op.raw.fiscalStatus === 'PROCESSING' && canRun('fiscal.refresh') && <button className={btn.link} onClick={() => onAction('fiscal.refresh')}>Atualizar situação da NF-e</button>}
+            {op.raw.fiscalStatus === 'REJECTED' && canRun('fiscal.issue') && <button className={btn.link} onClick={() => onAction('fiscal.issue')}>Emitir de novo</button>}
             <a className={btn.link} href={`/estoque/${op.vehicleId}`}>Ficha do veículo</a>
           </div>
         </div>

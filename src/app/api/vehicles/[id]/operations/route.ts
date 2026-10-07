@@ -13,6 +13,8 @@ import { opsPermissions } from '@/lib/automotive/access'
 import { vehicleOverview } from '@/lib/automotive/overview'
 import { renaveEntryForVehicle } from '@/lib/automotive/renave'
 import { ensureIntakeOperation } from '@/lib/automotive/operations'
+import { requestVehicleQuery, vehicleQuerySummary } from '@/lib/automotive/vehicle-data'
+import { activeConnection } from '@/lib/automotive/connections'
 import { addInspection, addRestriction, cancelInspection, decideStoreTransfer, requestStoreTransfer, resolveRestriction, saveConsignment } from '@/lib/automotive/vehicle-registry'
 import { opsError, opsSession, requireOps } from '@/lib/automotive/route-helpers'
 import { prisma } from '@/lib/prisma'
@@ -28,6 +30,10 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     const perms = await opsPermissions(g.user)
     const data = await vehicleOverview(id, { costs: perms['ops.costs.view'] })
     if (!data) return NextResponse.json({ success: false, error: 'Veículo não encontrado.' }, { status: 404 })
+    const [vehicleQuery, dataConn] = await Promise.all([
+      vehicleQuerySummary(id),
+      g.vehicle.tenantId ? activeConnection(g.vehicle.tenantId, 'VEHICLE_DATA') : null,
+    ])
     const units = perms['ops.store_transfer'] && g.vehicle.tenantId
       ? await prisma.unit.findMany({ where: { tenantId: g.vehicle.tenantId, active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } })
       : []
@@ -37,6 +43,8 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
         ...data,
         fiscalDocs: perms['ops.fiscal.view'] ? data.fiscalDocs : [],
         units,
+        vehicleQuery,
+        vehicleDataConnected: !!dataConn?.id,
         // Quem pode aceitar a transferência: gestão da loja de destino (ou ADM/MASTER).
         canDecideTransfer: !!data.storeTransfer && perms['ops.store_transfer'] && (['MASTER', 'ADM', 'GERENTE_GERAL'].includes(g.user.role) || (g.user as { unitId?: string | null }).unitId === data.storeTransfer.toUnitId),
         permissions: perms,
@@ -68,6 +76,11 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         const d = await deny('ops.fiscal.issue'); if (d) return d
         const op = await ensureIntakeOperation(id, s.actor)
         return NextResponse.json({ success: true, data: { operationId: op.id } })
+      }
+      case 'vehicleData.query': {
+        const d = await deny('ops.vehicle_data.query'); if (d) return d
+        const r = await requestVehicleQuery(id, s.tenantId, { force: b.force === true, ownerDoc: typeof b.ownerDoc === 'string' ? b.ownerDoc : null }, s.actor)
+        return NextResponse.json({ success: true, data: { status: r.query?.status, cached: r.cached } })
       }
       case 'restriction.add': {
         const d = await deny('ops.compliance.manage'); if (d) return d

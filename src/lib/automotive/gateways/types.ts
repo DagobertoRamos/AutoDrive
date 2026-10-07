@@ -11,7 +11,12 @@ export interface ProviderContext {
   unitId?: string | null
   /** Credenciais DA LOJA, decifradas só no momento da chamada (BYOC). */
   credentials?: Record<string, string> | null
+  environment?: 'HOMOLOGACAO' | 'PRODUCAO'
+  connectionId?: string | null
 }
+
+/** Resultado do "Testar conexão". */
+export interface TestResult { ok: boolean; message: string }
 
 export interface ProviderResult<T = Record<string, unknown>> {
   state: ExternalState
@@ -39,11 +44,12 @@ export interface ManualInput { protocol?: string | null; date?: string | null; n
 
 // ── RENAVE ───────────────────────────────────────────────────────────────────
 
-export interface RenaveEntryInput { vehicle: VehicleRef; seller?: PartyRef; amount?: number | null; fiscalKey?: string | null; manual?: ManualInput }
-export interface RenaveExitInput { vehicle: VehicleRef; buyer?: PartyRef; amount?: number | null; fiscalKey?: string | null; manual?: ManualInput }
+export interface RenaveEntryInput { vehicle: VehicleRef; seller?: PartyRef; amount?: number | null; fiscalKey?: string | null; manual?: ManualInput; /** Chave de idempotência da operação. */ reference?: string | null }
+export interface RenaveExitInput { vehicle: VehicleRef; buyer?: PartyRef; amount?: number | null; fiscalKey?: string | null; manual?: ManualInput; reference?: string | null }
 
 export interface RenaveProvider {
   info: ProviderInfo
+  test?(ctx: ProviderContext): Promise<TestResult>
   checkEligibility(ctx: ProviderContext, v: VehicleRef): Promise<ProviderResult<{ eligible: boolean; reasons: string[] }> | null>
   enterStock(ctx: ProviderContext, input: RenaveEntryInput): Promise<ProviderResult>
   confirmEntry(ctx: ProviderContext, externalId: string, manual?: ManualInput): Promise<ProviderResult>
@@ -74,6 +80,7 @@ export interface FiscalEmitInput {
 
 export interface FiscalProvider {
   info: ProviderInfo
+  test?(ctx: ProviderContext): Promise<TestResult>
   emit(ctx: ProviderContext, input: FiscalEmitInput): Promise<ProviderResult<{ xml?: string; accessKey?: string; number?: string; series?: string }>>
   status(ctx: ProviderContext, reference: string): Promise<ProviderResult | null>
   cancel(ctx: ProviderContext, reference: string, reason: string, manual?: { eventXml?: string | null; protocol?: string | null }): Promise<ProviderResult>
@@ -87,7 +94,8 @@ export interface FiscalProvider {
 
 export interface TransferProvider {
   info: ProviderInfo
-  startTransfer(ctx: ProviderContext, input: { vehicle: VehicleRef; buyer: PartyRef; amount?: number | null; manual?: ManualInput }): Promise<ProviderResult>
+  test?(ctx: ProviderContext): Promise<TestResult>
+  startTransfer(ctx: ProviderContext, input: { vehicle: VehicleRef; buyer: PartyRef; amount?: number | null; manual?: ManualInput; reference?: string | null }): Promise<ProviderResult>
   /** Manual: a loja informa a etapa concluída. API: o provedor informa via status/webhook. */
   recordStage(ctx: ProviderContext, externalId: string | null, stage: string, manual?: ManualInput): Promise<ProviderResult>
   getStatus(ctx: ProviderContext, externalId: string): Promise<ProviderResult<{ stage?: string }> | null>

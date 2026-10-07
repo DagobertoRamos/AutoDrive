@@ -83,6 +83,8 @@ export interface OpsConfig {
   enforcement: { renaveEntry: Enforcement; fiscalEntry: Enforcement; inspection: Enforcement; documents: Enforcement }
   capabilities: Partial<Capabilities>
   units: Record<string, UnitFiscalConfig>
+  /** Regras fiscais da loja (normalizadas com a UF em fiscal-rules.ts). */
+  fiscalRules: Record<string, unknown> | null
 }
 
 export const DEFAULT_OPS_CONFIG: OpsConfig = {
@@ -91,6 +93,7 @@ export const DEFAULT_OPS_CONFIG: OpsConfig = {
   enforcement: { renaveEntry: 'WARN', fiscalEntry: 'WARN', inspection: 'OFF', documents: 'WARN' },
   capabilities: {},
   units: {},
+  fiscalRules: null,
 }
 
 const ENF = new Set<Enforcement>(['OFF', 'WARN', 'BLOCK'])
@@ -127,6 +130,7 @@ export function normalizeOpsConfig(raw: unknown): OpsConfig {
     },
     capabilities: pick(r.capabilities),
     units,
+    fiscalRules: r.fiscalRules && typeof r.fiscalRules === 'object' ? (r.fiscalRules as Record<string, unknown>) : null,
   }
 }
 
