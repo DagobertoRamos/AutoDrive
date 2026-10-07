@@ -7,6 +7,7 @@
 // =============================================================================
 
 import { baseSource } from './settlement-core'
+import { fromCents, sumMoney, toCents } from './money'
 
 export type DreSection =
   | 'RECEITA_BRUTA' | 'DEDUCOES' | 'CMV' | 'DESPESAS_OPERACIONAIS'
@@ -115,17 +116,18 @@ export function buildDre(entries: DreEntryInput[], periods: string[]): DreLine[]
   for (const e of entries) {
     const g = DRE_GROUP_BY_KEY[e.group]
     if (!g) continue
-    const signed = e.type === 'RECEITA' ? e.amount : -e.amount
+    // Acumula em centavos (exato).
+    const signed = toCents(e.type === 'RECEITA' ? e.amount : -e.amount)
     acc[g.key] ??= {}
     acc[g.key][e.period] = (acc[g.key][e.period] ?? 0) + signed
   }
   const groupLine = (g: DreGroupDef): DreLine => {
-    const values = Object.fromEntries(periods.map((p) => [p, r2(acc[g.key]?.[p] ?? 0)]))
-    return { key: g.key, label: g.label, values, total: r2(periods.reduce((s, p) => s + values[p], 0)), kind: 'group', section: g.section }
+    const values = Object.fromEntries(periods.map((p) => [p, fromCents(acc[g.key]?.[p] ?? 0)]))
+    return { key: g.key, label: g.label, values, total: sumMoney(periods.map((p) => values[p])), kind: 'group', section: g.section }
   }
   const sum = (lines: DreLine[], key: string, label: string, kind: DreLine['kind']): DreLine => {
-    const values = Object.fromEntries(periods.map((p) => [p, r2(lines.reduce((s, l) => s + (l.values[p] ?? 0), 0))]))
-    return { key, label, values, total: r2(periods.reduce((s, p) => s + values[p], 0)), kind }
+    const values = Object.fromEntries(periods.map((p) => [p, sumMoney(lines.map((l) => l.values[p] ?? 0))]))
+    return { key, label, values, total: sumMoney(periods.map((p) => values[p])), kind }
   }
   const of = (section: DreSection) => DRE_GROUPS.filter((g) => g.section === section).map(groupLine)
 

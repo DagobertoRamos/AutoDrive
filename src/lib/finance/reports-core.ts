@@ -8,6 +8,7 @@
 // Sem Prisma/Next: recebe dados prontos e devolve números.
 // =============================================================================
 
+import { round2 } from './money'
 import { DRE_GROUP_BY_KEY, VEHICLE_COST_GROUPS, type DreLine } from './dre-core'
 
 export type Regime = 'competencia' | 'caixa'
@@ -18,7 +19,7 @@ const ymFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', 
 const ymdFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
 const DAY_MS = 86_400_000
 
-export const r2 = (n: number) => Math.round(n * 100) / 100
+export const r2 = (n: number) => round2(n)
 
 // ── Períodos ────────────────────────────────────────────────────────────────
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/

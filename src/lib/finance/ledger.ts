@@ -8,6 +8,8 @@
 // Todas as datas viram dia civil de São Paulo (YYYY-MM-DD) antes de comparar.
 // =============================================================================
 
+import { MoneySum, round2, toCents, fromCents } from './money'
+
 export const SP_TZ = 'America/Sao_Paulo'
 
 export type LedgerType = 'RECEITA' | 'DESPESA'
@@ -34,7 +36,7 @@ export interface LedgerAccount {
   active: boolean
 }
 
-export const r2 = (n: number) => Math.round(n * 100) / 100
+export const r2 = (n: number) => round2(n)
 
 // ── Datas (dia civil em SP) ──────────────────────────────────────────────────
 const ymdFmt = new Intl.DateTimeFormat('en-CA', { timeZone: SP_TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -134,10 +136,10 @@ export function countsInBalance(e: LedgerEntry, s: LedgerScope): boolean {
  * O saldo inicial de uma conta só vale a partir da sua data.
  */
 export function balanceAsOf(entries: LedgerEntry[], s: LedgerScope, endYmd: string | null): number {
-  let total = 0
+  const total = new MoneySum()
   for (const a of s.accounts) {
     const o = s.openingYmd.get(a.id)
-    if (!endYmd || !o || o <= endYmd) total += a.openingBalance
+    if (!endYmd || !o || o <= endYmd) total.add(a.openingBalance)
   }
   for (const e of entries) {
     if (!countsInBalance(e, s)) continue
@@ -145,9 +147,9 @@ export function balanceAsOf(entries: LedgerEntry[], s: LedgerScope, endYmd: stri
       const d = realizedYmd(e)
       if (d && d > endYmd) continue
     }
-    total += signedAmount(e)
+    total.add(signedAmount(e))
   }
-  return r2(total)
+  return total.value
 }
 
 /** Saldo por conta (todas as contas informadas) + líquido dos realizados sem conta. */
@@ -155,14 +157,14 @@ export function balancesByAccount(entries: LedgerEntry[], accounts: LedgerAccoun
   const byAccount = new Map<string, number>()
   for (const a of accounts) byAccount.set(a.id, balanceAsOf(entries, makeScope(accounts, a.id), endYmd))
   const known = new Set(accounts.map((a) => a.id))
-  let noAccount = 0
+  const noAccount = new MoneySum()
   for (const e of entries) {
     if (!isRealized(e) || (e.accountId && known.has(e.accountId))) continue
     const d = realizedYmd(e)
     if (endYmd && d && d > endYmd) continue
-    noAccount += signedAmount(e)
+    noAccount.add(signedAmount(e))
   }
-  return { byAccount, noAccount: r2(noAccount) }
+  return { byAccount, noAccount: noAccount.value }
 }
 
 /**
@@ -193,16 +195,17 @@ export interface RunningResult<T> {
 
 /** `amount` já com sinal; as linhas devem vir ordenadas. */
 export function runningBalance<T extends { amount: number }>(opening: number, lines: T[]): RunningResult<T> {
-  let bal = r2(opening)
+  let bal = toCents(opening)
   let totalIn = 0
   let totalOut = 0
   const out = lines.map((l) => {
-    bal = r2(bal + l.amount)
-    if (l.amount >= 0) totalIn += l.amount
-    else totalOut += -l.amount
-    return { ...l, balance: bal }
+    const c = toCents(l.amount)
+    bal += c
+    if (c >= 0) totalIn += c
+    else totalOut -= c
+    return { ...l, balance: fromCents(bal) }
   })
-  return { lines: out, opening: r2(opening), closing: bal, totalIn: r2(totalIn), totalOut: r2(totalOut) }
+  return { lines: out, opening: round2(opening), closing: fromCents(bal), totalIn: fromCents(totalIn), totalOut: fromCents(totalOut) }
 }
 
 // ── Projeção diária do saldo ─────────────────────────────────────────────────
@@ -318,24 +321,23 @@ export function buildCashflow(inp: CashflowInput): CashflowBucket[] {
     const i = idx.get(keyOf(it.ymd))
     if (i == null) continue
     const a = acc[i]
-    if (it.realized) { if (it.amount >= 0) a.ri += it.amount; else a.ro -= it.amount }
-    else { if (it.amount >= 0) a.pi += it.amount; else a.po -= it.amount }
-    if (it.realized ? it.ymd > inp.today : true) a.afterToday += it.amount
+    // Acumula em centavos (exato); converte para reais só na saída.
+    const c = toCents(it.amount)
+    if (it.realized) { if (c >= 0) a.ri += c; else a.ro -= c }
+    else { if (c >= 0) a.pi += c; else a.po -= c }
+    if (it.realized ? it.ymd > inp.today : true) a.afterToday += c
   }
-  let running = inp.startBalance
+  let running = toCents(inp.startBalance)
   return buckets.map((b, i) => {
     const a = acc[i]
-    const entradas = r2(a.ri + a.pi)
-    const saidas = r2(a.ro + a.po)
-    const saldo = r2(entradas - saidas)
     const kind: BucketKind = b.end < inp.today ? 'realized' : b.start > inp.today ? 'projected' : 'mixed'
-    if (kind === 'mixed' && inp.currentBalance != null) running = inp.currentBalance + a.afterToday
-    else running += saldo
-    running = r2(running)
+    const saldoC = a.ri + a.pi - a.ro - a.po
+    if (kind === 'mixed' && inp.currentBalance != null) running = toCents(inp.currentBalance) + a.afterToday
+    else running += saldoC
     return {
       ...b, kind,
-      realizedIn: r2(a.ri), realizedOut: r2(a.ro), projectedIn: r2(a.pi), projectedOut: r2(a.po),
-      entradas, saidas, saldo, acumulado: running,
+      realizedIn: fromCents(a.ri), realizedOut: fromCents(a.ro), projectedIn: fromCents(a.pi), projectedOut: fromCents(a.po),
+      entradas: fromCents(a.ri + a.pi), saidas: fromCents(a.ro + a.po), saldo: fromCents(saldoC), acumulado: fromCents(running),
     }
   })
 }
