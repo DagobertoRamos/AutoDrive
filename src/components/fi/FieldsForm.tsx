@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react'
 import { FieldLabel } from '@/components/ui/field'
 import { MoneyInput } from '@/components/ui/money-input'
 import { FIELD_INPUT, SELECT_OPTIONS } from '@/lib/finance/fi/field-input'
+import { maskCEP, maskCNPJ, maskCPF, maskPhone } from '@/lib/masks'
+import { ListEditor, UFS, YearsMonths } from './CadastroForm'
 import { api, btnPrimary, inputClass } from './ui'
 
 export interface MissingField { key: string; label: string; group?: string }
@@ -58,9 +60,10 @@ export function FieldsForm({ proponentId, fields, onSaved, submitLabel = 'Salvar
                     {(SELECT_OPTIONS[f.key] ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 ) : kind === 'date' ? <input id={`fi-${f.key}`} type="date" className={cls} value={String(v ?? '')} onChange={(e) => set(f.key, e.target.value)} />
-                : kind === 'months' ? <input id={`fi-${f.key}`} type="number" min={0} className={cls} value={v == null ? '' : String(v)} onChange={(e) => set(f.key, e.target.value === '' ? null : Number(e.target.value))} placeholder="Meses" />
-                : kind === 'list' ? <ListInput value={Array.isArray(v) ? v as Record<string, string>[] : []} onChange={(l) => set(f.key, l)} field={f.key} />
-                : <input id={`fi-${f.key}`} className={cls} inputMode={['cpf', 'cnpj', 'cep', 'phone'].includes(kind) ? 'numeric' : undefined} type={kind === 'email' ? 'email' : 'text'} maxLength={kind === 'uf' ? 2 : 160} value={String(v ?? '')} onChange={(e) => set(f.key, e.target.value)} />}
+                : kind === 'months' ? <YearsMonths id={`fi-${f.key}`} className={cls} value={v == null || v === '' ? null : Number(v)} onChange={(n) => set(f.key, n)} />
+                : kind === 'list' ? <ListEditor field={f.key} value={Array.isArray(v) ? v as Record<string, unknown>[] : []} onChange={(l) => set(f.key, l)} />
+                : kind === 'uf' ? <select id={`fi-${f.key}`} className={cls} value={String(v ?? '')} onChange={(e) => set(f.key, e.target.value)}><option value="">UF</option>{UFS.map((u) => <option key={u} value={u}>{u}</option>)}</select>
+                : <input id={`fi-${f.key}`} className={cls} inputMode={['cpf', 'cnpj', 'cep', 'phone', 'int'].includes(kind) ? 'numeric' : kind === 'percent' ? 'decimal' : undefined} type={kind === 'email' ? 'email' : 'text'} maxLength={160} value={masked(kind, v)} onChange={(e) => set(f.key, ['cpf', 'cnpj', 'cep', 'phone', 'int'].includes(kind) ? e.target.value.replace(/\D/g, '') : e.target.value)} />}
               {errors[f.key] && <p className="mt-0.5 text-xs text-red-600">{errors[f.key]}</p>}
             </div>
           )
@@ -72,23 +75,7 @@ export function FieldsForm({ proponentId, fields, onSaved, submitLabel = 'Salvar
   )
 }
 
-const LIST_SHAPE: Record<string, { key: string; label: string }[]> = {
-  socios: [{ key: 'nome', label: 'Nome' }, { key: 'cpf', label: 'CPF' }, { key: 'participacao', label: 'Participação %' }],
-  referencias: [{ key: 'nome', label: 'Nome' }, { key: 'telefone', label: 'Telefone' }, { key: 'relacao', label: 'Relação' }],
-  outrasRendas: [{ key: 'descricao', label: 'Descrição' }, { key: 'valor', label: 'Valor' }],
-}
-
-function ListInput({ value, onChange, field }: { value: Record<string, string>[]; onChange: (v: Record<string, string>[]) => void; field: string }) {
-  const shape = LIST_SHAPE[field] ?? [{ key: 'descricao', label: 'Descrição' }]
-  const rows = value.length ? value : [{}]
-  return (
-    <div className="space-y-2">
-      {rows.map((row, i) => (
-        <div key={i} className="grid gap-2" style={{ gridTemplateColumns: `repeat(${shape.length}, minmax(0, 1fr))` }}>
-          {shape.map((s) => <input key={s.key} className={inputClass} placeholder={s.label} aria-label={s.label} value={row[s.key] ?? ''} onChange={(e) => { const next = [...rows]; next[i] = { ...row, [s.key]: e.target.value }; onChange(next) }} />)}
-        </div>
-      ))}
-      <button type="button" className="text-xs font-medium text-brand-700 hover:underline" onClick={() => onChange([...rows, {}])}>Adicionar linha</button>
-    </div>
-  )
+function masked(kind: string, v: unknown): string {
+  const s = String(v ?? '')
+  return kind === 'cpf' ? maskCPF(s) : kind === 'cnpj' ? maskCNPJ(s) : kind === 'cep' ? maskCEP(s) : kind === 'phone' ? maskPhone(s) : s
 }

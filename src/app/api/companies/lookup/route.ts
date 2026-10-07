@@ -50,6 +50,15 @@ export async function GET(req: NextRequest) {
     estado:        d.uf          ?? null,
     // IE da empresa — BrasilAPI não expõe, mantém compatibilidade retornando null
     inscricaoEstadual: null,
+    // Dados cadastrais (ficha PJ do F&I)
+    dataAbertura:     d.data_inicio_atividade ?? null,
+    naturezaJuridica: d.natureza_juridica ?? null,
+    atividade:        d.cnae_fiscal_descricao ?? null,
+    capitalSocial:    typeof d.capital_social === 'number' ? d.capital_social : null,
+    telefone:         String(d.ddd_telefone_1 ?? '').replace(/\D/g, '') || null,
+    email:            d.email ? String(d.email).toLowerCase() : null,
+    // Quadro societário: a Receita mascara o CPF, então só nome e qualificação.
+    socios: (d.qsa ?? []).map((s) => ({ nome: s.nome_socio ?? '', cargo: s.qualificacao_socio ?? '' })).filter((s) => s.nome),
   }
 
   return NextResponse.json(result_payload)

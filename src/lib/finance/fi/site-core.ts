@@ -41,7 +41,7 @@ export function estimate(v: ValuesInput, cfg: SiteSimConfig): Estimate[] | null 
   return terms.map((n) => ({ installments: n, installmentValue: priceInstallment(financed, cfg.referenceRate!, n) }))
 }
 
-export interface IdentityInput { name: string; cpf: string; birthDate: Date; phone: string; email: string | null }
+export interface IdentityInput { name: string; cpf: string; birthDate: Date; phone: string; email: string }
 
 export function parseIdentity(b: Record<string, unknown>): Check<IdentityInput> {
   const name = String(b.name ?? '').trim().replace(/\s+/g, ' ').slice(0, 120)
@@ -56,9 +56,9 @@ export function parseIdentity(b: Record<string, unknown>): Check<IdentityInput> 
   const age = (Date.now() - birthDate.getTime()) / (365.25 * 86_400_000)
   if (!(age >= 18 && age <= 100)) return { ok: false, error: 'O financiamento exige maior de 18 anos.' }
   if (phone.length < 10 || phone.length > 13) return { ok: false, error: 'Informe um celular com DDD.' }
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'E-mail inválido.' }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: email ? 'E-mail inválido.' : 'Informe o e-mail.' }
   if (b.consent !== true) return { ok: false, error: 'Para continuar, autorize o uso dos dados para a análise de crédito.' }
-  return { ok: true, value: { name, cpf, birthDate, phone, email: email || null } }
+  return { ok: true, value: { name, cpf, birthDate, phone, email } }
 }
 
 export const SITE_ORIGIN_LABEL = 'SITE — SIMULAÇÃO DE FINANCIAMENTO'

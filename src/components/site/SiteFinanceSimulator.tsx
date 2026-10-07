@@ -3,14 +3,15 @@
 // =============================================================================
 // Simulador de financiamento do site (F&I) — formulário progressivo.
 //   1) Valor do veículo, entrada e prazo → parcela estimada (se a loja ativou).
-//   2) Nome, CPF, nascimento e celular → ficha + lead no CRM + link para
-//      acompanhar. Estimativa nunca é aprovação: quem aprova é o banco.
+//   2) Nome, CPF, nascimento, celular e e-mail → ficha + lead no CRM + link
+//      para completar a ficha cadastral e acompanhar. Estimativa nunca é aprovação: quem aprova é o banco.
 // Visual do site da loja (SiteFormKit), sem iframe.
 // =============================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, MessageCircle } from 'lucide-react'
-import { Chips, FormCard, Section, onMoney } from './SiteFormKit'
+import { Chips, FormCard, Section, onMoney, onPhone } from './SiteFormKit'
+import { maskCPF } from '@/lib/masks'
 
 export interface SiteSimResult { status: string; headline: string; detail: string; pending: number; quotes: { bank: string; installments: number; installmentValue: number; rateMonthly: number | null }[] }
 export interface SimVehicle { id: string; label: string; price: number | null; /** Marca, modelo, versão e ano — para a busca. */ search?: string }
@@ -64,7 +65,7 @@ export function SiteFinanceSimulator({ simulateUrl, vehicles, preselected, priva
     try {
       const d = await post({
         step: 'identificacao', ...values, ...utm(),
-        name: f.get('name'), cpf: f.get('cpf'), birthDate: f.get('birthDate'), phone: f.get('phone'), email: f.get('email') || undefined,
+        name: f.get('name'), cpf: f.get('cpf'), birthDate: f.get('birthDate'), phone: f.get('phone'), email: f.get('email'),
         consent: f.get('consent') === 'yes', website: f.get('website') || undefined,
       })
       setDone({ protocol: d.protocol, code: d.code, portalUrl: d.portalUrl, simulation: d.simulation ?? null }); setStep(3)
@@ -88,9 +89,9 @@ export function SiteFinanceSimulator({ simulateUrl, vehicles, preselected, priva
               ))}
             </ul>
           )}
-          <p>{done.simulation?.detail ?? 'Nossa equipe vai buscar as condições dos bancos.'} Acompanhe e complete seus dados pelo link abaixo.</p>
+          <p>{done.simulation?.detail ?? 'Nossa equipe vai buscar as condições dos bancos.'} Complete sua ficha pelo link abaixo para agilizar a aprovação.</p>
           <div className="vlead-done-actions">
-            <a className="button" href={done.portalUrl}>Acompanhar minha ficha</a>
+            <a className="button" href={done.portalUrl}>Completar minha ficha</a>
             {wa && <a className="button button-outline" href={wa} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" />Falar no WhatsApp</a>}
           </div>
         </div>
@@ -114,10 +115,10 @@ export function SiteFinanceSimulator({ simulateUrl, vehicles, preselected, priva
           )}
           <Section legend="Seus dados">
             <label className="vlead-full">Nome completo *<input name="name" required minLength={5} maxLength={120} autoComplete="name" /></label>
-            <label>CPF *<input name="cpf" autoComplete="off" required inputMode="numeric" maxLength={14} placeholder="000.000.000-00" /></label>
+            <label>CPF *<input name="cpf" autoComplete="off" required inputMode="numeric" maxLength={14} placeholder="000.000.000-00" onInput={(e) => { e.currentTarget.value = maskCPF(e.currentTarget.value) }} /></label>
             <label>Data de nascimento *<input name="birthDate" type="date" required /></label>
-            <label>Celular (WhatsApp) *<input name="phone" required inputMode="tel" autoComplete="tel" maxLength={16} placeholder="(11) 90000-0000" /></label>
-            <label>E-mail<input name="email" type="email" maxLength={160} autoComplete="email" /></label>
+            <label>Celular (WhatsApp) *<input name="phone" required inputMode="tel" autoComplete="tel" maxLength={16} placeholder="(11) 90000-0000" onInput={onPhone} /></label>
+            <label>E-mail *<input name="email" type="email" required maxLength={160} autoComplete="email" /></label>
           </Section>
           <div style={{ position: 'absolute', left: '-9999px' }} aria-hidden="true"><label>Site<input name="website" tabIndex={-1} autoComplete="off" /></label></div>
           <label className="consent vlead-full"><input name="consent" type="checkbox" value="yes" required /> <span>Autorizo o uso destes dados para a simulação e a análise de crédito pelos bancos parceiros e li a <a href={privacyHref} target="_blank" rel="noreferrer">Política de Privacidade</a>.</span></label>

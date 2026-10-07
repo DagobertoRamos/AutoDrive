@@ -4563,72 +4563,98 @@ enum FinanceProposalStatus {
 }
 
 model FinanceProponent {
-  id                   String               @id @default(cuid())
-  tenantId             String?
+  id                    String               @id @default(cuid())
+  tenantId              String?
   // ── Dados pessoais (obrigatórios, exceto telefoneFixo) ──────────────────
-  nomeCompleto         String
-  dataNascimento       DateTime?
-  cpf                  String?
-  rg                   String?
-  nomeMae              String?
-  nomePai              String?
-  email                String?
-  celular              String?
-  telefoneFixo         String?
+  nomeCompleto          String
+  dataNascimento        DateTime?
+  cpf                   String?
+  rg                    String?
+  nomeMae               String?
+  nomePai               String?
+  email                 String?
+  celular               String?
+  telefoneFixo          String?
   // ── Endereço residencial ────────────────────────────────────────────────
-  cep                  String?
-  logradouro           String?
-  bairro               String?
-  cidade               String?
-  estado               String?
-  numero               String?
-  complemento          String?
+  cep                   String?
+  logradouro            String?
+  bairro                String?
+  cidade                String?
+  estado                String?
+  numero                String?
+  complemento           String?
   // ── Ocupação / renda ─────────────────────────────────────────────────────
-  occupation           ProponentOccupation?
-  cargo                String? // autônomo: cargo
-  renda                Decimal?             @db.Decimal(14, 2)
-  outrasRendas         Json? // [{ descricao, valor }]
-  numeroBeneficio      String? // aposentado/pensionista
+  occupation            ProponentOccupation?
+  cargo                 String? // autônomo: cargo
+  renda                 Decimal?             @db.Decimal(14, 2)
+  outrasRendas          Json? // [{ descricao, valor }]
+  numeroBeneficio       String? // aposentado/pensionista
   // ── Dados da empresa (CLT/empresário/autônomo opcional) ──────────────────
-  empresaNome          String?
-  empresaCnpj          String?
-  empresaTelefone      String?
-  empresaCep           String?
-  empresaLogradouro    String?
-  empresaBairro        String?
-  empresaCidade        String?
-  empresaEstado        String?
-  empresaNumero        String?
-  empresaComplemento   String?
+  empresaNome           String?
+  empresaCnpj           String?
+  empresaTelefone       String?
+  empresaCep            String?
+  empresaLogradouro     String?
+  empresaBairro         String?
+  empresaCidade         String?
+  empresaEstado         String?
+  empresaNumero         String?
+  empresaComplemento    String?
   // ── F&I Core: ficha universal (PF/PJ) — informada uma vez, adaptada por banco ──
-  personType           String               @default("PF") // PF | PJ
-  personId             String? // cadastro único (Person), quando houver
-  customerId           String? // cliente da loja (Customer), quando houver
-  estadoCivil          String?
-  nacionalidade        String?
-  naturalidade         String?
-  rgOrgao              String?
-  cnh                  String?
-  profissao            String?
-  tipoResidencia       String? // PROPRIA | ALUGADA | FAMILIAR | FINANCIADA | OUTRA
-  tempoResidenciaMeses Int?
-  tempoEmpregoMeses    Int?
-  referencias          Json? // [{ nome, telefone, relacao }]
+  personType            String               @default("PF") // PF | PJ
+  personId              String? // cadastro único (Person), quando houver
+  customerId            String? // cliente da loja (Customer), quando houver
+  estadoCivil           String?
+  nacionalidade         String?
+  naturalidade          String?
+  rgOrgao               String?
+  cnh                   String?
+  profissao             String?
+  tipoResidencia        String? // PROPRIA | ALUGADA | FAMILIAR | FINANCIADA | OUTRA
+  tempoResidenciaMeses  Int?
+  tempoEmpregoMeses     Int?
+  referencias           Json? // [{ nome, telefone, relacao }]
   // PJ (a própria empresa como compradora)
-  cnpj                 String?
-  razaoSocial          String?
-  nomeFantasia         String?
-  atividade            String?
-  faturamentoMensal    Decimal?             @db.Decimal(14, 2)
-  dataFundacao         DateTime?
-  socios               Json? // [{ nome, cpf, participacao }]
-  representanteNome    String?
-  representanteCpf     String?
+  cnpj                  String?
+  razaoSocial           String?
+  nomeFantasia          String?
+  atividade             String?
+  faturamentoMensal     Decimal?             @db.Decimal(14, 2)
+  dataFundacao          DateTime?
+  socios                Json? // [{ nome, cpf, participacao }]
+  representanteNome     String?
+  representanteCpf      String?
+  // Ficha completa (padrão das fichas cadastrais dos bancos)
+  sexo                  String? // M | F
+  rgUf                  String?
+  rgDataEmissao         DateTime?
+  naturalidadeUf        String?
+  escolaridade          String?
+  pep                   String? // SIM | NAO — pessoa politicamente exposta
+  dependentes           Int?
+  conjugeNome           String?
+  conjugeCpf            String?
+  conjugeDataNascimento DateTime?
+  conjugeOcupacao       String?
+  conjugeRenda          Decimal?             @db.Decimal(14, 2)
+  conjugeCelular        String?
+  valorAluguel          Decimal?             @db.Decimal(14, 2)
+  dataAdmissao          DateTime?
+  comprovanteRenda      String?
+  participacaoEmpresa   Decimal?             @db.Decimal(5, 2)
+  patrimonio            Json? // [{ tipo, descricao, valor }]
+  referenciasBancarias  Json? // [{ banco, agencia, conta, desde }]
+  inscricaoEstadual     String?
+  naturezaJuridica      String?
+  capitalSocial         Decimal?             @db.Decimal(16, 2)
+  faturamentoAnual      Decimal?             @db.Decimal(16, 2)
+  numeroFuncionarios    Int?
+  referenciasComerciais Json? // [{ nome, telefone, cnpj }]
   // ── Meta ─────────────────────────────────────────────────────────────────
-  notes                String?
-  createdById          String?
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
+  notes                 String?
+  createdById           String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
 
   proposals   FinanceProposal[]
   coProposals FinanceProposal[]         @relation("FinanceProposalCoBuyer")
@@ -7026,29 +7052,29 @@ model IntegrationConnection {
 
 /// Consulta veicular (débitos, restrições, gravame) feita por um provedor da loja.
 model VehicleDataQuery {
-  id            String    @id @default(cuid())
-  tenantId      String
-  vehicleId     String?
-  evaluationId  String?
-  plate         String?
-  renavam       String?
-  chassi        String?
-  uf            String?
-  providerId    String
-  connectionId  String?
+  id                String    @id @default(cuid())
+  tenantId          String
+  vehicleId         String?
+  evaluationId      String?
+  plate             String?
+  renavam           String?
+  chassi            String?
+  uf                String?
+  providerId        String
+  connectionId      String?
   /// Protocolo/ID da consulta no provedor (casa o webhook com a consulta).
-  externalId    String?
-  kind          String    @default("FULL") // DEBTS | RESTRICTIONS | FULL
-  status        String    @default("PROCESSING") // PROCESSING | DONE | PARTIAL | ERROR
-  debtsTotal    Decimal?  @db.Decimal(12, 2)
-  debtsCount    Int       @default(0)
-  restrictionsCount Int   @default(0)
-  blocking      Boolean   @default(false)
-  result        Json?
-  errorMessage  String?
-  requestedById String?
-  createdAt     DateTime  @default(now())
-  finishedAt    DateTime?
+  externalId        String?
+  kind              String    @default("FULL") // DEBTS | RESTRICTIONS | FULL
+  status            String    @default("PROCESSING") // PROCESSING | DONE | PARTIAL | ERROR
+  debtsTotal        Decimal?  @db.Decimal(12, 2)
+  debtsCount        Int       @default(0)
+  restrictionsCount Int       @default(0)
+  blocking          Boolean   @default(false)
+  result            Json?
+  errorMessage      String?
+  requestedById     String?
+  createdAt         DateTime  @default(now())
+  finishedAt        DateTime?
 
   @@index([tenantId, vehicleId, createdAt])
   @@index([tenantId, plate])

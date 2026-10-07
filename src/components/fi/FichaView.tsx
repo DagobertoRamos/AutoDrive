@@ -14,14 +14,15 @@ import type { MoneyEntry, ProposalView } from '@/lib/finance/fi/read-model'
 import { HelpHint } from '@/components/ui/help-hint'
 import { Alert, api, brlOrDash, btnPrimary, btnSecondary, dateTimeBR, pct, Section, StatusBadge, toneText } from './ui'
 import { AdjustModal, CancelModal, PortalModal, RespondModal, SendModal } from './FichaModals'
-import { FieldsForm } from './FieldsForm'
+import { useSession } from 'next-auth/react'
+import { CadastroForm, internalEndpoints } from './CadastroForm'
 import { PostApproval } from './PostApproval'
 import { DetailsPanel, DocumentsPanel, TechLogs, Timeline } from './FichaTabs'
 import { Modal } from './ui'
 
 type Perms = Record<string, boolean>
 type ModalKind = null | 'send' | 'adjust' | 'portal' | 'cancel' | 'complete' | { respond: string }
-type Tab = 'historico' | 'documentos' | 'detalhes' | 'logs'
+type Tab = 'historico' | 'cadastro' | 'documentos' | 'detalhes' | 'logs'
 
 export default function FichaView({ id }: { id: string }) {
   const [view, setView] = useState<ProposalView | null>(null)
@@ -33,6 +34,7 @@ export default function FichaView({ id }: { id: string }) {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const role = useSession().data?.user?.role
 
   const load = useCallback(async () => {
     const r = await api<ProposalView>(`/api/financing/proposals/${id}/overview`)
@@ -210,12 +212,13 @@ export default function FichaView({ id }: { id: string }) {
       {/* Abas */}
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="flex gap-1 overflow-x-auto border-b border-gray-100 px-2" role="tablist">
-          {([['historico', 'Histórico'], ['documentos', `Documentos${v.documents.length ? ` (${v.documents.length})` : ''}`], ['detalhes', 'Detalhes'], ...(perms.verLogsTecnicos ? [['logs', 'Logs técnicos']] : [])] as [Tab, string][]).map(([k, label]) => (
+          {([['historico', 'Histórico'], ['cadastro', `Cadastro${v.missing.common.length ? ` (faltam ${v.missing.common.length})` : ''}`], ['documentos', `Documentos${v.documents.length ? ` (${v.documents.length})` : ''}`], ['detalhes', 'Detalhes'], ...(perms.verLogsTecnicos ? [['logs', 'Logs técnicos']] : [])] as [Tab, string][]).map(([k, label]) => (
             <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-sm ${tab === k ? 'border-brand-600 font-semibold text-brand-700' : 'border-transparent text-gray-600 hover:text-gray-900'}`}>{label}</button>
           ))}
         </div>
         <div className="p-4">
           {tab === 'historico' && <Timeline items={v.timeline} />}
+          {tab === 'cadastro' && <CadastroTab view={v} role={role} onSaved={load} />}
           {tab === 'documentos' && <DocumentsPanel view={v} onChanged={load} canEdit={!!perms.acessarDocumentos} />}
           {tab === 'detalhes' && <DetailsPanel view={v} />}
           {tab === 'logs' && perms.verLogsTecnicos && <TechLogs proposalId={v.id} />}
@@ -228,8 +231,8 @@ export default function FichaView({ id }: { id: string }) {
       {modal === 'cancel' && <CancelModal view={v} onClose={() => setModal(null)} onDone={load} />}
       {modal && typeof modal === 'object' && <RespondModal view={v} attemptId={modal.respond} onClose={() => setModal(null)} onDone={load} canSeeReturn={seeReturn} />}
       {modal === 'complete' && (
-        <Modal title="Completar ficha" onClose={() => setModal(null)} wide>
-          <FieldsForm proponentId={v.customer.proponentId} fields={v.missing.common} onSaved={() => { load(); setModal(null) }} />
+        <Modal title={`Ficha cadastral — ${v.customer.name}`} onClose={() => { setModal(null); load() }} xl>
+          <CadastroPane proponentId={v.customer.proponentId} role={role} onSaved={load} highlight />
         </Modal>
       )}
     </div>
@@ -246,6 +249,28 @@ function MoneyItem({ label, item, hint, negative }: { label: string; item: Money
     <div className="rounded-lg bg-gray-50 px-3 py-2">
       <dt className="flex items-center gap-1 text-xs text-gray-500">{label}{hint && <HelpHint term="RETORNO_PREVISTO" size={11} />}</dt>
       <dd className="mt-0.5 flex items-center justify-between gap-2"><span className="font-semibold">{negative ? '−' : ''}{brlOrDash(item.amount)}</span><StatusBadge meta={MONEY_META[item.status]} /></dd>
+    </div>
+  )
+}
+
+function CadastroPane({ proponentId, role, onSaved, highlight }: { proponentId: string; role: string | undefined; onSaved: () => void; highlight?: boolean }) {
+  const endpoints = useMemo(() => internalEndpoints(proponentId, role), [proponentId, role])
+  return <CadastroForm key={proponentId} endpoints={endpoints} onSaved={onSaved} highlight={highlight} />
+}
+
+function CadastroTab({ view, role, onSaved }: { view: ProposalView; role: string | undefined; onSaved: () => void }) {
+  const [who, setWho] = useState<'cliente' | 'co'>('cliente')
+  const id = who === 'co' && view.coBuyer ? view.coBuyer.id : view.customer.proponentId
+  return (
+    <div className="space-y-4">
+      {view.coBuyer && (
+        <div className="flex gap-2" role="radiogroup" aria-label="Pessoa">
+          {([['cliente', view.customer.name], ['co', `Co-comprador: ${view.coBuyer.name}`]] as const).map(([k, label]) => (
+            <button key={k} type="button" onClick={() => setWho(k)} aria-pressed={who === k} className={`rounded-full px-3 py-1 text-xs font-medium ${who === k ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-700'}`}>{label}</button>
+          ))}
+        </div>
+      )}
+      <CadastroPane proponentId={id} role={role} onSaved={onSaved} highlight={who === 'cliente'} />
     </div>
   )
 }

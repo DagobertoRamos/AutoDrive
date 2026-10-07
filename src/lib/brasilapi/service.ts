@@ -74,6 +74,7 @@ export interface CnpjData {
     data_entrada_sociedade?:           string
   }>
   data_inicio_atividade?:        string
+  capital_social?:               number
 }
 
 export interface BankData {

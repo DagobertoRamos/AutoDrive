@@ -3,7 +3,7 @@
 // PÚBLICO. Formulário progressivo:
 //   { step: 'valores', vehicleValue, downPayment, installments, vehicleId? }
 //       → estimativa (só se a loja configurou a taxa de referência). Sem dado pessoal.
-//   { step: 'identificacao', ...valores, name, cpf, birthDate, phone, email?, consent: true,
+//   { step: 'identificacao', ...valores, name, cpf, birthDate, phone, email, consent: true,
 //     pageUrl?, utmSource?, utmMedium?, utmCampaign? }
 //       → lead no CRM (origem SITE — SIMULAÇÃO DE FINANCIAMENTO) + ficha + link
 //         seguro para o cliente acompanhar e completar os dados + simulação

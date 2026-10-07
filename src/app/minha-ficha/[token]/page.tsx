@@ -5,9 +5,10 @@
 // Simples e pensado para celular. Sem login: o link é a chave e expira.
 // =============================================================================
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { CheckCircle2, Circle, FileText, HelpCircle, Upload } from 'lucide-react'
+import { CadastroForm, portalEndpoints } from '@/components/fi/CadastroForm'
 
 interface Doc { id: string; type: string; status: string; label: string; canUpload: boolean }
 interface View {
@@ -166,34 +167,11 @@ function Item({ label, value, help }: { label: string; value: string; help?: str
 }
 
 function Complement({ token, onDone }: { token: string; onDone: () => void }) {
-  const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState<string | null>(null)
-  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault(); setBusy(true); setMsg(null)
-    const body = Object.fromEntries(new FormData(e.currentTarget).entries())
-    const res = await fetch(`/api/site/fi-portal/${encodeURIComponent(token)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    const json = await res.json().catch(() => null)
-    setBusy(false)
-    if (!res.ok || !json?.success) { setMsg(json?.error ?? 'Não foi possível salvar.'); return }
-    setMsg('Dados recebidos. Obrigado!'); onDone()
-  }
-  const cls = 'w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm'
+  const endpoints = useMemo(() => portalEndpoints(token), [token])
   return (
     <section className="rounded-2xl bg-white p-5 shadow-sm">
-      <h2 className="text-sm font-semibold text-gray-900">Agilize sua análise</h2>
-      <form onSubmit={submit} className="mt-3 grid grid-cols-2 gap-3">
-        <label className="col-span-2 text-xs text-gray-600">Ocupação<select name="occupation" className={cls}><option value="">Selecione</option><option value="CLT">Assalariado (CLT)</option><option value="AUTONOMO">Autônomo</option><option value="EMPRESARIO">Empresário</option><option value="APOSENTADO_PENSIONISTA">Aposentado / pensionista</option></select></label>
-        <label className="text-xs text-gray-600">Renda mensal<input name="renda" inputMode="decimal" className={cls} /></label>
-        <label className="text-xs text-gray-600">Profissão<input name="profissao" className={cls} /></label>
-        <label className="text-xs text-gray-600">CEP<input name="cep" inputMode="numeric" maxLength={9} className={cls} /></label>
-        <label className="text-xs text-gray-600">UF<input name="estado" maxLength={2} className={cls} /></label>
-        <label className="col-span-2 text-xs text-gray-600">Endereço<input name="logradouro" className={cls} /></label>
-        <label className="text-xs text-gray-600">Número<input name="numero" className={cls} /></label>
-        <label className="text-xs text-gray-600">Bairro<input name="bairro" className={cls} /></label>
-        <label className="col-span-2 text-xs text-gray-600">Cidade<input name="cidade" className={cls} /></label>
-        <button className="col-span-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" disabled={busy}>{busy ? 'Salvando…' : 'Enviar dados'}</button>
-        {msg && <p className="col-span-2 text-sm text-gray-700" role="status">{msg}</p>}
-      </form>
+      <h2 className="mb-3 text-sm font-semibold text-gray-900">Complete sua ficha</h2>
+      <CadastroForm endpoints={endpoints} mode="cliente" onSaved={onDone} />
     </section>
   )
 }
@@ -201,7 +179,7 @@ function Complement({ token, onDone }: { token: string; onDone: () => void }) {
 function Shell({ children, store }: { children: React.ReactNode; store?: string }) {
   return (
     <main className="min-h-screen bg-gray-50">
-      <div className="mx-auto max-w-lg space-y-4 px-4 py-6">
+      <div className="mx-auto max-w-2xl space-y-4 px-4 py-6">
         {store && <p className="text-center text-sm font-semibold text-gray-700">{store}</p>}
         {children}
       </div>

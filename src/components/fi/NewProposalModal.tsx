@@ -9,6 +9,7 @@ import { Search, UserPlus } from 'lucide-react'
 import { MoneyInput } from '@/components/ui/money-input'
 import { FieldLabel } from '@/components/ui/field'
 import { HelpHint } from '@/components/ui/help-hint'
+import { maskCNPJ, maskCPF, maskPhone } from '@/lib/masks'
 import { api, brl, btnPrimary, btnSecondary, inputClass, Modal } from './ui'
 
 interface PersonHit { id: string; nomeCompleto: string; cpf: string | null }
@@ -18,7 +19,7 @@ export function PersonPicker({ value, onChange, exclude, label }: { value: Perso
   const [hits, setHits] = useState<PersonHit[]>([])
   const [creating, setCreating] = useState(false)
   const [type, setType] = useState<'PF' | 'PJ'>('PF')
-  const [f, setF] = useState({ nomeCompleto: '', razaoSocial: '', cpf: '', cnpj: '', dataNascimento: '', celular: '' })
+  const [f, setF] = useState({ nomeCompleto: '', razaoSocial: '', cpf: '', cnpj: '', dataNascimento: '', celular: '', email: '' })
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -32,10 +33,12 @@ export function PersonPicker({ value, onChange, exclude, label }: { value: Perso
   }, [q, exclude])
 
   const create = async () => {
+    const need = type === 'PF' ? [f.nomeCompleto, f.cpf, f.dataNascimento, f.celular, f.email] : [f.razaoSocial, f.cnpj, f.celular, f.email]
+    if (need.some((x) => !x.trim())) { setErr('Preencha os campos obrigatórios.'); return }
     setBusy(true); setErr(null)
     const body = type === 'PF'
-      ? { personType: 'PF', nomeCompleto: f.nomeCompleto, cpf: f.cpf, dataNascimento: f.dataNascimento, celular: f.celular }
-      : { personType: 'PJ', razaoSocial: f.razaoSocial, cnpj: f.cnpj, celular: f.celular }
+      ? { personType: 'PF', nomeCompleto: f.nomeCompleto, cpf: f.cpf, dataNascimento: f.dataNascimento, celular: f.celular, email: f.email }
+      : { personType: 'PJ', razaoSocial: f.razaoSocial, cnpj: f.cnpj, celular: f.celular, email: f.email }
     const r = await api<{ id: string }>('/api/financing/proponents/quick', { method: 'POST', body })
     setBusy(false)
     if (!r.ok || !r.data) { setErr(r.error); return }
@@ -62,15 +65,17 @@ export function PersonPicker({ value, onChange, exclude, label }: { value: Perso
         {type === 'PF' ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2"><FieldLabel required>Nome completo</FieldLabel><input className={inputClass} value={f.nomeCompleto} onChange={(e) => setF({ ...f, nomeCompleto: e.target.value })} /></div>
-            <div><FieldLabel required>CPF</FieldLabel><input className={inputClass} inputMode="numeric" value={f.cpf} onChange={(e) => setF({ ...f, cpf: e.target.value })} /></div>
+            <div><FieldLabel required>CPF</FieldLabel><input className={inputClass} inputMode="numeric" placeholder="000.000.000-00" value={maskCPF(f.cpf)} onChange={(e) => setF({ ...f, cpf: e.target.value.replace(/\D/g, '') })} /></div>
             <div><FieldLabel required>Nascimento</FieldLabel><input type="date" className={inputClass} value={f.dataNascimento} onChange={(e) => setF({ ...f, dataNascimento: e.target.value })} /></div>
-            <div className="sm:col-span-2"><FieldLabel required>Celular</FieldLabel><input className={inputClass} inputMode="tel" value={f.celular} onChange={(e) => setF({ ...f, celular: e.target.value })} /></div>
+            <div><FieldLabel required>Celular</FieldLabel><input className={inputClass} inputMode="tel" placeholder="(00) 00000-0000" value={maskPhone(f.celular)} onChange={(e) => setF({ ...f, celular: e.target.value.replace(/\D/g, '') })} /></div>
+            <div><FieldLabel required>E-mail</FieldLabel><input className={inputClass} type="email" inputMode="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value.trim() })} /></div>
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2"><FieldLabel required>Razão social</FieldLabel><input className={inputClass} value={f.razaoSocial} onChange={(e) => setF({ ...f, razaoSocial: e.target.value })} /></div>
-            <div><FieldLabel required>CNPJ</FieldLabel><input className={inputClass} inputMode="numeric" value={f.cnpj} onChange={(e) => setF({ ...f, cnpj: e.target.value })} /></div>
-            <div><FieldLabel required>Celular</FieldLabel><input className={inputClass} inputMode="tel" value={f.celular} onChange={(e) => setF({ ...f, celular: e.target.value })} /></div>
+            <div><FieldLabel required>CNPJ</FieldLabel><input className={inputClass} inputMode="numeric" placeholder="00.000.000/0000-00" value={maskCNPJ(f.cnpj)} onChange={(e) => setF({ ...f, cnpj: e.target.value.replace(/\D/g, '') })} /></div>
+            <div><FieldLabel required>Celular</FieldLabel><input className={inputClass} inputMode="tel" placeholder="(00) 00000-0000" value={maskPhone(f.celular)} onChange={(e) => setF({ ...f, celular: e.target.value.replace(/\D/g, '') })} /></div>
+            <div className="sm:col-span-2"><FieldLabel required>E-mail</FieldLabel><input className={inputClass} type="email" inputMode="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value.trim() })} /></div>
           </div>
         )}
         {err && <p className="text-sm text-red-600" role="alert">{err}</p>}

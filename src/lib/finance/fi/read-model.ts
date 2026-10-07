@@ -12,7 +12,7 @@ import {
   ATTEMPT_STATUS_META, FORMALIZATION_META, FUNDING_META, LIEN_META, PROPOSAL_STATUS_META,
   OFFER_RANKING_LABEL, metaOf, nextAction, rankOffers, type Offer, type StatusMeta,
 } from './status-core'
-import { COMMON_REQUIRED, missingForBanks, missingMessage } from './fields-core'
+import { commonRequiredFor, missingForBanks, missingMessage } from './fields-core'
 import { bankRequirements, ensureFiCode, personTypeOf } from './orchestrator'
 import { resolveBank } from './gateway/resolve'
 import { CONNECTION_META } from './gateway/registry'
@@ -160,7 +160,7 @@ export async function buildProposalView(proposalId: string, perms: Perms) {
     missing: {
       common: miss.common.map((f) => ({ key: f.key, label: f.label, group: f.group })),
       byBank: miss.byBank.map((b) => ({ bankId: b.bankId, bankName: b.bankName, chosen: activeBankIds.has(b.bankId), fields: b.missing.map((f) => ({ key: f.key, label: f.label, group: f.group })), message: missingMessage(b.bankName, miss.common.length + b.missing.length) })),
-      requiredCommon: COMMON_REQUIRED[type],
+      requiredCommon: commonRequiredFor(p.proponent as unknown as Record<string, unknown>, type),
     },
     connections,
     documents: perms.acessarDocumentos !== false ? docs.map((d) => ({

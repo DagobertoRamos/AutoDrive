@@ -87,7 +87,11 @@ describe.runIf(!!DB)('F&I Core — orquestrador (Postgres real)', () => {
     ids.bankManual = (await prisma.financeBank.create({ data: { tenantId, name: 'Banco Manual' } })).id
     ids.bankOther = (await prisma.financeBank.create({ data: { tenantId: otherTenantId, name: 'Banco da outra loja' } })).id
     ids.person = (await prisma.financeProponent.create({
-      data: { tenantId, personType: 'PF', nomeCompleto: 'João da Silva', cpf: '52998224725', dataNascimento: new Date('1990-05-10'), celular: '11999990000', cep: '06400000', logradouro: 'Rua A', numero: '10', cidade: 'Barueri', estado: 'SP', occupation: 'CLT', renda: 8000 },
+      data: { tenantId, personType: 'PF', nomeCompleto: 'João da Silva', cpf: '52998224725', dataNascimento: new Date('1990-05-10'), celular: '11999990000', cep: '06400000', logradouro: 'Rua A', numero: '10', cidade: 'Barueri', estado: 'SP', occupation: 'CLT', renda: 8000,
+        email: 'joao@exemplo.com', sexo: 'M', estadoCivil: 'SOLTEIRO', nacionalidade: 'Brasileira', naturalidade: 'São Paulo', naturalidadeUf: 'SP', pep: 'NAO',
+        rg: '123456789', rgOrgao: 'SSP', rgUf: 'SP', rgDataEmissao: new Date('2010-01-01'), nomeMae: 'Ana da Silva', nomePai: 'José da Silva', bairro: 'Centro',
+        tipoResidencia: 'PROPRIA', tempoResidenciaMeses: 60, profissao: 'Analista', empresaNome: 'ACME', empresaTelefone: '1133334444', cargo: 'Analista',
+        dataAdmissao: new Date('2018-01-01'), empresaCep: '06400000', empresaLogradouro: 'Av B', empresaNumero: '100', empresaBairro: 'Centro', empresaCidade: 'Barueri', empresaEstado: 'SP' },
     })).id
     ids.co = (await prisma.financeProponent.create({ data: { tenantId, personType: 'PF', nomeCompleto: 'Maria da Silva', cpf: '11144477735', celular: '11988880000' } })).id
   })
@@ -161,7 +165,7 @@ describe.runIf(!!DB)('F&I Core — orquestrador (Postgres real)', () => {
   })
 
   it('exige os campos do banco e a autorização do cliente antes de gravar qualquer coisa', async () => {
-    await prisma.financeTenantSetting.upsert({ where: { tenantId_key: { tenantId, key: 'bank_required_fields' } }, create: { tenantId, key: 'bank_required_fields', value: { [ids.bankB]: ['nomeMae', 'estadoCivil'] } }, update: { value: { [ids.bankB]: ['nomeMae', 'estadoCivil'] } } })
+    await prisma.financeTenantSetting.upsert({ where: { tenantId_key: { tenantId, key: 'bank_required_fields' } }, create: { tenantId, key: 'bank_required_fields', value: { [ids.bankB]: ['cnh', 'escolaridade'] } }, update: { value: { [ids.bankB]: ['cnh', 'escolaridade'] } } })
     const id = await newProposal()
     await expect(sendToBanks({ proposalId: id, bankIds: [ids.bankB], idempotencyKey: `k-${randomUUID()}`, actor, consent })).rejects.toMatchObject({ code: 'CAMPOS_FALTANDO' })
     await expect(sendToBanks({ proposalId: id, bankIds: [ids.bankManual], idempotencyKey: `k-${randomUUID()}`, actor, consent: { confirmed: false } })).rejects.toMatchObject({ code: 'CONSENTIMENTO' })
