@@ -237,6 +237,17 @@ export async function POST(req: Request) {
     const groupId = n > 1 ? randomUUID() : null
     const settledStatus = d.type === 'DESPESA' ? 'PAGO' : 'RECEBIDO'
 
+    // Clique duplo / reenvio: o mesmo pedido da mesma pessoa em segundos devolve o já criado.
+    const twin = await prisma.financialEntry.findMany({
+      where: { tenantId, createdById: user.id, type: d.type, description: plan[0].description, amount: plan[0].amount, dueDate: noonUtc(plan[0].dueDate), createdAt: { gte: new Date(Date.now() - 15_000) } },
+      select: { id: true, description: true, amount: true, dueDate: true, status: true, installmentGroupId: true },
+    })
+    if (twin.length) {
+      const g = twin[0].installmentGroupId
+      const rows = g ? await prisma.financialEntry.findMany({ where: { installmentGroupId: g }, select: { id: true, description: true, amount: true, dueDate: true, status: true }, orderBy: { installmentNumber: 'asc' } }) : [twin[0]]
+      return NextResponse.json({ success: true, duplicate: true, data: rows.map((c) => ({ ...c, amount: Number(c.amount) })) }, { status: 200 })
+    }
+
     const created = await prisma.$transaction(plan.map((p, i) => {
       const paidNow = !!d.paid && i === 0
       // Competência: a informada vale para a 1ª parcela; as demais seguem o vencimento.

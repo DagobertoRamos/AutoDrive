@@ -78,6 +78,8 @@ export async function POST(req: Request) {
     const closed = await periodError(tenantId, [d.competenceDate ?? d.dueDate, d.status === 'PAGO' || d.status === 'RECEBIDO' ? d.paidDate ?? new Date() : null])
     if (closed) return NextResponse.json({ success: false, error: closed }, { status: 400 })
     if ((d.status === 'PAGO' && d.type !== 'DESPESA') || (d.status === 'RECEBIDO' && d.type !== 'RECEITA')) return NextResponse.json({ success: false, error: 'Status não combina com o tipo do lançamento.' }, { status: 400 })
+    const twin = await prisma.financialEntry.findFirst({ where: { tenantId, createdById: user.id, type: d.type, description: d.description, amount: d.amount, createdAt: { gte: new Date(Date.now() - 15_000) } } })
+    if (twin) return NextResponse.json({ success: true, duplicate: true, data: { ...twin, amount: Number(twin.amount) } })
     const entry = await prisma.financialEntry.create({
       data: {
         tenantId, type: d.type, status: d.status, description: d.description, amount: d.amount,

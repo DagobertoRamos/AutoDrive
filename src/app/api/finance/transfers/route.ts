@@ -74,8 +74,14 @@ export async function POST(req: Request) {
     const accounts = await prisma.financialAccount.findMany({ where: { id: { in: [d.fromAccountId, d.toAccountId] }, tenantId }, select: { id: true, name: true } })
     const fromAcc = accounts.find((a) => a.id === d.fromAccountId); const toAcc = accounts.find((a) => a.id === d.toAccountId)
     if (!fromAcc || !toAcc) return bad('Conta inválida.')
-    const groupId = randomUUID()
     const day = noonUtc(d.date)
+    // Clique duplo: a mesma transferência da mesma pessoa em segundos não duplica.
+    const twin = await prisma.financialEntry.findFirst({
+      where: { tenantId, createdById: user.id, type: 'DESPESA', accountId: fromAcc.id, amount: d.amount, paidDate: day, transferGroupId: { not: null }, status: { not: 'CANCELADO' }, createdAt: { gte: new Date(Date.now() - 15_000) } },
+      select: { transferGroupId: true },
+    })
+    if (twin?.transferGroupId) return NextResponse.json({ success: true, duplicate: true, data: { groupId: twin.transferGroupId, entries: [] } })
+    const groupId = randomUUID()
     const desc = d.description?.trim() || `Transferência ${fromAcc.name} → ${toAcc.name}`
     const common = {
       tenantId, amount: d.amount, dueDate: day, paidDate: day, competenceDate: day, categoryId: null,
