@@ -107,7 +107,7 @@ export async function cancelCommissionsForDeal(params: {
   dealId: string
   actorUserId: string
   reason: string
-}): Promise<{ canceled: number; paidPreserved: number }> {
+}): Promise<{ canceled: number; paidPreserved: number; clawbacks: number }> {
   const whereBase = {
     tenantId: params.tenantId,
     ruleDetails: { path: ['dealId'], equals: params.dealId } as never,
@@ -162,5 +162,51 @@ export async function cancelCommissionsForDeal(params: {
     }).catch(() => {})
   }
 
-  return { canceled: update.count, paidPreserved }
+  // Comissão já paga de venda cancelada: lança o desconto (valor negativo) no
+  // mês atual — entra na folha como débito do colaborador. Uma vez por comissão.
+  const clawbacks = paidPreserved > 0 ? await createClawbacks(params).catch((e) => { console.error('[commission] estorno de comissão', e); return 0 }) : 0
+
+  return { canceled: update.count, paidPreserved, clawbacks }
+}
+
+async function createClawbacks(params: { tenantId: string | null; dealId: string; actorUserId: string; reason: string }): Promise<number> {
+  const paid = await prisma.commissionCalculation.findMany({
+    where: { tenantId: params.tenantId, status: 'PAGO', ruleDetails: { path: ['dealId'], equals: params.dealId } as never },
+    select: { id: true, sellerId: true, managerId: true, unitId: true, contractId: true, description: true, commissionValue: true, ruleDetails: true },
+  })
+  const deal = await prisma.deal.findUnique({ where: { id: params.dealId }, select: { dealNumber: true } })
+  const period = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date()).slice(0, 7)
+  let n = 0
+  for (const c of paid) {
+    const value = Number(c.commissionValue)
+    if (!(value > 0)) continue
+    const exists = await prisma.commissionCalculation.findFirst({ where: { tenantId: params.tenantId, ruleDetails: { path: ['clawbackOf'], equals: c.id } as never, status: { not: 'CANCELADO' } }, select: { id: true } })
+    if (exists) continue
+    const scope = (c.ruleDetails as { commissionScope?: string } | null)?.commissionScope
+    await prisma.commissionCalculation.create({
+      data: {
+        tenantId: params.tenantId, sellerId: c.sellerId, managerId: c.managerId, unitId: c.unitId, contractId: c.contractId, period,
+        ruleType: 'EXCECAO', description: `Estorno de comissão — venda ${deal?.dealNumber ?? params.dealId} cancelada (${c.description})`.slice(0, 250),
+        baseValue: 0, commissionValue: -value, status: 'PREVISTO',
+        ruleDetails: { clawbackOf: c.id, clawbackDealId: params.dealId, ...(scope ? { commissionScope: scope } : {}) } as never,
+        notes: `Venda cancelada: ${params.reason}`.slice(0, 500),
+      },
+    })
+    n++
+  }
+  if (n) {
+    await prisma.auditLog.create({
+      data: { tenantId: params.tenantId, userId: params.actorUserId, action: 'COMMISSIONS_CLAWBACK', entity: 'Deal', entityId: params.dealId, status: 'SUCCESS', afterData: { clawbacks: n } as never },
+    }).catch(() => {})
+  }
+  return n
+}
+
+/** Negociação cancelada reaberta: desfaz os descontos de comissão ainda não pagos. */
+export async function revertClawbacksForDeal(tenantId: string | null, dealId: string): Promise<number> {
+  const r = await prisma.commissionCalculation.updateMany({
+    where: { tenantId, status: { in: ['PREVISTO', 'APROVADO'] }, ruleDetails: { path: ['clawbackDealId'], equals: dealId } as never },
+    data: { status: 'CANCELADO', notes: 'Venda reaberta: desconto de comissão cancelado.' },
+  })
+  return r.count
 }
