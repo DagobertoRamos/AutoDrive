@@ -13,6 +13,9 @@ interface Doc { id: string; type: string; status: string; label: string; canUplo
 interface View {
   store: string; code: string | null; customerFirstName: string; vehicle: string | null; headline: string; detail: string | null
   step: string; documents: Doc[]; expiresAt: string | null
+  simulation: null | { status: string; headline: string; detail: string; at: string; pending: number; quotes: { bank: string; installments: number; installmentValue: number; rateMonthly: number | null }[] }
+  banks: { bank: string; status: string; label: string; installments: number | null; installmentValue: number | null }[]
+  history: { at: string; code: string | null; vehicle: string | null; vehicleValue: number; downPayment: number; installments: number; bestInstallment: number | null; current: boolean }[]
   offer: null | { bank: string; amount: number | null; downPayment: number | null; installments: number | null; installmentValue: number | null; rateMonthly: number | null; cetMonthly: number | null; cetYearly: number | null; total: number | null }
 }
 
@@ -37,6 +40,8 @@ export default function MinhaFichaPage() {
     setView(json.data); setError(null)
   }, [token])
   useEffect(() => { const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [load])
+  // A situação muda conforme os bancos e a equipe respondem: atualiza sozinha.
+  useEffect(() => { const t = setInterval(() => { if (document.visibilityState === 'visible') void load() }, 30_000); return () => clearInterval(t) }, [load])
 
   const upload = async (file: File) => {
     if (!target) return
@@ -89,6 +94,36 @@ export default function MinhaFichaPage() {
         </section>
       )}
 
+      {view.simulation && view.simulation.quotes.length > 0 && (
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-gray-900">Respostas dos bancos</h2>
+          <ul className="mt-3 divide-y divide-gray-100">
+            {view.simulation.quotes.map((q) => (
+              <li key={q.bank} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                <span className="font-medium text-gray-900">{q.bank}</span>
+                <span className="text-right text-gray-700">{q.installments}x de <strong>{brl(q.installmentValue)}</strong>{q.rateMonthly != null && <span className="block text-xs text-gray-500">{pct(q.rateMonthly)} ao mês</span>}</span>
+              </li>
+            ))}
+          </ul>
+          {view.simulation.pending > 0 && <p className="mt-2 text-xs text-gray-500">Aguardando {view.simulation.pending === 1 ? 'mais 1 banco' : `mais ${view.simulation.pending} bancos`}.</p>}
+          <p className="mt-2 text-[11px] text-gray-400">Valores estimados pelos bancos. A aprovação depende da análise de crédito.</p>
+        </section>
+      )}
+
+      {view.banks.length > 0 && !view.offer && (
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-gray-900">Análise nos bancos</h2>
+          <ul className="mt-3 divide-y divide-gray-100">
+            {view.banks.map((b, i) => (
+              <li key={`${b.bank}-${i}`} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                <span className="font-medium text-gray-900">{b.bank}</span>
+                <span className="text-right text-gray-700">{b.label}{b.installmentValue != null && <span className="block text-xs text-gray-500">{b.installments}x de {brl(b.installmentValue)}</span>}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {view.offer && (
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-900">Condições do financiamento</h2>
@@ -106,6 +141,19 @@ export default function MinhaFichaPage() {
       )}
 
       {view.step === 'PREPARANDO' && <Complement token={token} onDone={load} />}
+      {view.history.length > 1 && (
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-gray-900">Suas simulações</h2>
+          <ul className="mt-3 divide-y divide-gray-100">
+            {view.history.map((h, i) => (
+              <li key={`${h.at}-${i}`} className="py-2.5 text-sm">
+                <p className="text-gray-900">{h.vehicle ?? 'Veículo'} · {brl(h.vehicleValue)} · entrada {brl(h.downPayment)} · {h.installments}x</p>
+                <p className="text-xs text-gray-500">{new Date(h.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{h.bestInstallment != null ? ` · melhor parcela ${brl(h.bestInstallment)}` : ''}{h.current ? '' : h.code ? ` · ficha ${h.code}` : ''}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <p className="px-2 text-center text-[11px] text-gray-400">Este link é pessoal{view.expiresAt ? ` e vale até ${new Date(view.expiresAt).toLocaleDateString('pt-BR')}` : ''}. Não compartilhe.</p>
     </Shell>
   )

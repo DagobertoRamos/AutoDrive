@@ -2255,6 +2255,10 @@
 .autodrive-site .vlead-form .vlead-full, .autodrive-site .vlead-form .vlead-chips { grid-column: 1 / -1; }
 .autodrive-site .vlead-form input:not([type=radio]):not([type=checkbox]), .autodrive-site .vlead-form select, .autodrive-site .vlead-form textarea { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid #cbd9dd; border-radius: 8px; background: #fff; color: #071c29; font-size: .95rem; font-weight: 400; }
 .autodrive-site .vlead-form input:focus, .autodrive-site .vlead-form select:focus, .autodrive-site .vlead-form textarea:focus { outline: 2px solid rgba(7,156,166,.35); border-color: var(--brand); }
+/* Respostas dos bancos na confirmação do simulador */
+.autodrive-site .fin-quotes { list-style: none; margin: 4px 0 8px; padding: 0; width: 100%; max-width: 420px; display: grid; gap: 6px; }
+.autodrive-site .fin-quotes li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 12px; border: 1px solid #d7e6ea; border-radius: 10px; background: #f6fbfc; font-size: .92rem; }
+.autodrive-site .fin-quotes li b { color: var(--brand); }
 /* Busca do carro no simulador de financiamento */
 .autodrive-site .fin-picker { position: relative; }
 .autodrive-site .fin-picker-list { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); max-height: 280px; overflow-y: auto; background: #fff; border: 1px solid #cbd9dd; border-radius: 10px; box-shadow: 0 14px 30px rgba(7,28,41,.14); padding: 4px; }

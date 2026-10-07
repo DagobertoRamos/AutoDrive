@@ -772,7 +772,10 @@ export async function issuePortalLink(proposalId: string, actor: Actor, days = 7
 
 export async function findByPortalToken(token: string) {
   if (typeof token !== 'string' || token.length < 20 || token.length > 100) return null
-  const p = await prisma.financeProposal.findUnique({ where: { portalTokenHash: hashPortalToken(token) } })
+  const hash = hashPortalToken(token)
+  // Link anterior da mesma ficha (cliente refez a simulação no site) continua valendo.
+  const p = await prisma.financeProposal.findUnique({ where: { portalTokenHash: hash } })
+    ?? await prisma.financeProposal.findFirst({ where: { originMeta: { path: ['portalTokenHashes'], array_contains: [hash] } } })
   if (!p || !p.portalTokenExpiresAt || p.portalTokenExpiresAt.getTime() < Date.now() || p.status === 'CANCELADA') return null
   return p
 }

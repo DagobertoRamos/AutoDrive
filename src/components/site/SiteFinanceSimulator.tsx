@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, MessageCircle } from 'lucide-react'
 import { Chips, FormCard, Section, onMoney } from './SiteFormKit'
 
+export interface SiteSimResult { status: string; headline: string; detail: string; pending: number; quotes: { bank: string; installments: number; installmentValue: number; rateMonthly: number | null }[] }
 export interface SimVehicle { id: string; label: string; price: number | null; /** Marca, modelo, versão e ano — para a busca. */ search?: string }
 interface Estimate { installments: number; installmentValue: number }
 
@@ -37,7 +38,7 @@ export function SiteFinanceSimulator({ simulateUrl, vehicles, preselected, priva
   const [note, setNote] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
-  const [done, setDone] = useState<{ protocol: string | null; code: string | null; portalUrl: string } | null>(null)
+  const [done, setDone] = useState<{ protocol: string | null; code: string | null; portalUrl: string; simulation: SiteSimResult | null } | null>(null)
   const chosen = vehicles.find((v) => v.id === vehicleId) ?? null
 
   const values = useMemo(() => ({ vehicleId: vehicleId || undefined, vehicleValue: toNumber(value), downPayment: toNumber(down), installments: Number(term.replace('x', '')) }), [vehicleId, value, down, term])
@@ -66,7 +67,7 @@ export function SiteFinanceSimulator({ simulateUrl, vehicles, preselected, priva
         name: f.get('name'), cpf: f.get('cpf'), birthDate: f.get('birthDate'), phone: f.get('phone'), email: f.get('email') || undefined,
         consent: f.get('consent') === 'yes', website: f.get('website') || undefined,
       })
-      setDone({ protocol: d.protocol, code: d.code, portalUrl: d.portalUrl }); setStep(3)
+      setDone({ protocol: d.protocol, code: d.code, portalUrl: d.portalUrl, simulation: d.simulation ?? null }); setStep(3)
     } catch (err) { setError((err as Error).message) } finally { setSending(false) }
   }
 
@@ -78,9 +79,16 @@ export function SiteFinanceSimulator({ simulateUrl, vehicles, preselected, priva
       <FormCard {...head}>
         <div className="vlead-done">
           <CheckCircle2 size={52} aria-hidden="true" />
-          <h2>Recebemos sua simulação!</h2>
+          <h2>{done.simulation?.headline ?? 'Recebemos sua simulação!'}</h2>
           {done.protocol && <p className="vlead-protocol">Protocolo <b>{done.protocol}</b></p>}
-          <p>Nossa equipe vai buscar as condições dos bancos. Você pode acompanhar e completar seus dados pelo link abaixo.</p>
+          {done.simulation && done.simulation.quotes.length > 0 && (
+            <ul className="fin-quotes">
+              {done.simulation.quotes.map((q) => (
+                <li key={q.bank}><span>{q.bank}</span><b>{q.installments}x de {brl(q.installmentValue)}</b></li>
+              ))}
+            </ul>
+          )}
+          <p>{done.simulation?.detail ?? 'Nossa equipe vai buscar as condições dos bancos.'} Acompanhe e complete seus dados pelo link abaixo.</p>
           <div className="vlead-done-actions">
             <a className="button" href={done.portalUrl}>Acompanhar minha ficha</a>
             {wa && <a className="button button-outline" href={wa} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" />Falar no WhatsApp</a>}

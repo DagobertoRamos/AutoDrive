@@ -4,6 +4,7 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
+import { customerMessage, readResult } from './site-auto-core'
 
 export interface PortalView {
   store: string
@@ -16,6 +17,18 @@ export interface PortalView {
   documents: { id: string; type: string; status: string; label: string; canUpload: boolean }[]
   offer: null | { bank: string; amount: number | null; downPayment: number | null; installments: number | null; installmentValue: number | null; rateMonthly: number | null; cetMonthly: number | null; cetYearly: number | null; total: number | null }
   expiresAt: string | null
+  /** Simulação automática do site: respostas dos bancos (estimativa, não aprovação). */
+  simulation: null | { status: string; headline: string; detail: string; at: string; pending: number; quotes: { bank: string; installments: number; installmentValue: number; rateMonthly: number | null }[] }
+  /** Situação da ficha em cada banco (atualiza conforme a equipe/banco responde). */
+  banks: { bank: string; status: string; label: string; installments: number | null; installmentValue: number | null }[]
+  /** Simulações anteriores do cliente pelo site (esta ficha e outras). */
+  history: { at: string; code: string | null; vehicle: string | null; vehicleValue: number; downPayment: number; installments: number; bestInstallment: number | null; current: boolean }[]
+}
+
+// Situação no banco em linguagem do cliente.
+const BANK_LABEL: Record<string, string> = {
+  ENVIANDO: 'Enviando ao banco', VERIFICANDO: 'Em análise', ENVIADA: 'Em análise', EM_ANALISE: 'Em análise', PENDENTE: 'Banco pediu informações',
+  PRE_APROVADA: 'Pré-aprovado', APROVADA: 'Aprovado', RECUSADA: 'Não aprovado', EXPIRADA: 'Prazo encerrado', FALHA_ENVIO: 'Em análise',
 }
 
 const num = (v: unknown) => (v == null ? null : Number(v))
@@ -47,6 +60,7 @@ export async function buildPortalView(proposalId: string): Promise<PortalView> {
   else if (p.status === 'PRE_APROVADA') { step = 'ANALISE'; headline = 'Crédito pré-aprovado.'; detail = 'O banco ainda está concluindo a análise.' }
   else if (p.status === 'RECUSADA') { step = 'ENCERRADO'; headline = 'Não foi possível aprovar agora.'; detail = 'A loja vai entrar em contato com outras opções.' }
   else if (active.length) { step = 'ANALISE'; headline = 'Sua ficha está em análise.'; detail = 'Avisamos assim que houver resposta.' }
+  else { const sim = readResult(p.simulationResult); if (sim) { const m = customerMessage(sim); headline = m.headline; detail = m.detail } }
 
   const bank = selected?.bankId ? await prisma.financeBank.findUnique({ where: { id: selected.bankId }, select: { name: true } }) : null
   return {
@@ -59,5 +73,28 @@ export async function buildPortalView(proposalId: string): Promise<PortalView> {
       rateMonthly: num(selected.rateMonthly), cetMonthly: num(selected.cetMonthly), cetYearly: num(selected.cetYearly), total: num(selected.totalAmount),
     } : null,
     expiresAt: p.portalTokenExpiresAt?.toISOString() ?? null,
+    ...(await customerExtras(p)),
+  }
+}
+
+async function customerExtras(p: { id: string; tenantId: string | null; proponentId: string; origin: string | null; code: string | null; vehicle: string | null; simulationResult: unknown; selectedSubmissionId: string | null; createdAt: Date }) {
+  const sim = readResult(p.simulationResult)
+  const [subs, others] = await Promise.all([
+    prisma.financeProposalSubmission.findMany({ where: { proposalId: p.id, active: true }, select: { bankId: true, status: true, offerInstallments: true, installmentValue: true }, orderBy: { submittedAt: 'asc' } }),
+    prisma.financeProposal.findMany({ where: { tenantId: p.tenantId, proponentId: p.proponentId, origin: 'SITE', id: { not: p.id } }, select: { code: true, vehicle: true, vehicleValue: true, downPayment: true, installments: true, createdAt: true, simulationResult: true }, orderBy: { createdAt: 'desc' }, take: 10 }),
+  ])
+  const bankNames = new Map((await prisma.financeBank.findMany({ where: { id: { in: subs.map((s) => s.bankId).filter(Boolean) as string[] } }, select: { id: true, name: true } })).map((b) => [b.id, b.name]))
+  const history = [
+    ...(sim?.history ?? []).map((h) => ({ at: h.at, code: p.code, vehicle: p.vehicle, vehicleValue: h.terms.vehicleValue, downPayment: h.terms.downPayment, installments: h.terms.installments, bestInstallment: h.bestInstallment, current: true })),
+    ...others.map((o) => ({ at: o.createdAt.toISOString(), code: o.code, vehicle: o.vehicle, vehicleValue: Number(o.vehicleValue ?? 0), downPayment: Number(o.downPayment ?? 0), installments: Number(o.installments ?? 0), bestInstallment: readResult(o.simulationResult)?.quotes[0]?.installmentValue ?? null, current: false })),
+  ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 20)
+  return {
+    // Depois que a loja escolhe a oferta, vale a oferta (não a estimativa).
+    simulation: sim && !p.selectedSubmissionId ? {
+      status: sim.status, ...customerMessage(sim), at: sim.at, pending: sim.pending.length,
+      quotes: sim.quotes.map((q) => ({ bank: q.bank, installments: q.installments, installmentValue: q.installmentValue, rateMonthly: q.rateMonthly })),
+    } : null,
+    banks: subs.map((s) => ({ bank: (s.bankId && bankNames.get(s.bankId)) || 'Banco', status: s.status, label: BANK_LABEL[s.status] ?? 'Em análise', installments: s.offerInstallments ?? null, installmentValue: s.installmentValue == null ? null : Number(s.installmentValue) })),
+    history,
   }
 }

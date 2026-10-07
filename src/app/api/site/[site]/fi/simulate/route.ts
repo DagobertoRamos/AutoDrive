@@ -6,7 +6,8 @@
 //   { step: 'identificacao', ...valores, name, cpf, birthDate, phone, email?, consent: true,
 //     pageUrl?, utmSource?, utmMedium?, utmCampaign? }
 //       → lead no CRM (origem SITE — SIMULAÇÃO DE FINANCIAMENTO) + ficha + link
-//         seguro para o cliente acompanhar e completar os dados.
+//         seguro para o cliente acompanhar e completar os dados + simulação
+//         automática nos bancos conectados (sem resposta: equipe de F&I analisa).
 // A estimativa NÃO é aprovação: quem aprova é o banco.
 // =============================================================================
 
@@ -22,6 +23,8 @@ import { siteSimulationSchema, lgpdSchema } from '@/lib/finance/settings'
 import { estimate, parseIdentity, parseValues, SITE_ORIGIN_LABEL, type SiteSimConfig } from '@/lib/finance/fi/site-core'
 import { issuePortalLink, nextFiCode } from '@/lib/finance/fi/orchestrator'
 import { addTimeline, reflectOnCrm } from '@/lib/finance/fi/events'
+import { keepPreviousPortalLink, runSiteAutoSimulation } from '@/lib/finance/fi/site-auto'
+import { customerMessage } from '@/lib/finance/fi/site-auto-core'
 
 export const dynamic = 'force-dynamic'
 
@@ -100,7 +103,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ site: s
       })
       const terms = { vehicleValue: v.vehicleValue, downPayment: v.downPayment, amountRequested: financed, installments: v.installments }
       const p = reuse
-        ? await tx.financeProposal.update({ where: { id: reuse.id }, data: { ...terms, leadId: lead.leadId, originMeta, revision: { increment: 1 } } })
+        ? await tx.financeProposal.update({ where: { id: reuse.id }, data: { ...terms, leadId: lead.leadId, originMeta: { ...((reuse.originMeta && typeof reuse.originMeta === 'object' && !Array.isArray(reuse.originMeta)) ? reuse.originMeta as Record<string, unknown> : {}), ...(originMeta as Record<string, unknown>) } as Prisma.InputJsonValue, revision: { increment: 1 } } })
         : await tx.financeProposal.create({
             data: {
               tenantId, code: await nextFiCode(tx, tenantId), proponentId: person.id, leadId: lead.leadId, vehicleId: vehicle?.id ?? null, vehicle: vehicle?.title ?? null,
@@ -120,7 +123,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ site: s
 
     if (!proposal.reused) await reflectOnCrm(proposal.id, 'SIMULACAO_INICIADA')
     await reflectOnCrm(proposal.id, 'SIMULACAO_CONCLUIDA', `${v.installments}x, entrada ${brl(v.downPayment)}`)
+    // Ficha reaproveitada: o link que o cliente já tinha continua valendo.
+    if (proposal.reused && proposal.portalTokenHash) await keepPreviousPortalLink(proposal.id, proposal.portalTokenHash, proposal.originMeta)
     const { token } = await issuePortalLink(proposal.id, SITE_ACTOR, 14)
+    // Tenta simular nos bancos conectados na hora; sem resposta, fica para a equipe de F&I.
+    const auto = await runSiteAutoSimulation(proposal.id).catch((e) => { console.error('[site/fi] simulação automática:', e instanceof Error ? e.message : e); return null })
     const origin = process.env.NEXTAUTH_URL?.replace(/\/+$/, '') || new URL(req.url).origin
     return NextResponse.json({
       success: true,
@@ -128,6 +135,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ site: s
         protocol: lead.leadNumber ? `#${lead.leadNumber}` : null, code: proposal.code, estimate: est,
         estimateNote: est ? 'Valores estimados. A aprovação e as condições finais são do banco.' : null,
         portalUrl: `${origin}/minha-ficha/${token}`,
+        simulation: auto ? { status: auto.status, ...customerMessage(auto), quotes: auto.quotes.map((q) => ({ bank: q.bank, installments: q.installments, installmentValue: q.installmentValue, rateMonthly: q.rateMonthly })), pending: auto.pending.length } : null,
       },
     }, { status: 201 })
   } catch (err) {
