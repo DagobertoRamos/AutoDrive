@@ -6551,3 +6551,316 @@ model SocialPost {
   @@index([tenantId, status, scheduledAt])
   @@map("social_posts")
 }
+
+// =============================================================================
+// MOTOR DE OPERAÇÕES VEICULARES (Automotive Core)
+// Operação (TXN) por veículo, com status por dimensão; chamadas externas
+// idempotentes (RENAVE, fiscal, transferência) atrás de gateways com adapters;
+// linha do tempo imutável; caixa de saída de eventos internos; webhooks com
+// deduplicação. Só tabelas novas — nenhum modelo existente foi alterado.
+// =============================================================================
+
+/// Operação veicular: venda, compra/entrada, consignação ou transferência entre lojas de UM veículo.
+model VehicleOperation {
+  id                String    @id @default(cuid())
+  tenantId          String
+  code              String    @unique // TXN-2026-0001282
+  kind              String // SALE | PURCHASE | CONSIGNMENT | STORE_TRANSFER
+  vehicleId         String
+  dealId            String?
+  dealVehicleId     String?
+  parentId          String? // troca: operação de entrada ligada à venda
+  customerId        String?
+  unitId            String?
+  commercialStatus  String    @default("OPEN")
+  financialStatus   String    @default("PENDING")
+  fiscalStatus      String    @default("NOT_STARTED")
+  renaveStatus      String    @default("NOT_STARTED")
+  transferStatus    String    @default("NOT_APPLICABLE")
+  inspectionStatus  String    @default("NOT_REQUIRED")
+  restrictionStatus String    @default("CLEAR")
+  documentStatus    String    @default("PENDING")
+  financingStatus   String    @default("NOT_APPLICABLE")
+  transferStage     String?
+  renaveProviderId  String?
+  renaveCycleId     String?
+  fiscalDocumentId  String?
+  bankContractRef   String?
+  closedAt          DateTime?
+  cancelledAt       DateTime?
+  cancelReason      String?
+  createdById       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([dealVehicleId, kind])
+  @@index([tenantId, vehicleId])
+  @@index([tenantId, kind, commercialStatus])
+  @@index([dealId])
+  @@map("vehicle_operations")
+}
+
+/// Sequência do código TXN (por ano).
+model OperationSequence {
+  key   String @id
+  value Int    @default(0)
+
+  @@map("operation_sequences")
+}
+
+/// Chamada a um provedor externo (RENAVE, fiscal, transferência, banco) com chave de idempotência.
+model ExternalOperation {
+  id              String    @id @default(cuid())
+  tenantId        String
+  operationId     String?
+  vehicleId       String?
+  domain          String // RENAVE | FISCAL | TRANSFER | FINANCING | PAYMENT
+  action          String // ENTER_STOCK | EXIT_STOCK | EMIT | CANCEL | START_TRANSFER ...
+  providerId      String
+  idempotencyKey  String    @unique
+  externalId      String?
+  protocol        String?
+  state           String    @default("PENDING") // PENDING | SUBMITTED | PROCESSING | UNKNOWN | CONFIRMED | REJECTED | CANCELLED
+  attempts        Int       @default(0)
+  lastCheckedAt   DateTime?
+  nextCheckAt     DateTime?
+  requestSummary  Json?
+  responseSummary Json?
+  errorCode       String?
+  errorDetail     String?
+  userMessage     String?
+  createdById     String?
+  confirmedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([state, nextCheckAt])
+  @@index([operationId])
+  @@index([tenantId, domain, state])
+  @@map("external_operations")
+}
+
+/// Linha do tempo do veículo/operação — só inserção (nunca editar ou apagar).
+model OperationEvent {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  vehicleId           String?
+  operationId         String?
+  type                String
+  title               String
+  detail              String?
+  actorId             String?
+  actorName           String?
+  origin              String   @default("USER") // USER | SYSTEM | PROVIDER | WEBHOOK | JOB
+  providerId          String?
+  externalOperationId String?
+  requestId           String?
+  beforeData          Json?
+  afterData           Json?
+  technical           Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  @@index([vehicleId, createdAt])
+  @@index([operationId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("operation_events")
+}
+
+/// Documento fiscal ligado à operação (NF-e / NFC-e / NFS-e).
+model FiscalDocument {
+  id                    String    @id @default(cuid())
+  tenantId              String
+  unitId                String?
+  operationId           String?
+  vehicleId             String?
+  dealId                String?
+  model                 String    @default("NFE") // NFE | NFCE | NFSE
+  direction             String // IN | OUT
+  purpose               String? // PURCHASE | SALE | CONSIGNMENT_IN | CONSIGNMENT_OUT | STORE_TRANSFER | RETURN | SERVICE
+  status                String    @default("PROCESSING") // PROCESSING | UNKNOWN | AUTHORIZED | REJECTED | CANCELLED
+  providerId            String    @default("MANUAL")
+  externalOperationId   String?
+  number                String?
+  series                String?
+  accessKey             String?   @unique
+  cfop                  String?
+  amount                Decimal?  @db.Decimal(12, 2)
+  issuerDoc             String?
+  issuerName            String?
+  recipientDoc          String?
+  recipientName         String?
+  chassi                String?
+  renavam               String?
+  plate                 String?
+  issuedAt              DateTime?
+  authorizedAt          DateTime?
+  authorizationProtocol String?
+  cancelledAt           DateTime?
+  cancelReason          String?
+  rejectionCode         String?
+  rejectionMessage      String?
+  xml                   String?
+  pdfUrl                String?
+  createdById           String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([tenantId, status])
+  @@index([operationId])
+  @@index([vehicleId])
+  @@index([dealId])
+  @@map("fiscal_documents")
+}
+
+/// Vistoria / laudo do veículo (transferência, ECV, cautelar).
+model VehicleInspection {
+  id          String    @id @default(cuid())
+  tenantId    String
+  vehicleId   String
+  operationId String?
+  type        String // VISTORIA_TRANSFERENCIA | LAUDO_ECV | CAUTELAR | OUTRA
+  status      String    @default("VALID") // VALID | PENDING | REJECTED | EXPIRED
+  company     String?
+  performedAt DateTime?
+  validUntil  DateTime?
+  protocol    String?
+  fileId      String? // VehicleFile
+  notes       String?
+  createdById String?
+  cancelledAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId, vehicleId])
+  @@map("vehicle_inspections")
+}
+
+/// Restrição / bloqueio / gravame do veículo.
+model VehicleRestriction {
+  id           String    @id @default(cuid())
+  tenantId     String
+  vehicleId    String
+  kind         String // JUDICIAL | ROUBO_FURTO | ADMINISTRATIVA | TRIBUTARIA | RENAJUD | GRAVAME | OUTRA
+  blocking     Boolean   @default(true)
+  status       String    @default("ACTIVE") // ACTIVE | RESOLVED
+  source       String    @default("MANUAL") // MANUAL | PROVIDER
+  description  String?
+  reference    String?
+  institution  String? // banco do gravame, órgão etc.
+  detectedAt   DateTime  @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolution   String?
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([tenantId, vehicleId, status])
+  @@map("vehicle_restrictions")
+}
+
+/// Transferência de veículo entre lojas (unidades) do mesmo grupo.
+model StoreTransfer {
+  id            String    @id @default(cuid())
+  tenantId      String
+  vehicleId     String
+  fromUnitId    String?
+  toUnitId      String
+  status        String    @default("REQUESTED") // REQUESTED | ACCEPTED | REJECTED | CANCELLED
+  operationId   String?
+  reason        String?
+  requestedById String?
+  requestedAt   DateTime  @default(now())
+  decidedById   String?
+  decidedAt     DateTime?
+  decisionNote  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId, status])
+  @@index([vehicleId])
+  @@map("store_transfers")
+}
+
+/// Contrato de consignação (carro de terceiro vendido pela loja).
+model ConsignmentContract {
+  id              String    @id @default(cuid())
+  tenantId        String
+  vehicleId       String
+  operationId     String?
+  ownerName       String
+  ownerDoc        String?
+  ownerPhone      String?
+  minPrice        Decimal?  @db.Decimal(12, 2)
+  commissionType  String    @default("PERCENT") // PERCENT | FIXED | DIFFERENCE
+  commissionValue Decimal?  @db.Decimal(12, 2)
+  startsAt        DateTime  @default(now())
+  endsAt          DateTime?
+  status          String    @default("ACTIVE") // ACTIVE | SOLD | RETURNED | CANCELLED
+  payoutStatus    String    @default("PENDING") // PENDING | PAID | NOT_DUE
+  payoutAmount    Decimal?  @db.Decimal(12, 2)
+  notes           String?
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([tenantId, status])
+  @@index([vehicleId])
+  @@map("consignment_contracts")
+}
+
+/// Caixa de saída de eventos internos (sale.completed → fiscal/renave...). Reprocessada pelo job.
+model OpsOutbox {
+  id          String    @id @default(cuid())
+  tenantId    String?
+  type        String
+  dedupKey    String    @unique
+  payload     Json
+  status      String    @default("PENDING") // PENDING | DONE | FAILED
+  attempts    Int       @default(0)
+  lastError   String?
+  availableAt DateTime  @default(now())
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([status, availableAt])
+  @@map("ops_outbox")
+}
+
+/// Webhooks recebidos de provedores — cada evento é processado uma única vez.
+model WebhookInbox {
+  id          String    @id @default(cuid())
+  provider    String
+  eventId     String
+  tenantId    String?
+  payloadHash String?
+  status      String    @default("RECEIVED") // RECEIVED | PROCESSED | FAILED | IGNORED
+  error       String?
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+
+  @@unique([provider, eventId])
+  @@map("webhook_inbox")
+}
+
+/// Certificado digital A1 da loja/filial (arquivo e senha cifrados).
+model TenantCertificate {
+  id                String    @id @default(cuid())
+  tenantId          String
+  unitId            String?
+  subjectName       String?
+  subjectDoc        String?
+  validFrom         DateTime?
+  validUntil        DateTime?
+  fingerprint       String?
+  pfxEncrypted      String
+  passwordEncrypted String
+  active            Boolean   @default(true)
+  uploadedById      String?
+  revokedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([tenantId, active])
+  @@map("tenant_certificates")
+}
