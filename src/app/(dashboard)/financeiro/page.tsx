@@ -15,6 +15,7 @@ import { ProjectionChart, type ProjectionPoint } from '@/components/finance/cent
 import { TopExpensesBars, type TopExpense } from '@/components/finance/center/dashboard/TopExpensesBars'
 
 interface DueWindow { count: number; total: number }
+interface Ops { transit: DueWindow; commissions: DueWindow; partners: { toPay: number; count: number }; stock: { count: number; capital: number } }
 interface DueSummary { overdue: DueWindow; today: DueWindow; next7: DueWindow; next30: DueWindow }
 interface Overview {
   month: string
@@ -58,6 +59,11 @@ export default function FinancePanelPage() {
     } catch { setError('Erro de rede.') } finally { setLoading(false) }
   }, [month])
   useEffect(() => { void load() }, [load])
+  const [ops, setOps] = useState<Ops | null>(null)
+  useEffect(() => {
+    fetch('/api/finance/center/overview/operations', { credentials: 'include', cache: 'no-store' })
+      .then((r) => r.json()).then((j) => setOps(j?.success ? j.data : null)).catch(() => {})
+  }, [])
 
   const d = data
   const overdueTotal = (d?.receivables.overdue.count ?? 0) + (d?.payables.overdue.count ?? 0)
@@ -96,6 +102,13 @@ export default function FinancePanelPage() {
         <KpiCard label={`Resultado · ${d ? monthName(d.month).split(' ')[0] : ''}`} helpText="Receitas menos despesas do mês pelo regime de competência (pagas ou em aberto)." loading={loading && !d} value={brl(d?.result.result)}
           tone={(d?.result.result ?? 0) < 0 ? 'alert' : 'in'}
           sub={d && <>Receitas {brl(d.result.revenue)}<br />Despesas {brl(d.result.expense)}</>} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiCard label="Capital em estoque" helpText="Custo lançado dos carros próprios à venda (compra, preparação, documentação)." loading={!ops} value={brl(ops?.stock.capital)} sub={ops && `${ops.stock.count} carros`} href="/financeiro/veiculos" />
+        <KpiCard label="Financiamentos a receber" helpText="Vendas financiadas que o banco ainda não pagou." loading={!ops} value={brl(ops?.transit.total)} tone="in" sub={ops && `${ops.transit.count} contrato(s)`} href="/financeiro/relatorios?view=contratos-transito" />
+        <KpiCard label="Repasses a parceiros" loading={!ops} value={brl(ops?.partners.toPay)} tone={ops?.partners.toPay ? 'out' : 'default'} sub={ops && `${ops.partners.count} carro(s) vendido(s)`} href="/financeiro/relatorios?view=parceiros" />
+        <KpiCard label="Comissões a pagar" loading={!ops} value={brl(ops?.commissions.total)} tone={ops?.commissions.total ? 'out' : 'default'} sub={ops && `${ops.commissions.count} lançamento(s)`} href="/financeiro/folha" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
