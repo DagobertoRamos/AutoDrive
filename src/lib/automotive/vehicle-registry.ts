@@ -10,6 +10,8 @@ import { opsContext } from './config'
 import { applyToOperation, nextOperationCode, OpsError, recordEvent, refreshVehicleRestriction, type Actor } from './operations'
 import { operationRequirements } from './capabilities'
 import { restrictionKindText } from './readiness-core'
+import { computePayout, payoutDueDate, payoutStatusFrom } from './consignment-core'
+import { ensureVehicleCategory, sourceOf } from '@/lib/stock/vehicle-ledger'
 
 const RESTRICTION_KINDS = new Set(['JUDICIAL', 'ROUBO_FURTO', 'ADMINISTRATIVA', 'TRIBUTARIA', 'RENAJUD', 'GRAVAME', 'OUTRA'])
 /** Tipos que, por natureza, impedem a venda. */
@@ -100,7 +102,9 @@ export async function saveConsignment(vehicleId: string, tenantId: string | null
   const commissionType = ['PERCENT', 'FIXED', 'DIFFERENCE'].includes(String(b.commissionType)) ? String(b.commissionType) : 'PERCENT'
   if (commissionType === 'PERCENT' && commissionValue != null && commissionValue > 100) throw new OpsError('Comissão acima de 100%.', 400)
   const endsAt = dateOf(b.endsAt)
-  const data = { ownerName, ownerDoc: str(b.ownerDoc, 20), ownerPhone: str(b.ownerPhone, 20), minPrice, commissionType, commissionValue, endsAt, notes: str(b.notes, 1000) }
+  const payoutDays = b.payoutDays === '' || b.payoutDays == null ? null : Math.round(Number(b.payoutDays))
+  if (payoutDays != null && (!Number.isFinite(payoutDays) || payoutDays < 0 || payoutDays > 365)) throw new OpsError('Prazo de repasse inválido.', 400)
+  const data = { ownerName, ownerDoc: str(b.ownerDoc, 20), ownerPhone: str(b.ownerPhone, 20), minPrice, commissionType, commissionValue, endsAt, payoutDays, notes: str(b.notes, 1000) }
   const current = await prisma.consignmentContract.findFirst({ where: { vehicleId, status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
   const saved = current
     ? await prisma.consignmentContract.update({ where: { id: current.id }, data })
@@ -131,6 +135,90 @@ export async function ensureConsignmentFromDeal(dealId: string, actor: Actor) {
     })
     await recordEvent({ tenantId: deal.tenantId, vehicleId: dv.vehicleId, type: 'CONSIGNMENT_CREATED', title: 'Contrato de consignação registrado a partir da negociação.', actor })
   }
+}
+
+const REPASSE_SOURCE = sourceOf('REPASSE')
+
+/**
+ * Consignado vendido: calcula o repasse pelo contrato, ajusta o lançamento
+ * "Repasse ao proprietário" (valor + vencimento) e liga contrato ↔ financeiro.
+ * Lançamento já pago (total ou em parte) nunca é alterado — vira aviso.
+ */
+export async function settleConsignmentOnSale(vehicleId: string, saleDealId: string, actor: Actor) {
+  const v = await prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { tenantId: true, unitId: true, plate: true, brand: true, model: true, purchasePrice: true, stockType: true } })
+  if (!v?.tenantId || v.stockType !== 'CONSIGNADO') return null
+  const c = await prisma.consignmentContract.findFirst({ where: { vehicleId, status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
+  if (!c) {
+    await recordEvent({ tenantId: v.tenantId, vehicleId, type: 'CONSIGNMENT_MISSING', title: 'Consignado vendido sem contrato de consignação registrado.', actor })
+    return null
+  }
+  const dv = await prisma.dealVehicle.findFirst({ where: { dealId: saleDealId, vehicleId, role: 'VENDIDO' }, select: { agreedValue: true } })
+  const salePrice = dv?.agreedValue != null ? Number(dv.agreedValue) : 0
+  const calc = computePayout({ salePrice, commissionType: c.commissionType, commissionValue: c.commissionValue != null ? Number(c.commissionValue) : null, minPrice: c.minPrice != null ? Number(c.minPrice) : null, fallback: v.purchasePrice != null ? Number(v.purchasePrice) : null })
+  const soldAt = new Date()
+  const dueAt = payoutDueDate(soldAt, c.payoutDays)
+  const label = [v.plate, [v.brand, v.model].filter(Boolean).join(' ')].filter(Boolean).join(' · ')
+
+  const entries = await prisma.financialEntry.findMany({ where: { vehicleId, source: { startsWith: REPASSE_SOURCE }, status: { not: 'CANCELADO' } }, select: { id: true, status: true, amount: true, parentEntryId: true } })
+  const title = entries.find((e) => !e.parentEntryId)
+  const touched = entries.some((e) => e.parentEntryId) || title?.status === 'PAGO'
+  let entryId = title?.id ?? null
+  if (!title) {
+    const created = await prisma.financialEntry.create({
+      data: {
+        tenantId: v.tenantId, unitId: v.unitId, vehicleId, type: 'DESPESA', status: 'PREVISTO', source: REPASSE_SOURCE,
+        categoryId: await ensureVehicleCategory(v.tenantId, 'REPASSE', 'DESPESA'),
+        description: `Repasse ao proprietário — ${label}`, amount: calc.payout, competenceDate: soldAt, dueDate: dueAt,
+        counterparty: c.ownerName, createdById: actor.id ?? null,
+      },
+      select: { id: true },
+    })
+    entryId = created.id
+  } else if (!touched) {
+    await prisma.financialEntry.update({ where: { id: title.id }, data: { amount: calc.payout, dueDate: dueAt, competenceDate: soldAt, counterparty: c.ownerName, description: `Repasse ao proprietário — ${label}` } })
+  }
+  const done = await prisma.consignmentContract.updateMany({
+    where: { id: c.id, status: 'ACTIVE' },
+    data: { status: 'SOLD', payoutStatus: touched ? payoutStatusFrom(entries.map((e) => ({ ...e, amount: Number(e.amount) })), calc.payout) : 'PENDING', payoutAmount: calc.payout, payoutDueAt: dueAt, payoutEntryId: entryId, salePrice, soldAt, saleDealId },
+  })
+  if (!done.count) return null
+  const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  await recordEvent({ tenantId: v.tenantId, vehicleId, type: 'CONSIGNMENT_SOLD', title: `Consignado vendido: repasse de ${brl(calc.payout)} ao proprietário até ${dueAt.toLocaleDateString('pt-BR')}.`, actor, after: { salePrice, payout: calc.payout, storeShare: calc.storeShare } })
+  if (calc.belowMinimum) await recordEvent({ tenantId: v.tenantId, vehicleId, type: 'CONSIGNMENT_BELOW_MIN', title: 'Venda abaixo do valor mínimo combinado com o proprietário.', actor })
+  if (touched) await recordEvent({ tenantId: v.tenantId, vehicleId, type: 'CONSIGNMENT_PAYOUT_LOCKED', title: 'O repasse já tinha pagamento registrado; o valor não foi alterado. Confira no financeiro.', actor })
+  return { payout: calc.payout, dueAt }
+}
+
+/** Venda do consignado cancelada: contrato volta a ativo e o repasse deixa de vencer. */
+export async function revertConsignmentSale(saleDealId: string, actor: Actor) {
+  const list = await prisma.consignmentContract.findMany({ where: { saleDealId, status: 'SOLD' } })
+  for (const c of list) {
+    const entries = c.payoutEntryId ? await prisma.financialEntry.findMany({ where: { OR: [{ id: c.payoutEntryId }, { parentEntryId: c.payoutEntryId }], status: { not: 'CANCELADO' } }, select: { id: true, status: true, parentEntryId: true } }) : []
+    const paid = entries.some((e) => e.parentEntryId || e.status === 'PAGO')
+    if (!paid && c.payoutEntryId) {
+      const v = await prisma.vehicle.findUnique({ where: { id: c.vehicleId }, select: { purchasePrice: true } })
+      const back = c.minPrice ?? v?.purchasePrice ?? c.payoutAmount
+      await prisma.financialEntry.updateMany({ where: { id: c.payoutEntryId, status: 'PREVISTO' }, data: { dueDate: null, ...(back != null ? { amount: back } : {}) } })
+    }
+    await prisma.consignmentContract.update({ where: { id: c.id }, data: { status: 'ACTIVE', payoutStatus: 'PENDING', payoutAmount: null, payoutDueAt: null, salePrice: null, soldAt: null, saleDealId: null } })
+    await recordEvent({ tenantId: c.tenantId, vehicleId: c.vehicleId, type: 'CONSIGNMENT_SALE_REVERTED', title: paid ? 'Venda cancelada, mas o repasse já tinha sido pago: trate a devolução no financeiro.' : 'Venda cancelada: a consignação volta a ficar ativa e o repasse deixa de vencer.', actor })
+  }
+  return list.length
+}
+
+/** Job: atualiza a situação do repasse pelo financeiro (pago / pago em parte). */
+export async function syncConsignmentPayouts(tenantId: string) {
+  const sold = await prisma.consignmentContract.findMany({ where: { tenantId, status: 'SOLD', payoutStatus: { in: ['PENDING', 'PARTIAL'] }, payoutEntryId: { not: null } } })
+  let changed = 0
+  for (const c of sold) {
+    const entries = await prisma.financialEntry.findMany({ where: { OR: [{ id: c.payoutEntryId! }, { parentEntryId: c.payoutEntryId! }], status: { not: 'CANCELADO' } }, select: { status: true, amount: true, parentEntryId: true } })
+    const st = payoutStatusFrom(entries.map((e) => ({ ...e, amount: Number(e.amount) })), Number(c.payoutAmount ?? 0))
+    if (st === c.payoutStatus) continue
+    await prisma.consignmentContract.update({ where: { id: c.id }, data: { payoutStatus: st } })
+    await recordEvent({ tenantId, vehicleId: c.vehicleId, type: 'CONSIGNMENT_PAYOUT', title: st === 'PAID' ? 'Repasse ao proprietário pago.' : 'Repasse ao proprietário pago em parte.', origin: 'JOB', actor: { id: null, name: 'Sistema' } })
+    changed++
+  }
+  return changed
 }
 
 export async function closeConsignment(vehicleId: string, status: 'SOLD' | 'RETURNED' | 'CANCELLED', actor: Actor) {

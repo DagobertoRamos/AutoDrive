@@ -2749,6 +2749,8 @@ model CommissionCalculation {
   approvedAt      DateTime?
   paidAt          DateTime?
   notes           String?
+  /// Chave única (negociação + escopo + colaborador + referência): o banco impede comissão duplicada.
+  dedupKey        String?            @unique
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -6797,8 +6799,15 @@ model ConsignmentContract {
   startsAt        DateTime  @default(now())
   endsAt          DateTime?
   status          String    @default("ACTIVE") // ACTIVE | SOLD | RETURNED | CANCELLED
-  payoutStatus    String    @default("PENDING") // PENDING | PAID | NOT_DUE
+  payoutStatus    String    @default("PENDING") // PENDING | PARTIAL | PAID | NOT_DUE
   payoutAmount    Decimal?  @db.Decimal(12, 2)
+  /// Dias após a venda para pagar o proprietário.
+  payoutDays      Int?
+  payoutDueAt     DateTime?
+  payoutEntryId   String? // FinancialEntry VEICULO_REPASSE
+  salePrice       Decimal?  @db.Decimal(12, 2)
+  soldAt          DateTime?
+  saleDealId      String?
   notes           String?
   createdById     String?
   createdAt       DateTime  @default(now())
@@ -6863,4 +6872,61 @@ model TenantCertificate {
 
   @@index([tenantId, active])
   @@map("tenant_certificates")
+}
+
+/// Conexão da loja com um provedor (integradora RENAVE, emissor fiscal, transferência,
+/// consulta veicular). Credenciais DA LOJA, cifradas (BYOC); só dicas mascaradas saem na API.
+model IntegrationConnection {
+  id               String    @id @default(cuid())
+  tenantId         String
+  unitId           String?
+  /// unitId ou "ALL" — chave da unicidade (null não é único no Postgres).
+  scopeKey         String    @default("ALL")
+  domain           String // RENAVE | FISCAL | TRANSFER | VEHICLE_DATA
+  providerId       String
+  environment      String    @default("PRODUCAO") // HOMOLOGACAO | PRODUCAO
+  status           String    @default("DRAFT") // DRAFT | ACTIVE | ERROR | DISABLED
+  secretsEncrypted String?
+  maskedHints      Json?
+  settings         Json?
+  lastTestAt       DateTime?
+  lastTestOk       Boolean?
+  lastError        String?
+  createdById      String?
+  updatedById      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([tenantId, domain, providerId, scopeKey])
+  @@index([tenantId, domain, status])
+  @@map("integration_connections")
+}
+
+/// Consulta veicular (débitos, restrições, gravame) feita por um provedor da loja.
+model VehicleDataQuery {
+  id            String    @id @default(cuid())
+  tenantId      String
+  vehicleId     String?
+  evaluationId  String?
+  plate         String?
+  renavam       String?
+  chassi        String?
+  uf            String?
+  providerId    String
+  connectionId  String?
+  kind          String    @default("FULL") // DEBTS | RESTRICTIONS | FULL
+  status        String    @default("PROCESSING") // PROCESSING | DONE | PARTIAL | ERROR
+  debtsTotal    Decimal?  @db.Decimal(12, 2)
+  debtsCount    Int       @default(0)
+  restrictionsCount Int   @default(0)
+  blocking      Boolean   @default(false)
+  result        Json?
+  errorMessage  String?
+  requestedById String?
+  createdAt     DateTime  @default(now())
+  finishedAt    DateTime?
+
+  @@index([tenantId, vehicleId, createdAt])
+  @@index([tenantId, plate])
+  @@map("vehicle_data_queries")
 }

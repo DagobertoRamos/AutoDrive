@@ -31,6 +31,8 @@ describe.skipIf(!LOCAL)('operações veiculares (banco real)', () => {
   const CHASSI_A = '9BWZZZ377VT004251'
   const CHASSI_B = '9BGKS48U0LG123456'
   const actor = { id: null, name: 'Teste E2E', role: 'ADM' }
+  const extraVehicles: string[] = []
+  const extraDeals: string[] = []
   let tenantId = '', unitA = '', unitB = '', customerId = '', carA = '', carB = '', dealId = '', dvTrade = ''
 
   function withDv(k43: string): string {
@@ -75,7 +77,7 @@ describe.skipIf(!LOCAL)('operações veiculares (banco real)', () => {
     await prisma.vehicleInspection.deleteMany({ where: { tenantId } })
     await prisma.storeTransfer.deleteMany({ where: { tenantId } })
     await prisma.consignmentContract.deleteMany({ where: { tenantId } })
-    await prisma.opsOutbox.deleteMany({ where: { OR: [{ tenantId }, { dedupKey: { contains: dealId || 'nada' } }] } })
+    await prisma.opsOutbox.deleteMany({ where: { OR: [{ tenantId }, { dedupKey: { contains: dealId || 'nada' } }, ...extraDeals.map((id) => ({ dedupKey: { contains: id } }))] } })
     await prisma.webhookInbox.deleteMany({ where: { provider: `E2E${tag}` } })
     await prisma.auditLog.deleteMany({ where: { tenantId } })
     if (dealId) {
@@ -83,7 +85,13 @@ describe.skipIf(!LOCAL)('operações veiculares (banco real)', () => {
       await prisma.dealVehicle.deleteMany({ where: { dealId } })
       await prisma.deal.delete({ where: { id: dealId } })
     }
-    await prisma.vehicle.deleteMany({ where: { id: { in: vids } } })
+    for (const id of extraDeals) {
+      await prisma.dealVehicle.deleteMany({ where: { dealId: id } })
+      await prisma.deal.deleteMany({ where: { id } })
+    }
+    await prisma.financialEntry.deleteMany({ where: { tenantId } })
+    await prisma.vehicle.deleteMany({ where: { id: { in: [...vids, ...extraVehicles] } } })
+    await prisma.financialCategory.deleteMany({ where: { tenantId } }).catch(() => {})
     await prisma.customer.deleteMany({ where: { tenantId } })
     await prisma.unit.deleteMany({ where: { tenantId } })
     await prisma.systemSetting.deleteMany({ where: { key: `ops:config:${tenantId}` } })
@@ -165,6 +173,11 @@ describe.skipIf(!LOCAL)('operações veiculares (banco real)', () => {
     const res = await fiscal.attachFiscalXml(sale.id, tenantId, nfe({ key: key(5), tpNF: '1', emit: CNPJ, destTag: 'CPF', dest: BUYER, chassi: CHASSI_A, vNF: 95000 }), actor)
     expect(res.warnings.some((w) => w.field === 'amount')).toBe(true)
     await expect(fiscal.attachFiscalXml(sale.id, tenantId, nfe({ key: key(6), tpNF: '1', emit: CNPJ, destTag: 'CPF', dest: BUYER, chassi: CHASSI_A }), actor)).rejects.toThrow(/já tem NF-e/)
+    // Saída exige ATPV-e assinada pelas duas partes (Res. Contran 1.026/2026).
+    await expect(renave.renaveAction(sale.id, tenantId, 'EXIT', { protocol: 'SAI-777' }, actor)).rejects.toThrow(/ATPV-e/)
+    await expect(transfer.advanceTransfer(sale.id, tenantId, 'ATPV_ISSUED', {}, actor)).rejects.toThrow(/Próxima etapa/)
+    for (const st of ['INTENT_REGISTERED', 'ATPV_ISSUED', 'SELLER_SIGNED', 'BUYER_SIGNED']) await transfer.advanceTransfer(sale.id, tenantId, st, { protocol: `P-${st}` }, actor)
+    await expect(transfer.advanceTransfer(sale.id, tenantId, 'INSPECTION_DONE', {}, actor)).rejects.toThrow(/saída no RENAVE/)
     const outs = await Promise.allSettled([1, 2, 3, 4, 5].map(() => renave.renaveAction(sale.id, tenantId, 'EXIT', { protocol: 'SAI-777' }, actor)))
     expect(outs.some((o) => o.status === 'fulfilled')).toBe(true)
     expect(await prisma.externalOperation.count({ where: { operationId: sale.id, action: 'EXIT_STOCK' } })).toBe(1)
@@ -174,18 +187,15 @@ describe.skipIf(!LOCAL)('operações veiculares (banco real)', () => {
 
   it('13–18 · transferência por etapas, sem pular, até o CRLV-e', async () => {
     const sale = (await prisma.vehicleOperation.findFirst({ where: { dealId, kind: 'SALE' } }))!
-    await expect(transfer.advanceTransfer(sale.id, tenantId, 'ATPV_ISSUED', {}, actor)).rejects.toThrow(/Próxima etapa/)
-    for (const st of ['INTENT_REGISTERED', 'ATPV_ISSUED', 'SELLER_SIGNED']) await transfer.advanceTransfer(sale.id, tenantId, st, { protocol: `P-${st}` }, actor)
-    const ov = (await prisma.vehicleOperation.findUnique({ where: { id: sale.id } }))!
     const { overallStatus } = await import('./status-core')
     // F&I primeiro (contrato pendente) — informa gravame e segue
-    expect(overallStatus(ov as never).message).toMatch(/financiamento|gravame/i)
+    expect(overallStatus(sale as never).message).toMatch(/financiamento|gravame/i)
     await ops.applyToOperation(sale.id, { financingStatus: 'LIEN_REGISTERED' }, { actor })
     await ops.applyToOperation(sale.id, { financialStatus: 'PAID' }, { actor })
-    expect(overallStatus((await prisma.vehicleOperation.findUnique({ where: { id: sale.id } })) as never).message).toBe('Aguardando assinatura do comprador.')
+    expect(overallStatus((await prisma.vehicleOperation.findUnique({ where: { id: sale.id } })) as never).message).toMatch(/vistoria/)
     const ins = await transfer.transferInstructions(sale.id, tenantId)
     expect(ins.phone).toBe('5511999990000')
-    for (const st of ['BUYER_SIGNED', 'INSPECTION_DONE', 'FEES_PAID', 'TRANSFER_DONE', 'CRLV_ISSUED']) await transfer.advanceTransfer(sale.id, tenantId, st, {}, actor)
+    for (const st of ['INSPECTION_DONE', 'FEES_PAID', 'TRANSFER_DONE', 'CRLV_ISSUED']) await transfer.advanceTransfer(sale.id, tenantId, st, {}, actor)
     const done = (await prisma.vehicleOperation.findUnique({ where: { id: sale.id } }))!
     expect(done.closedAt).toBeTruthy()
     expect(overallStatus(done as never).label).toBe('CONCLUÍDO')
@@ -231,6 +241,42 @@ describe.skipIf(!LOCAL)('operações veiculares (banco real)', () => {
     const s = await jobs.stockSummary(tenantId)
     expect(s.indicators.total).toBeGreaterThanOrEqual(1)
     expect(s.issues.length).toBeGreaterThanOrEqual(0)
+  })
+
+  it('9 · consignado: repasse calculado pelo contrato vira conta a pagar; cancelar desfaz', async () => {
+    const car = (await prisma.vehicle.create({ data: { tenantId, unitId: unitA, brand: 'Honda', model: 'Civic', plate: 'CNS1G23', stockType: 'CONSIGNADO', stockStatus: 'DISPONIVEL', isAvailableForSale: true, purchasePrice: 85000 } })).id
+    extraVehicles.push(car)
+    const { createAcquisitionEntry } = await import('@/lib/stock/vehicle-ledger')
+    await createAcquisitionEntry(car, null)
+    await registry.saveConsignment(car, tenantId, { ownerName: 'Maria Dona', minPrice: 85000, commissionType: 'PERCENT', commissionValue: 10, payoutDays: 3 }, actor)
+    const d = await prisma.deal.create({ data: { tenantId, unitId: unitA, type: 'VENDA', status: 'FINALIZADA', finalizedAt: new Date(), customerId, saleAmount: 100000, dealNumber: `NEG-C-${tag}` } as never })
+    extraDeals.push(d.id)
+    await prisma.dealVehicle.create({ data: { dealId: d.id, vehicleId: car, role: 'VENDIDO', agreedValue: 100000 } })
+    await events.publishOpsEvent('deal.finalized', `${d.id}:x`, { dealId: d.id, actor }, tenantId)
+    const c = (await prisma.consignmentContract.findFirst({ where: { vehicleId: car } }))!
+    expect(c.status).toBe('SOLD')
+    expect(Number(c.payoutAmount)).toBe(90000)
+    const entry = (await prisma.financialEntry.findUnique({ where: { id: c.payoutEntryId! } }))!
+    expect(Number(entry.amount)).toBe(90000)
+    expect(entry.dueDate).toBeTruthy()
+    expect(await prisma.financialEntry.count({ where: { vehicleId: car, source: { startsWith: 'VEICULO_REPASSE' }, status: { not: 'CANCELADO' } } })).toBe(1)
+    await prisma.deal.update({ where: { id: d.id }, data: { status: 'CANCELADA', cancelledAt: new Date() } })
+    await events.publishOpsEvent('deal.cancelled', `${d.id}:y`, { dealId: d.id, actor }, tenantId)
+    const c2 = (await prisma.consignmentContract.findUnique({ where: { id: c.id } }))!
+    expect(c2.status).toBe('ACTIVE')
+    const e2 = (await prisma.financialEntry.findUnique({ where: { id: c.payoutEntryId! } }))!
+    expect(e2.dueDate).toBeNull()
+    expect(Number(e2.amount)).toBe(85000)
+  })
+
+  it('comissão: o banco recusa a mesma comissão duas vezes', async () => {
+    const { commissionDedupKey } = await import('@/lib/commission-generator')
+    const item = { ruleType: 'VENDA', commissionScope: 'SELLER_MAIN_COMMISSION', reference: {}, employeeKind: 'SELLER', employeeId: 's1', employeeUserId: null } as never
+    const key = commissionDedupKey(tenantId, `deal-${tag}`, item)
+    const data = { tenantId, period: '2026-10', ruleType: 'VENDA' as never, description: 'teste', baseValue: 1, commissionValue: 1, dedupKey: key }
+    await prisma.commissionCalculation.create({ data })
+    await expect(prisma.commissionCalculation.create({ data })).rejects.toMatchObject({ code: 'P2002' })
+    await prisma.commissionCalculation.deleteMany({ where: { dedupKey: key } })
   })
 
   it('23 · webhook duplicado é processado uma vez', async () => {

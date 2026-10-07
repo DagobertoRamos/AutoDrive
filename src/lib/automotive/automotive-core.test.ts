@@ -22,10 +22,12 @@ describe('overallStatus', () => {
     expect(s.message).toBe('Aguardando assinatura do comprador.')
     expect(s.nextAction?.key).toBe('transfer.instructions')
   })
-  it('ordem: pagamento → nota → RENAVE → transferência', () => {
+  it('ordem oficial: pagamento → NF-e → ATPV-e assinada → saída RENAVE → vistoria/CRLV-e', () => {
     expect(overallStatus({ ...base, financialStatus: 'PENDING', fiscalStatus: 'PENDING' }).message).toBe('Aguardando pagamento.')
     expect(overallStatus({ ...base, fiscalStatus: 'PENDING', renaveStatus: 'PENDING' }).message).toBe('NF-e de saída pendente.')
-    expect(overallStatus({ ...base, renaveStatus: 'PENDING', transferStatus: 'PENDING' }).nextAction?.key).toBe('renave.exit')
+    expect(overallStatus({ ...base, renaveStatus: 'PENDING', transferStatus: 'PENDING' }).nextAction?.key).toBe('transfer.advance')
+    expect(overallStatus({ ...base, renaveStatus: 'PENDING', transferStatus: 'BUYER_SIGNED' }).nextAction?.key).toBe('renave.exit')
+    expect(overallStatus({ ...base, renaveStatus: 'EXIT_CONFIRMED', transferStatus: 'BUYER_SIGNED' }).message).toMatch(/vistoria/)
   })
   it('timeout nunca vira erro', () => {
     expect(overallStatus({ ...base, renaveStatus: 'UNKNOWN' })).toMatchObject({ label: 'VERIFICANDO', tone: 'attention' })
@@ -202,5 +204,21 @@ describe('reconciliação', () => {
   })
   it('sem acompanhamento não gera ruído', () => {
     expect(classify({ vehicleId: '1', stockStatus: 'DISPONIVEL', renave: 'NONE', fiscalEntry: 'NONE' }, { renaveTracked: false, fiscalTracked: false })).toEqual([])
+  })
+})
+
+import { computePayout, payoutStatusFrom } from './consignment-core'
+
+describe('repasse do consignado', () => {
+  it('percentual, fixo, diferença e mínimo', () => {
+    expect(computePayout({ salePrice: 100000, commissionType: 'PERCENT', commissionValue: 10, minPrice: 85000, fallback: null })).toMatchObject({ payout: 90000, storeShare: 10000, belowMinimum: false })
+    expect(computePayout({ salePrice: 100000, commissionType: 'FIXED', commissionValue: 3000, minPrice: null, fallback: null }).payout).toBe(97000)
+    expect(computePayout({ salePrice: 100000, commissionType: 'DIFFERENCE', commissionValue: null, minPrice: 92000, fallback: null })).toMatchObject({ payout: 92000, storeShare: 8000 })
+    expect(computePayout({ salePrice: 80000, commissionType: 'PERCENT', commissionValue: 10, minPrice: 85000, fallback: null }).belowMinimum).toBe(true)
+  })
+  it('situação pelo financeiro', () => {
+    expect(payoutStatusFrom([{ status: 'PREVISTO', amount: 90000, parentEntryId: null }], 90000)).toBe('PENDING')
+    expect(payoutStatusFrom([{ status: 'PREVISTO', amount: 40000, parentEntryId: null }, { status: 'PAGO', amount: 50000, parentEntryId: 't' }], 90000)).toBe('PARTIAL')
+    expect(payoutStatusFrom([{ status: 'PAGO', amount: 90000, parentEntryId: null }], 90000)).toBe('PAID')
   })
 })

@@ -183,16 +183,20 @@ async function createClawbacks(params: { tenantId: string | null; dealId: string
     const exists = await prisma.commissionCalculation.findFirst({ where: { tenantId: params.tenantId, ruleDetails: { path: ['clawbackOf'], equals: c.id } as never, status: { not: 'CANCELADO' } }, select: { id: true } })
     if (exists) continue
     const scope = (c.ruleDetails as { commissionScope?: string } | null)?.commissionScope
-    await prisma.commissionCalculation.create({
+    // Geração do estorno (cancelar → reabrir → cancelar de novo = 2º estorno);
+    // duas execuções simultâneas caem na mesma chave e o banco recusa a segunda.
+    const generation = await prisma.commissionCalculation.count({ where: { tenantId: params.tenantId, ruleDetails: { path: ['clawbackOf'], equals: c.id } as never } })
+    const created = await prisma.commissionCalculation.create({
       data: {
         tenantId: params.tenantId, sellerId: c.sellerId, managerId: c.managerId, unitId: c.unitId, contractId: c.contractId, period,
         ruleType: 'EXCECAO', description: `Estorno de comissão — venda ${deal?.dealNumber ?? params.dealId} cancelada (${c.description})`.slice(0, 250),
         baseValue: 0, commissionValue: -value, status: 'PREVISTO',
         ruleDetails: { clawbackOf: c.id, clawbackDealId: params.dealId, ...(scope ? { commissionScope: scope } : {}) } as never,
         notes: `Venda cancelada: ${params.reason}`.slice(0, 500),
+        dedupKey: `clawback|${c.id}|${generation + 1}`,
       },
-    })
-    n++
+    }).catch((e) => { if ((e as { code?: string }).code === 'P2002') return null; throw e })
+    if (created) n++
   }
   if (n) {
     await prisma.auditLog.create({

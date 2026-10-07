@@ -32,7 +32,7 @@ interface Overview {
   eventsTotal: number
   restrictions: { id: string; kind: string; blocking: boolean; status: string; description: string | null; institution: string | null; detectedAt: string; resolution: string | null }[]
   inspections: { id: string; type: string; status: string; company: string | null; performedAt: string | null; validUntil: string | null; protocol: string | null }[]
-  consignment: { id: string; ownerName: string; ownerDoc: string | null; ownerPhone: string | null; minPrice: string | number | null; commissionType: string; commissionValue: string | number | null; endsAt: string | null; status: string; payoutStatus: string } | null
+  consignment: { id: string; ownerName: string; ownerDoc: string | null; ownerPhone: string | null; minPrice: string | number | null; commissionType: string; commissionValue: string | number | null; endsAt: string | null; status: string; payoutStatus: string; payoutDays: number | null; payoutAmount: string | number | null; payoutDueAt: string | null; salePrice: string | number | null } | null
   storeTransfer: { id: string; toUnitId: string; fromName: string | null; toName: string | null; reason: string | null; requestedById: string | null } | null
   fiscalDocs: { id: string; number: string | null; series: string | null; direction: string; status: string; amount: number | null; authorizedAt: string | null }[]
   units: { id: string; name: string }[]
@@ -336,13 +336,13 @@ function ConsignmentSection({ data, vehicleId, canManage, defaultOpen, onReload 
   const c = data.consignment
   const toMasked = (v: unknown) => (v == null || v === '' ? '' : maskBRL(String(Math.round(Number(v) * 100))))
   const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState({ ownerName: c?.ownerName ?? '', ownerDoc: c?.ownerDoc ?? '', ownerPhone: c?.ownerPhone ?? '', minPrice: toMasked(c?.minPrice), commissionType: c?.commissionType ?? 'PERCENT', commissionValue: c?.commissionValue != null ? String(c.commissionValue) : '', endsAt: c?.endsAt ? c.endsAt.slice(0, 10) : '' })
+  const [form, setForm] = useState({ ownerName: c?.ownerName ?? '', ownerDoc: c?.ownerDoc ?? '', ownerPhone: c?.ownerPhone ?? '', minPrice: toMasked(c?.minPrice), commissionType: c?.commissionType ?? 'PERCENT', commissionValue: c?.commissionValue != null ? String(c.commissionValue) : '', endsAt: c?.endsAt ? c.endsAt.slice(0, 10) : '', payoutDays: c?.payoutDays != null ? String(c.payoutDays) : '' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const save = async () => {
     if (!form.ownerName.trim()) return setError('Informe o proprietário.')
     setBusy(true); setError(null)
-    const r = await postJson(`/api/vehicles/${vehicleId}/operations`, { action: 'consignment.save', ...form, minPrice: form.minPrice ? parseBRL(form.minPrice) : null, commissionValue: form.commissionValue ? Number(form.commissionValue.replace(',', '.')) : null })
+    const r = await postJson(`/api/vehicles/${vehicleId}/operations`, { action: 'consignment.save', ...form, minPrice: form.minPrice ? parseBRL(form.minPrice) : null, commissionValue: form.commissionValue ? Number(form.commissionValue.replace(',', '.')) : null, payoutDays: form.payoutDays ? Number(form.payoutDays) : null })
     setBusy(false)
     if (!r.ok) return setError(r.error)
     setEditing(false); onReload()
@@ -357,7 +357,15 @@ function ConsignmentSection({ data, vehicleId, canManage, defaultOpen, onReload 
           {c.minPrice != null && <div className="flex justify-between py-1.5"><dt className="text-gray-500">Valor mínimo</dt><dd>{fmtBRL(Number(c.minPrice))}</dd></div>}
           {c.commissionValue != null && <div className="flex justify-between py-1.5"><dt className="text-gray-500">Comissão</dt><dd>{c.commissionType === 'PERCENT' ? `${Number(c.commissionValue)}%` : fmtBRL(Number(c.commissionValue))}</dd></div>}
           <div className="flex justify-between py-1.5"><dt className="text-gray-500">Prazo</dt><dd className={expired ? 'font-medium text-amber-700' : ''}>{c.endsAt ? fmtDate(c.endsAt) : 'Sem prazo'}</dd></div>
-          {c.status === 'SOLD' && <div className="flex justify-between py-1.5"><dt className="inline-flex items-center gap-1 text-gray-500">Repasse<Hint term="REPASSE" /></dt><dd>{c.payoutStatus === 'PAID' ? 'Pago' : 'Pendente'}</dd></div>}
+          {c.status === 'SOLD' && (
+            <div className="flex justify-between py-1.5">
+              <dt className="inline-flex items-center gap-1 text-gray-500">Repasse<Hint term="REPASSE" /></dt>
+              <dd className={c.payoutStatus === 'PAID' ? 'font-medium text-emerald-700' : c.payoutDueAt && new Date(c.payoutDueAt) < new Date() ? 'font-medium text-red-700' : 'font-medium text-gray-800'}>
+                {fmtBRL(c.payoutAmount != null ? Number(c.payoutAmount) : null)} · {c.payoutStatus === 'PAID' ? 'pago' : c.payoutStatus === 'PARTIAL' ? 'pago em parte' : `vence ${fmtDate(c.payoutDueAt)}`}
+              </dd>
+            </div>
+          )}
+          {c.status === 'RETURNED' && <div className="flex justify-between py-1.5"><dt className="text-gray-500">Situação</dt><dd>Devolvido ao proprietário</dd></div>}
         </dl>
       )}
       <Modal open={editing} title="Contrato de consignação" onClose={() => setEditing(false)} footer={<><button className={btn.secondary} onClick={() => setEditing(false)}>Cancelar</button><button className={btn.primary} disabled={busy} onClick={save}>{busy ? 'Salvando…' : 'Salvar'}</button></>}>
@@ -369,6 +377,7 @@ function ConsignmentSection({ data, vehicleId, canManage, defaultOpen, onReload 
           <div><FieldLabel>Prazo</FieldLabel><input type="date" className={input} value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} /></div>
           <div><FieldLabel>Comissão</FieldLabel><select className={input} value={form.commissionType} onChange={(e) => setForm({ ...form, commissionType: e.target.value })}><option value="PERCENT">Percentual</option><option value="FIXED">Valor fixo</option><option value="DIFFERENCE">Diferença sobre o mínimo</option></select></div>
           {form.commissionType !== 'DIFFERENCE' && <div><FieldLabel>{form.commissionType === 'PERCENT' ? '%' : 'Valor'}</FieldLabel><input className={input} inputMode="decimal" value={form.commissionValue} onChange={(e) => setForm({ ...form, commissionValue: e.target.value })} /></div>}
+          <div><FieldLabel helpText="Dias, após a venda, para pagar o proprietário. Vira o vencimento do repasse no financeiro.">Prazo do repasse (dias)</FieldLabel><input className={input} inputMode="numeric" value={form.payoutDays} onChange={(e) => setForm({ ...form, payoutDays: e.target.value.replace(/\D/g, '') })} /></div>
         </div>
         <ErrorLine text={error} />
       </Modal>

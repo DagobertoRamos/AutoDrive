@@ -94,6 +94,16 @@ function renaveDoneFor(kind: string, value: string): boolean {
   return kind === 'SALE' ? value === 'EXIT_CONFIRMED' : value === 'ENTRY_CONFIRMED' || value === 'EXIT_CONFIRMED'
 }
 
+/** ATPV-e assinada pelas duas partes (comprador assinou). */
+export function atpvSigned(transferStatus: string): boolean {
+  return ['BUYER_SIGNED', 'INSPECTION_DONE', 'FEES_PAID', 'TRANSFER_DONE', 'CRLV_ISSUED'].includes(transferStatus)
+}
+
+function transferStep(stage: string): OverallStatus {
+  const waitingBuyer = stage === 'SELLER_SIGNED'
+  return { label: 'VENDIDO', tone: 'progress', message: transferStageMessage(stage as TransferStage), nextAction: waitingBuyer ? { key: 'transfer.instructions', label: 'Enviar instruções' } : { key: 'transfer.advance', label: stage === 'PENDING' ? 'Registrar intenção de venda' : 'Atualizar etapa' } }
+}
+
 /**
  * Status geral de UMA operação. Ordem de prioridade: cancelamento com efeito
  * externo pendente → bloqueios/rejeições → incertezas → próxima etapa do fluxo.
@@ -132,13 +142,13 @@ export function overallStatus(op: OperationDimensions): OverallStatus {
       return { label: 'VENDIDO', tone: 'progress', message: op.financingStatus === 'CONTRACT_SIGNED' ? 'Aguardando inclusão do gravame.' : 'Aguardando contrato do financiamento.', nextAction: op.financingStatus === 'CONTRACT_SIGNED' ? { key: 'financing.lien', label: 'Informar gravame' } : { key: 'finance.view', label: 'Ver financiamento' } }
     }
     if (!isDone('fiscalStatus', op.fiscalStatus)) return { label: 'VENDIDO', tone: 'attention', message: op.fiscalStatus === 'PROCESSING' ? 'NF-e de saída em processamento.' : 'NF-e de saída pendente.', nextAction: op.fiscalStatus === 'PROCESSING' ? null : { key: 'fiscal.issue', label: 'Vincular NF-e' } }
+    // Resolução Contran 1.026/2026: a saída no RENAVE exige NF-e + ATPV-e assinada.
+    const tracksTransfer = op.transferStatus !== 'NOT_APPLICABLE'
+    const signed = !tracksTransfer || atpvSigned(op.transferStatus)
+    if (!signed) return transferStep(op.transferStatus)
     if (!renaveDoneFor(k, op.renaveStatus)) return { label: 'VENDIDO', tone: 'attention', message: op.renaveStatus === 'EXIT_SUBMITTED' ? 'Saída enviada ao RENAVE, aguardando confirmação.' : 'Saída no RENAVE pendente.', nextAction: op.renaveStatus === 'EXIT_SUBMITTED' ? null : { key: 'renave.exit', label: 'Registrar saída' } }
     if (financed && op.financingStatus !== 'BANK_PAID' && !isDone('financialStatus', op.financialStatus)) return { label: 'VENDIDO', tone: 'progress', message: 'Aguardando pagamento do banco.', nextAction: { key: 'finance.view', label: 'Ver financiamento' } }
-    if (!isDone('transferStatus', op.transferStatus)) {
-      const stage = op.transferStatus as TransferStage
-      const waitingBuyer = stage === 'SELLER_SIGNED'
-      return { label: 'VENDIDO', tone: 'progress', message: transferStageMessage(stage), nextAction: waitingBuyer ? { key: 'transfer.instructions', label: 'Enviar instruções' } : { key: 'transfer.advance', label: stage === 'PENDING' ? 'Iniciar transferência' : 'Atualizar etapa' } }
-    }
+    if (!isDone('transferStatus', op.transferStatus)) return transferStep(op.transferStatus)
     return { label: 'CONCLUÍDO', tone: 'ok', message: 'Operação concluída.', nextAction: null }
   }
 

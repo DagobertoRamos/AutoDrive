@@ -10,6 +10,7 @@ import { runExternal } from './external'
 import { renaveProvider } from './gateways/registry'
 import type { ManualInput } from './gateways/types'
 import { applyToOperation, ensureIntakeOperation, OpsError, recordEvent, vehicleRenaveFacts, type Actor } from './operations'
+import { atpvSigned } from './status-core'
 
 export type RenaveAction = 'ENTRY' | 'EXIT' | 'CANCEL'
 
@@ -58,6 +59,8 @@ export async function renaveAction(opId: string, tenantId: string | null, action
     if (op.cancelledAt || op.commercialStatus !== 'SOLD') throw new OpsError('Registre a saída depois de finalizar a venda.', 409)
     if (op.renaveStatus === 'EXIT_CONFIRMED') return op
     if (op.fiscalStatus !== 'AUTHORIZED' && op.fiscalStatus !== 'NOT_REQUIRED') throw new OpsError('Vincule a NF-e de saída antes de registrar a saída no RENAVE.', 409)
+    // A saída exige a ATPV-e assinada por vendedor e comprador.
+    if (op.transferStatus !== 'NOT_APPLICABLE' && !atpvSigned(op.transferStatus)) throw new OpsError('A saída no RENAVE exige a ATPV-e assinada pelo comprador.', 409, { action: 'transfer.advance' })
     const facts = await vehicleRenaveFacts(op.vehicleId)
     if (facts.renave !== 'IN') throw new OpsError('O veículo não tem entrada confirmada no RENAVE. Registre a entrada primeiro.', 409, { action: 'renave.entry', vehicleId: op.vehicleId })
   } else {

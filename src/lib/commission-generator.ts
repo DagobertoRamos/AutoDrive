@@ -172,9 +172,42 @@ function refKey(it: Pick<GenerationItem, 'ruleType' | 'commissionScope' | 'refer
   return `deal:${it.commissionScope}:${it.ruleType}`
 }
 
+/**
+ * Chave única gravada no banco (commission_calculations.dedupKey). Mesma
+ * identidade usada em isDuplicate: negociação + escopo/referência + colaborador.
+ * Bônus de período não é por negociação: a chave é regra + período + colaborador.
+ */
+export function commissionDedupKey(tenantId: string | null, dealId: string, it: Pick<GenerationItem, 'ruleType' | 'commissionScope' | 'reference' | 'employeeKind' | 'employeeId' | 'employeeUserId'>): string {
+  const userId = it.employeeUserId ?? (it.employeeKind === 'USER' ? it.employeeId : null)
+  const emp = userId ? `u:${userId}` : `${it.employeeKind}:${it.employeeId}`
+  const ref = it.reference
+  if (ref.bonusPeriod && ref.bonusRuleId) return `bonus|${tenantId ?? '-'}|${it.commissionScope}|${ref.bonusRuleId}|${ref.bonusPeriod}|${emp}`
+  return `deal|${dealId}|${refKey(it)}|${emp}`
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === 'P2002'
+}
+
 // ── Função principal ─────────────────────────────────────────────────────────
 
+/**
+ * Gera as comissões da negociação. Idempotente: além da conferência em memória,
+ * o banco recusa comissão repetida (dedupKey único). Se duas execuções correrem
+ * juntas, a que perder refaz a leitura e não cria nada em dobro.
+ */
 export async function generateCommissionsForDeal(
+  opts: GenerateOptions,
+): Promise<GenerationResult> {
+  try {
+    return await generateCommissionsForDealOnce(opts)
+  } catch (err) {
+    if (!isUniqueViolation(err) || opts.dryRun) throw err
+    return generateCommissionsForDealOnce(opts)
+  }
+}
+
+async function generateCommissionsForDealOnce(
   opts: GenerateOptions,
 ): Promise<GenerationResult> {
   const dryRun  = !!opts.dryRun
@@ -800,6 +833,18 @@ export async function generateCommissionsForDeal(
     if (r.matched && !dup) toCreate.push({ item: r.item, matched: r.matched })
   }
 
+  // Duas linhas com a mesma identidade na MESMA geração: fica a primeira.
+  {
+    const seen = new Set<string>()
+    const unique = toCreate.filter(({ item }) => {
+      const k = commissionDedupKey(tenantId, d.id, item)
+      if (seen.has(k)) return false
+      seen.add(k)
+      return true
+    })
+    toCreate.splice(0, toCreate.length, ...unique)
+  }
+
   if (!dryRun && toCreate.length > 0) {
     await prisma.$transaction(async (tx) => {
       for (const { item, matched } of toCreate) {
@@ -852,6 +897,7 @@ export async function generateCommissionsForDeal(
             commissionValue: matched.commissionValue,
             ruleDetails,
             status:       'PREVISTO',
+            dedupKey:     commissionDedupKey(tenantId, d.id, item),
           },
         })
         created++
@@ -927,6 +973,7 @@ export async function generateCommissionsForDeal(
                 triggeredBy:      opts.triggeredBy,
               } as Prisma.JsonObject,
               status: 'PREVISTO',
+              dedupKey: `warranty|${ws.id}|${sellerEarner.id}`,
             },
           })
           created++

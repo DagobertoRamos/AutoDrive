@@ -1,7 +1,9 @@
 // =============================================================================
 // Etapas da transferência de propriedade após a venda (puro).
-//   saída RENAVE → intenção de venda → ATPV-e → assinatura vendedor →
-//   assinatura comprador → vistoria → taxas → transferência → novo CRLV-e
+//   intenção de venda → ATPV-e → assinatura vendedor → assinatura comprador →
+//   [saída no RENAVE] → vistoria → taxas → transferência → novo CRLV-e
+// (Resoluções Contran 1.026/2026 e 1.027/2026: a saída do estoque exige NF-e
+// + ATPV-e assinada; a comunicação de venda nasce com as duas assinaturas.)
 // O status guardado é a ÚLTIMA etapa concluída; a tela mostra o que falta.
 // =============================================================================
 
@@ -20,7 +22,7 @@ export type TransferStage = typeof TRANSFER_STAGES[number]
 
 /** Nome da etapa concluída (linha do tempo / "Ver etapas"). */
 export const STAGE_DONE_LABEL: Record<TransferStage, string> = {
-  PENDING: 'Saída registrada',
+  PENDING: 'Venda finalizada',
   INTENT_REGISTERED: 'Intenção de venda registrada',
   ATPV_ISSUED: 'ATPV-e emitida',
   SELLER_SIGNED: 'Assinatura do vendedor',
@@ -33,11 +35,11 @@ export const STAGE_DONE_LABEL: Record<TransferStage, string> = {
 
 /** O que a tela diz enquanto a transferência está PARADA nesta etapa. */
 const WAITING_MESSAGE: Record<TransferStage, string> = {
-  PENDING: 'Transferência não iniciada.',
+  PENDING: 'Aguardando intenção de venda (ATPV-e).',
   INTENT_REGISTERED: 'Aguardando emissão da ATPV-e.',
   ATPV_ISSUED: 'Aguardando assinatura do vendedor.',
   SELLER_SIGNED: 'Aguardando assinatura do comprador.',
-  BUYER_SIGNED: 'Aguardando vistoria.',
+  BUYER_SIGNED: 'ATPV-e assinada. Aguardando vistoria.',
   INSPECTION_DONE: 'Aguardando pagamento das taxas.',
   FEES_PAID: 'Transferência em andamento.',
   TRANSFER_DONE: 'Aguardando o novo CRLV-e.',

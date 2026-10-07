@@ -126,6 +126,8 @@ export async function recomputePeriodBonusesForUnit(opts: {
         ruleType: 'EXCECAO', description: p.description,
         baseValue: 0, commissionValue: p.value, status: 'PREVISTO',
         ruleDetails: { commissionScope: p.scope, periodBonus: true, bonusKind: p.kind } as never,
+        // Um bônus por colaborador/tipo/mês: se já foi aprovado ou pago, não nasce outro.
+        dedupKey: `pbonus|${tenantId ?? '-'}|${unitId}|${period}|${p.scope}|${p.kind}|${p.sellerId ?? p.managerId ?? '-'}`,
       },
     }).catch(() => {})
   }

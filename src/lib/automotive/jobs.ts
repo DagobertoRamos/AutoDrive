@@ -14,6 +14,7 @@ import { nextCheckDelayMs } from './external-core'
 import { fiscalProvider, renaveProvider, transferProvider } from './gateways/registry'
 import { processPendingOpsEvents } from './events'
 import { applyToOperation, recordEvent, SYSTEM_ACTOR } from './operations'
+import { syncConsignmentPayouts } from './vehicle-registry'
 import { fiscalEntryState, renaveStockState } from './orchestrator-core'
 import { classify, isInInternalStock, stockIndicators, type ReconcileIssue, type ReconcileRow } from './reconcile-core'
 
@@ -110,6 +111,11 @@ export async function runTenantAlerts(tenantId: string): Promise<number> {
   if (rejected) { await alertOnce(tenantId, 'rejected', 'Operações com rejeição', `${rejected} operação(ões) com NF-e ou RENAVE rejeitado.`, '/estoque/conformidade'); sent++ }
   const unknown = await prisma.externalOperation.count({ where: { tenantId, state: 'UNKNOWN', createdAt: { lte: new Date(Date.now() - 6 * 3_600_000) } } })
   if (unknown) { await alertOnce(tenantId, 'unknown', 'Operações sem confirmação', `${unknown} solicitação(ões) sem confirmação do provedor há mais de 6 horas.`, '/estoque/conformidade'); sent++ }
+  await syncConsignmentPayouts(tenantId).catch((e) => console.error('[operacoes] repasses', tenantId, e))
+  const overduePayouts = await prisma.consignmentContract.count({ where: { tenantId, status: 'SOLD', payoutStatus: { in: ['PENDING', 'PARTIAL'] }, payoutDueAt: { lt: new Date() } } })
+  if (overduePayouts) { await alertOnce(tenantId, 'payout-overdue', 'Repasse de consignado vencido', `${overduePayouts} repasse(s) ao proprietário com vencimento passado.`, '/financeiro'); sent++ }
+  const expiring = await prisma.consignmentContract.count({ where: { tenantId, status: 'ACTIVE', endsAt: { lte: new Date(Date.now() + 7 * 86_400_000) } } })
+  if (expiring) { await alertOnce(tenantId, 'consign-expiring', 'Consignação vencendo', `${expiring} contrato(s) de consignação vencem em até 7 dias ou já venceram.`, '/estoque'); sent++ }
   const { indicators, tracking } = await stockSummary(tenantId)
   if (tracking.renaveTracked && indicators.divergent) { await alertOnce(tenantId, 'divergence', 'Divergência com o RENAVE', `${indicators.divergent} veículo(s) com estoque diferente do RENAVE.`, '/estoque/conformidade'); sent++ }
   return sent

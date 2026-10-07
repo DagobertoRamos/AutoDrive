@@ -9,7 +9,8 @@
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { syncDealOperations, ensureIntakeOperation, SYSTEM_ACTOR, type Actor } from './operations'
-import { closeConsignment, ensureConsignmentFromDeal } from './vehicle-registry'
+import { closeConsignment, ensureConsignmentFromDeal, revertConsignmentSale, settleConsignmentOnSale } from './vehicle-registry'
+import { prisma as db } from '@/lib/prisma'
 
 export type OpsEventType = 'deal.approved' | 'deal.finalized' | 'deal.cancelled' | 'deal.reopened' | 'vehicle.stock_entered'
 
@@ -18,13 +19,21 @@ interface Payload { dealId?: string; vehicleId?: string; actor?: Actor }
 const HANDLERS: Record<OpsEventType, (p: Payload) => Promise<void>> = {
   'deal.approved': async (p) => { if (p.dealId) await syncDealOperations(p.dealId, p.actor ?? SYSTEM_ACTOR) },
   'deal.reopened': async (p) => { if (p.dealId) await syncDealOperations(p.dealId, p.actor ?? SYSTEM_ACTOR) },
-  'deal.cancelled': async (p) => { if (p.dealId) await syncDealOperations(p.dealId, p.actor ?? SYSTEM_ACTOR) },
+  'deal.cancelled': async (p) => {
+    if (!p.dealId) return
+    const actor = p.actor ?? SYSTEM_ACTOR
+    await syncDealOperations(p.dealId, actor)
+    await revertConsignmentSale(p.dealId, actor)
+    // Consignado devolvido ao dono junto com o cancelamento da entrada.
+    const returned = await db.dealVehicle.findMany({ where: { dealId: p.dealId, role: 'CONSIGNADO', vehicle: { stockStatus: 'DEVOLVIDO' as never } }, select: { vehicleId: true } })
+    for (const r of returned) if (r.vehicleId) await closeConsignment(r.vehicleId, 'RETURNED', actor)
+  },
   'deal.finalized': async (p) => {
     if (!p.dealId) return
     const ops = await syncDealOperations(p.dealId, p.actor ?? SYSTEM_ACTOR)
     await ensureConsignmentFromDeal(p.dealId, p.actor ?? SYSTEM_ACTOR)
-    // Consignado vendido: contrato encerra e o repasse fica pendente.
-    for (const op of ops) if (op.kind === 'SALE') await closeConsignment(op.vehicleId, 'SOLD', p.actor ?? SYSTEM_ACTOR).catch(() => null)
+    // Consignado vendido: repasse calculado pelo contrato vira conta a pagar com vencimento.
+    for (const op of ops) if (op.kind === 'SALE') await settleConsignmentOnSale(op.vehicleId, p.dealId, p.actor ?? SYSTEM_ACTOR)
   },
   'vehicle.stock_entered': async (p) => { if (p.vehicleId) await ensureIntakeOperation(p.vehicleId, p.actor ?? SYSTEM_ACTOR) },
 }

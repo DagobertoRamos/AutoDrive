@@ -22,8 +22,10 @@ export async function advanceTransfer(opId: string, tenantId: string | null, sta
   if (!op) throw new OpsError('Operação não encontrada.', 404)
   if (op.kind !== 'SALE' || op.transferStatus === 'NOT_APPLICABLE') throw new OpsError('Esta operação não tem transferência.', 409)
   if (op.cancelledAt || op.commercialStatus !== 'SOLD') throw new OpsError('A transferência começa depois de finalizar a venda.', 409)
-  if (stage === 'INTENT_REGISTERED' && op.renaveStatus !== 'EXIT_CONFIRMED' && op.renaveStatus !== 'NOT_REQUIRED') {
-    throw new OpsError('Registre a saída no RENAVE antes de iniciar a transferência.', 409, { action: 'renave.exit' })
+  // ATPV-e assinada → saída no RENAVE → vistoria/taxas/transferência (Res. Contran 1.026 e 1.027/2026).
+  const afterExit = ['INSPECTION_DONE', 'FEES_PAID', 'TRANSFER_DONE', 'CRLV_ISSUED'].includes(stage)
+  if (afterExit && op.renaveStatus !== 'EXIT_CONFIRMED' && op.renaveStatus !== 'NOT_REQUIRED') {
+    throw new OpsError('Registre a saída no RENAVE antes de seguir com a transferência.', 409, { action: 'renave.exit' })
   }
   const rules = await transferRules(op.tenantId, op.unitId)
   if (op.transferStatus === stage) return op // clique duplo
