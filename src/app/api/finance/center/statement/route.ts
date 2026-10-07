@@ -9,7 +9,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { financeGuard } from '@/lib/finance/access'
+import { financeGuard, requireFinance } from '@/lib/finance/access'
 import { ensureFinanceSetup } from '@/lib/finance/setup'
 import { loadAccounts, loadRealized } from '@/lib/finance/ledger-server'
 import {
@@ -21,6 +21,8 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request) {
   const g = await financeGuard('finance', req)
   if (g.error) return g.error
+  const perm = await requireFinance(g.user, 'finance.balances')
+  if (perm) return perm
   const { tenantId } = g
 
   try {

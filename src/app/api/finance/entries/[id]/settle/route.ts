@@ -14,6 +14,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { canManage, entryAccessError, legacyFinanceGuard } from '@/app/api/finance/center/entries/_lib/shared'
 import { loadEntryDetail, saveEntryCosts } from '@/lib/finance/entry-settlement'
+import { requireFinance } from '@/lib/finance/access'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -65,6 +66,7 @@ export async function POST(req: Request, { params }: Ctx) {
     if (own?.parentEntryId) return NextResponse.json({ success: false, error: 'Esta linha é uma baixa: para desfazer, use Estornar.' }, { status: 400 })
     if (own?._count.partials) return NextResponse.json({ success: false, error: 'Título com baixas parciais: use Pagar/Receber para baixar o saldo.' }, { status: 400 })
     const body = schema.parse(await req.json())
+    if (body.settle) { const perm = await requireFinance(g.user, 'finance.settle'); if (perm) return perm }
     // Conta e fornecedor precisam ser da mesma loja.
     if (body.accountId) {
       const a = await prisma.financialAccount.findUnique({ where: { id: body.accountId }, select: { tenantId: true } })

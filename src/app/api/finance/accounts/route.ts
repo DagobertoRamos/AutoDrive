@@ -12,7 +12,7 @@ import { prisma } from '@/lib/prisma'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
-import { financeGuard } from '@/lib/finance/access'
+import { financeCan, financeGuard } from '@/lib/finance/access'
 import { tenantRefError } from '@/lib/finance/tenant-refs'
 import { balancesByAccount } from '@/lib/finance/ledger'
 import { loadRealized } from '@/lib/finance/ledger-server'
@@ -22,6 +22,7 @@ export async function GET(req: Request) {
   const g = await financeGuard('finance', req)
   if (g.error) return g.error
   const { tenantId } = g
+  const canBalances = await financeCan(g.user, 'finance.balances')
 
   try {
     const { searchParams } = new URL(req.url)
@@ -37,9 +38,11 @@ export async function GET(req: Request) {
     const data = rows.map((a) => {
       const opening = Number(a.openingBalance ?? 0)
       const currentBalance = byAccount.get(a.id) ?? opening
-      return { ...a, unitName: a.unitId ? unitName.get(a.unitId) ?? null : null, currentBalance, movement: Math.round((currentBalance - opening) * 100) / 100 }
+      return canBalances
+        ? { ...a, unitName: a.unitId ? unitName.get(a.unitId) ?? null : null, currentBalance, movement: Math.round((currentBalance - opening) * 100) / 100 }
+        : { ...a, openingBalance: null, unitName: a.unitId ? unitName.get(a.unitId) ?? null : null, currentBalance: null, movement: null }
     })
-    const consolidated = Math.round(data.filter((a) => a.active && a.includeInTotal).reduce((s, a) => s + a.currentBalance, 0) * 100) / 100
+    const consolidated = canBalances ? Math.round(data.filter((a) => a.active && a.includeInTotal).reduce((s, a) => s + (a.currentBalance ?? 0), 0) * 100) / 100 : null
     return NextResponse.json({ success: true, data, units, totals: { consolidated } })
   } catch (err) {
     return handlePrismaError(err)

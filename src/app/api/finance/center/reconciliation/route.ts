@@ -11,7 +11,7 @@
 // =============================================================================
 
 import { NextResponse } from 'next/server'
-import { financeGuard } from '@/lib/finance/access'
+import { financeGuard, requireFinance } from '@/lib/finance/access'
 import { createFromLine, importStatement, listLines, matchLine, reconciliationSummary, setLineStatus } from '@/lib/finance/bank-reconciliation'
 
 export const dynamic = 'force-dynamic'
@@ -41,6 +41,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const g = await financeGuard('finance.manage', req)
   if (g.error) return g.error
+  const perm = await requireFinance(g.user, 'finance.reconcile')
+  if (perm) return perm
   const actor = { id: g.user.id, name: g.user.name, role: g.user.role }
   try {
     if ((req.headers.get('content-type') ?? '').includes('multipart/form-data')) {

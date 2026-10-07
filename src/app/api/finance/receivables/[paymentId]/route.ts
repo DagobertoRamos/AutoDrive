@@ -18,6 +18,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { legacyFinanceGuard } from '@/app/api/finance/center/entries/_lib/shared'
+import { requireFinance } from '@/lib/finance/access'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { saveDealAttachment, validateDealUpload } from '@/lib/negotiation/storage'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
@@ -57,6 +58,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   if (rawAction === 'FI' || rawAction === 'FI_CALC') {
     if (p.type !== 'FINANCIAMENTO') return NextResponse.json({ error: 'F&I só se aplica a pagamentos de financiamento.' }, { status: 400 })
     return rawAction === 'FI' ? saveFi(raw, user, p) : calcFi(raw, p)
+  }
+  if (['CONFIRMAR', 'CHARGEBACK'].includes(rawAction) || ['CANCELAR', 'REABRIR', 'CHARGEBACK_UNDO'].includes(rawAction)) {
+    const perm = await requireFinance(user, ['CONFIRMAR', 'CHARGEBACK'].includes(rawAction) ? 'finance.settle' : 'finance.reverse')
+    if (perm) return perm
   }
   if (rawAction === 'CHARGEBACK' || rawAction === 'CHARGEBACK_UNDO') {
     const tenantId = p.deal.tenantId

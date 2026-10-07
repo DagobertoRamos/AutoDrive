@@ -11,7 +11,7 @@ import { z, ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { financeGuard } from '@/lib/finance/access'
+import { financeGuard, requireFinance } from '@/lib/finance/access'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { bad, canPayroll, centerRefError } from '../_lib/shared'
 import { cancelEntry, settleEntry, voidEntry } from '../_lib/settle'
@@ -33,6 +33,8 @@ export async function POST(req: Request) {
   try {
     const d = schema.parse(await req.json())
     if (d.action === 'settle' && !d.paidDate) return bad('Informe a data.')
+    const perm = await requireFinance(g.user, d.action === 'settle' ? 'finance.settle' : 'finance.reverse')
+    if (perm) return perm
     const refErr = await centerRefError(g.tenantId, { accountId: d.accountId })
     if (refErr) return bad(refErr)
     const payroll = await canPayroll(g.user)

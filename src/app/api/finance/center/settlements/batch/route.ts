@@ -10,7 +10,7 @@ import { NextResponse } from 'next/server'
 import { z, ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { financeGuard } from '@/lib/finance/access'
+import { financeGuard, requireFinance } from '@/lib/finance/access'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { settleBatch } from '@/lib/finance/settlement'
 import { noonUtc } from '@/lib/finance/recurrence-core'
@@ -34,6 +34,8 @@ const schema = z.object({
 export async function POST(req: Request) {
   const g = await financeGuard('finance.manage', req)
   if (g.error) return g.error
+  const perm = await requireFinance(g.user, 'finance.settle')
+  if (perm) return perm
   try {
     const d = schema.parse(await req.json())
     if (d.accountId) {

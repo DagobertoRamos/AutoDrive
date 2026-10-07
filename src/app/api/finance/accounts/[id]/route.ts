@@ -8,7 +8,9 @@ import { prisma } from '@/lib/prisma'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
-import { financeGuard } from '@/lib/finance/access'
+import { financeCan, financeGuard } from '@/lib/finance/access'
+import { periodError } from '@/lib/finance/period-lock'
+import { entryDiff } from '@/lib/finance/entry-audit'
 import { tenantRefError } from '@/lib/finance/tenant-refs'
 import { accountData, accountUpdateSchema } from '../schema'
 
@@ -29,8 +31,17 @@ export async function PATCH(req: Request, { params }: Ctx) {
       const refErr = await tenantRefError(tenantId, { unitId: d.unitId })
       if (refErr) return NextResponse.json({ success: false, error: refErr }, { status: 400 })
     }
+    // Saldo inicial mexe em todos os saldos: exige "ver saldos" e respeita o fechamento.
+    const touchesOpening = (d.openingBalance !== undefined && Math.abs(Number(d.openingBalance) - Number(existing.openingBalance)) > 0.004)
+      || (d.openingDate !== undefined && (d.openingDate || null) !== (existing.openingDate ? existing.openingDate.toISOString().slice(0, 10) : null))
+    if (!(await financeCan(user, 'finance.balances'))) { delete (d as Record<string, unknown>).openingBalance; delete (d as Record<string, unknown>).openingDate }
+    else if (touchesOpening) {
+      const closed = await periodError(tenantId, [existing.openingDate, d.openingDate || null])
+      if (closed) return NextResponse.json({ success: false, error: closed }, { status: 400 })
+    }
     const account = await prisma.financialAccount.update({ where: { id }, data: accountData(d) as never })
-    await createSafeAuditLog({ userId: user.id, tenantId, action: 'UPDATE', entity: 'FinancialAccount', entityId: id, userName: user.name, userRole: user.role })
+    const changed = entryDiff(existing as unknown as Record<string, unknown>, account as unknown as Record<string, unknown>)
+    await createSafeAuditLog({ userId: user.id, tenantId, action: 'UPDATE', entity: 'FinancialAccount', entityId: id, userName: user.name, userRole: user.role, beforeData: changed?.before, afterData: changed?.after })
     return NextResponse.json({ success: true, data: account })
   } catch (err) {
     if (err instanceof ZodError) return zodErrorResponse(err)

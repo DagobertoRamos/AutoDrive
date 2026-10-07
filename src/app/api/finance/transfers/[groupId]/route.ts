@@ -8,7 +8,7 @@ import { prisma } from '@/lib/prisma'
 import { periodError } from '@/lib/finance/period-lock'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { financeGuard } from '@/lib/finance/access'
+import { financeGuard, requireFinance } from '@/lib/finance/access'
 import { bad } from '@/app/api/finance/center/entries/_lib/shared'
 
 type Ctx = { params: Promise<{ groupId: string }> }
@@ -17,6 +17,8 @@ export async function DELETE(req: Request, { params }: Ctx) {
   const g = await financeGuard('finance.manage', req)
   if (g.error) return g.error
   const { groupId } = await params
+  const perm = await requireFinance(g.user, 'finance.reverse')
+  if (perm) return perm
   try {
     const reason = new URL(req.url).searchParams.get('reason')?.trim() || 'Transferência desfeita'
     const legs = await prisma.financialEntry.findMany({ where: { transferGroupId: groupId, tenantId: g.tenantId, status: { not: 'CANCELADO' } }, select: { id: true, amount: true, accountId: true, type: true, notes: true } })

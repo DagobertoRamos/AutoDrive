@@ -6,7 +6,7 @@
 
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { financeGuard } from '@/lib/finance/access'
+import { financeGuard, requireFinance } from '@/lib/finance/access'
 import { reverseBatch } from '@/lib/finance/settlement'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -44,6 +44,8 @@ export async function GET(req: Request, { params }: Ctx) {
 export async function POST(req: Request, { params }: Ctx) {
   const g = await financeGuard('finance.manage', req)
   if (g.error) return g.error
+  const perm = await requireFinance(g.user, 'finance.reverse')
+  if (perm) return perm
   const { id } = await params
   const body = (await req.json().catch(() => ({}))) as { action?: string; reason?: string }
   if (body.action !== 'reverse') return NextResponse.json({ success: false, error: 'Ação inválida.' }, { status: 400 })

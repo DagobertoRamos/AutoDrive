@@ -79,6 +79,13 @@ export type Module =
   | 'finance'                     // módulo financeiro (ver lançamentos/relatórios)
   | 'finance.manage'              // criar/editar/excluir lançamentos, contas, categorias
   | 'finance.payroll'             // folha: salários, adiantamentos e pagamento de comissões
+  | 'finance.settle'              // baixar (pagar/receber) — herda de finance.manage
+  | 'finance.reverse'             // estornar e cancelar — herda de finance.manage
+  | 'finance.reconcile'           // conciliação bancária — herda de finance.manage
+  | 'finance.balances'            // ver saldos bancários — herda de finance
+  | 'finance.profit'              // ver custo, margem e lucro — herda de finance
+  | 'finance.export'              // exportar dados — herda de finance
+  | 'finance.period'              // fechar/reabrir período — só ADM/MASTER por padrão
   | 'financing'                   // módulo financiamento (FN): proponentes, fichas, simulações
   | 'financing.manage'            // criar/editar proponentes, bancos, fichas
   | 'financing.config'            // configurar F&I da loja (bancos, credenciais, prioridades, retornos) — ADM/gestão/financeiro
@@ -404,6 +411,15 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     roles: ['MASTER', 'ADM', 'FINANCEIRO'],
     actions: ['read', 'create', 'update', 'delete'],
   },
+  // Permissões finas do financeiro (sem liberação individual, herdam de
+  // finance.manage / finance — ver src/lib/finance/access.ts financeCan).
+  'finance.settle':    { roles: ['MASTER', 'ADM', 'FINANCEIRO'], actions: ['update'] },
+  'finance.reverse':   { roles: ['MASTER', 'ADM', 'FINANCEIRO'], actions: ['update'] },
+  'finance.reconcile': { roles: ['MASTER', 'ADM', 'FINANCEIRO'], actions: ['update'] },
+  'finance.balances':  { roles: ['MASTER', 'ADM', 'FINANCEIRO'], actions: ['read'] },
+  'finance.profit':    { roles: ['MASTER', 'ADM', 'FINANCEIRO', 'GERENTE_GERAL'], actions: ['read'] },
+  'finance.export':    { roles: ['MASTER', 'ADM', 'FINANCEIRO'], actions: ['export'] },
+  'finance.period':    { roles: ['MASTER', 'ADM'], actions: ['update'] },
   // Folha (salários, adiantamentos, pagamento de comissões) — só o dono por padrão.
   'finance.payroll': {
     roles: ['MASTER', 'ADM'],

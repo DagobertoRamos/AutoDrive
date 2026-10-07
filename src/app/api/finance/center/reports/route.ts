@@ -10,12 +10,13 @@
 // =============================================================================
 
 import { NextResponse } from 'next/server'
-import { financeGuard, hasFinanceAccess } from '@/lib/finance/access'
+import { financeCan, financeGuard, hasFinanceAccess } from '@/lib/finance/access'
 import { ensureFinanceSetup } from '@/lib/finance/setup'
 import { getReport, isReportView } from '@/lib/finance/reports'
 import { resolveRange } from '@/lib/finance/reports-core'
 
 export const dynamic = 'force-dynamic'
+const PROFIT_VIEWS = new Set(['resultado-centros', 'centro-custo', 'servicos', 'lucratividade-veiculo', 'lucratividade-vendedor', 'lucratividade-unidade', 'resultado-negociacao'])
 
 export async function GET(req: Request) {
   const g = await financeGuard('finance', req)
@@ -23,6 +24,10 @@ export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams
   const view = sp.get('view')
   if (!isReportView(view)) return NextResponse.json({ success: false, error: 'Relatório inválido.' }, { status: 400 })
+  // Relatórios de custo/margem/lucro: só quem vê lucro (finance.profit).
+  if (PROFIT_VIEWS.has(view) && !(await financeCan({ ...g.user, tenantId: g.tenantId }, 'finance.profit'))) {
+    return NextResponse.json({ success: false, error: 'Sem acesso a custo, margem e lucro.' }, { status: 403 })
+  }
   try {
     await ensureFinanceSetup(g.tenantId)
     const now = new Date()

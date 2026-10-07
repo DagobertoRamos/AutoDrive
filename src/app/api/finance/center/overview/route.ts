@@ -8,7 +8,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { financeGuard } from '@/lib/finance/access'
+import { financeCan, financeGuard } from '@/lib/finance/access'
 import { ensureFinanceSetup } from '@/lib/finance/setup'
 import { spDayEnd, spDayStart } from '@/lib/dashboard/tz'
 import { loadAccounts, loadPending, loadRealized } from '@/lib/finance/ledger-server'
@@ -26,6 +26,7 @@ export async function GET(req: Request) {
 
   try {
     await ensureFinanceSetup(tenantId)
+    const canBalances = await financeCan(g.user, 'finance.balances')
     const today = spYmd(new Date())!
     const qMonth = new URL(req.url).searchParams.get('month') ?? ''
     const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(qMonth) ? qMonth : today.slice(0, 7)
@@ -144,13 +145,15 @@ export async function GET(req: Request) {
       success: true,
       data: {
         month, today,
-        balance: { total, accounts: accountList, noAccount },
+        // Sem "ver saldos bancários": saldos e projeção não saem do servidor.
+        balance: canBalances ? { total, accounts: accountList, noAccount } : { total: 0, accounts: [], noAccount: 0 },
+        balanceHidden: !canBalances,
         receivables, payables,
         result: {
           revenue: r2(revenue), expense: r2(expense), result: r2(revenue - expense),
           realizedIn: cur.entradas, realizedOut: cur.saidas, realizedNet: r2(cur.entradas - cur.saidas),
         },
-        series, topExpenses, upcoming, projection,
+        series, topExpenses, upcoming, projection: canBalances ? projection : [],
       },
     })
   } catch (err) {

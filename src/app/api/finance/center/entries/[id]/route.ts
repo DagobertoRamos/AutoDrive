@@ -19,7 +19,7 @@ import { createSafeAuditLog } from '@/lib/auth-guards'
 import { entryDiff } from '@/lib/finance/entry-audit'
 import { lockedDatesOf, periodError } from '@/lib/finance/period-lock'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { financeGuard } from '@/lib/finance/access'
+import { financeGuard, requireFinance } from '@/lib/finance/access'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { noonUtc } from '@/lib/finance/recurrence-core'
 import { reverseSettlement } from '@/lib/finance/settlement'
@@ -113,6 +113,8 @@ export async function POST(req: Request, { params }: Ctx) {
     const denied = await entryAccessError(e, g)
     if (denied) return denied
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
+    const perm = await requireFinance(g.user, body.action === 'settle' ? 'finance.settle' : 'finance.reverse')
+    if (perm) return perm
     let error: string | null
     if (body.action === 'settle') {
       const s = settleSchema.parse(body)

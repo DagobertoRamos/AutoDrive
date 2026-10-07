@@ -10,7 +10,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
-import { financeGuard, hasFinanceAccess } from '@/lib/finance/access'
+import { financeCan, financeGuard, requireFinance } from '@/lib/finance/access'
 import { loadDealRefundLines, registerRefund, undoRefund, type RefundKind } from '@/lib/finance/deal-refunds'
 import { parseDateOnly } from '@/lib/negotiation/date-only'
 
@@ -25,7 +25,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
   if (!session) return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
   const deal = await prisma.deal.findFirst({ where: await buildNegotiationAccessWhere(session.user, { id }), select: { id: true, tenantId: true } })
   if (!deal) return NextResponse.json({ success: false, error: 'Negociação não encontrada' }, { status: 404 })
-  const canRefund = await hasFinanceAccess({ ...session.user, tenantId: deal.tenantId ?? session.user.tenantId }, 'finance.manage').catch(() => false)
+  const canRefund = await financeCan({ ...session.user, tenantId: deal.tenantId ?? session.user.tenantId }, 'finance.settle').catch(() => false)
   const [lines, accounts] = await Promise.all([
     loadDealRefundLines(id),
     canRefund && deal.tenantId
@@ -39,6 +39,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   const { id } = await Promise.resolve(ctx.params)
   const g = await financeGuard('finance.manage', req)
   if (g.error) return g.error
+  const perm = await requireFinance(g.user, 'finance.settle')
+  if (perm) return perm
   const body = await req.json().catch(() => ({})) as Record<string, unknown>
   const kind = String(body.kind ?? '') as RefundKind
   if (!KINDS.includes(kind)) return NextResponse.json({ success: false, error: 'Tipo inválido.' }, { status: 400 })
@@ -59,6 +61,8 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
   const { id } = await Promise.resolve(ctx.params)
   const g = await financeGuard('finance.manage', req)
   if (g.error) return g.error
+  const perm = await requireFinance(g.user, 'finance.reverse')
+  if (perm) return perm
   const sp = new URL(req.url).searchParams
   const kind = String(sp.get('kind') ?? '') as RefundKind
   if (!KINDS.includes(kind)) return NextResponse.json({ success: false, error: 'Tipo inválido.' }, { status: 400 })

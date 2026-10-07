@@ -29,6 +29,7 @@ interface Overview {
   topExpenses: TopExpense[]
   upcoming: { id: string; type: 'RECEITA' | 'DESPESA'; description: string; amount: number; dueDate: string | null; counterparty: string | null; category: string | null; account: string | null }[]
   projection: ProjectionPoint[]
+  balanceHidden?: boolean
 }
 
 const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
@@ -93,8 +94,8 @@ export default function FinancePanelPage() {
       {error && <ErrorBox message={error} onRetry={() => void load()} />}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <KpiCard label="Saldo consolidado" helpTerm="SALDO_CONSOLIDADO" loading={loading && !d} value={brl(d?.balance.total)} tone={(d?.balance.total ?? 0) < 0 ? 'alert' : 'default'}
-          sub={d && d.balance.noAccount !== 0 ? `Sem conta: ${brl(d.balance.noAccount)}` : `${d?.balance.accounts.length ?? 0} contas`} href="/financeiro/extrato" />
+        <KpiCard label="Saldo consolidado" helpTerm="SALDO_CONSOLIDADO" loading={loading && !d} value={d?.balanceHidden ? '—' : brl(d?.balance.total)} tone={(d?.balance.total ?? 0) < 0 ? 'alert' : 'default'}
+          sub={d?.balanceHidden ? 'Sem acesso aos saldos' : d && d.balance.noAccount !== 0 ? `Sem conta: ${brl(d.balance.noAccount)}` : `${d?.balance.accounts.length ?? 0} contas`} href={d?.balanceHidden ? undefined : '/financeiro/extrato'} />
         <KpiCard label="A receber · 30 dias" loading={loading && !d} value={brl(d?.receivables.next30.total)} tone="in"
           sub={d && <>Hoje {brl(d.receivables.today.total)} · 7 dias {brl(d.receivables.next7.total)}</>} href="/financeiro/receber" />
         <KpiCard label="A pagar · 30 dias" loading={loading && !d} value={brl(d?.payables.next30.total)} tone="out"
@@ -119,7 +120,9 @@ export default function FinancePanelPage() {
           {d ? <MonthlyFlowChart data={d.series} /> : <div className="h-64 animate-pulse rounded-lg bg-gray-100" />}
         </Card>
         <Card title="Contas">
-          {!d ? <div className="h-40 animate-pulse rounded-lg bg-gray-100" /> : d.balance.accounts.length === 0 && d.balance.noAccount === 0 ? (
+          {!d ? <div className="h-40 animate-pulse rounded-lg bg-gray-100" /> : d.balanceHidden ? (
+            <p className="py-6 text-center text-sm text-gray-400">Sem acesso aos saldos.</p>
+          ) : d.balance.accounts.length === 0 && d.balance.noAccount === 0 ? (
             <p className="py-6 text-center text-sm text-gray-400">Nenhuma conta cadastrada. <Link href="/financeiro/contas" className="text-brand-700 underline">Cadastrar</Link></p>
           ) : (
             <ul className="divide-y divide-gray-100">
@@ -150,10 +153,10 @@ export default function FinancePanelPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2" title={<WithHint term="SALDO_PROJETADO">Saldo projetado · 90 dias</WithHint>}
+        {!d?.balanceHidden && <Card className="lg:col-span-2" title={<WithHint term="SALDO_PROJETADO">Saldo projetado · 90 dias</WithHint>}
           actions={d && d.projection.length > 0 && <span className="text-xs text-gray-500">Em 90 dias: <span className={cn('font-semibold', d.projection[d.projection.length - 1].balance < 0 ? 'text-red-600' : 'text-gray-900')}>{brl(d.projection[d.projection.length - 1].balance)}</span></span>}>
           {d ? <ProjectionChart data={d.projection} /> : <div className="h-56 animate-pulse rounded-lg bg-gray-100" />}
-        </Card>
+        </Card>}
         <Card title="Maiores despesas do mês">
           {d ? <TopExpensesBars data={d.topExpenses} total={d.result.expense} /> : <div className="h-40 animate-pulse rounded-lg bg-gray-100" />}
         </Card>

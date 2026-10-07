@@ -28,6 +28,13 @@ export const MODULE_CATALOG: ModuleGroup[] = [
     { key: 'finance', label: 'Ver o centro financeiro e relatórios', level: 4, sensitive: true },
     { key: 'finance.manage', label: 'Lançar, baixar e configurar', level: 4, sensitive: true },
     { key: 'finance.payroll', label: 'Folha: salários e comissões', level: 4, sensitive: true },
+    { key: 'finance.settle', label: 'Baixar pagamentos e recebimentos', level: 4, sensitive: true },
+    { key: 'finance.reverse', label: 'Estornar e cancelar lançamentos', level: 4, sensitive: true },
+    { key: 'finance.reconcile', label: 'Conciliação bancária', level: 4, sensitive: true },
+    { key: 'finance.balances', label: 'Ver saldos bancários', level: 4, sensitive: true },
+    { key: 'finance.profit', label: 'Ver custo, margem e lucro', level: 4, sensitive: true },
+    { key: 'finance.export', label: 'Exportar dados do financeiro', level: 4, sensitive: true },
+    { key: 'finance.period', label: 'Fechar e reabrir período', level: 4, sensitive: true },
   ] },
   { area: 'F&I (Financiamento)', features: [
     { key: 'financing', label: 'F&I — financiamento' },

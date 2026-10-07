@@ -18,6 +18,7 @@ import { entryDiff } from '@/lib/finance/entry-audit'
 import { lockedDatesOf, periodError } from '@/lib/finance/period-lock'
 import { tenantRefError } from '@/lib/finance/tenant-refs'
 import { entryAccessError, legacyFinanceGuard } from '@/app/api/finance/center/entries/_lib/shared'
+import { requireFinance } from '@/lib/finance/access'
 import { voidEntry } from '@/app/api/finance/center/entries/_lib/settle'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -58,6 +59,8 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     // Mudança de status passa SEMPRE pelas regras de baixa/estorno/cancelamento.
     if (d.status && d.status !== existing.status) {
+      const perm = await requireFinance(user, d.status === 'PAGO' || d.status === 'RECEBIDO' ? 'finance.settle' : 'finance.reverse')
+      if (perm) return perm
       let err: string | null = null
       if (d.status === 'CANCELADO') err = await voidEntry(id, typeof body?.reason === 'string' ? body.reason : null, actor)
       else if (d.status === 'PREVISTO') {
@@ -110,6 +113,8 @@ export async function DELETE(req: Request, { params }: Ctx) {
     const existing = await prisma.financialEntry.findUnique({ where: { id } })
     const denied = await entryAccessError(existing, g)
     if (denied || !existing) return denied
+    const perm = await requireFinance(user, 'finance.reverse')
+    if (perm) return perm
     const reason = new URL(req.url).searchParams.get('reason')
     const err = await voidEntry(id, reason, { id: user.id, name: user.name, role: user.role })
     if (err) return NextResponse.json({ success: false, error: err }, { status: 400 })

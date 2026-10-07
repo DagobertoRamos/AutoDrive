@@ -2,7 +2,7 @@
 
 // Relatórios gerenciais — seletor de relatório + filtros comuns + exportação.
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Ban, BarChart3, Handshake, Building2, CalendarClock, CarFront, Landmark, PieChart, Scale, Target, Truck, Users, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -41,6 +41,8 @@ const REPORTS: { key: View; label: string; icon: typeof PieChart; filters: Filte
   { key: 'cancelamentos', label: 'Cancelamentos e estornos', icon: Ban, filters: ['range', 'unit', 'seller'] },
 ]
 
+const PROFIT_VIEWS = new Set<string>(['resultado-centros', 'servicos', 'lucratividade-veiculo', 'lucratividade-vendedor', 'lucratividade-unidade', 'resultado-negociacao'])
+
 interface FilterLists { costCenters: Option[]; units: Option[]; sellers: Option[] }
 
 export default function ReportsHub() {
@@ -57,6 +59,12 @@ export default function ReportsHub() {
   const [sellerId, setSellerId] = useState('')
   const [lists, setLists] = useState<FilterLists>({ costCenters: [], units: [], sellers: [] })
   const csv = useRef<CsvSpec | null>(null)
+  const [perms, setPerms] = useState<{ profit: boolean; export: boolean } | null>(null)
+  useEffect(() => {
+    fetch('/api/finance/center/permissions', { credentials: 'include' }).then((r) => r.json()).then((j) => j?.success && setPerms(j.data)).catch(() => {})
+  }, [])
+  // Sem acesso a lucro: abre num relatório que ele pode ver.
+  useEffect(() => { if (perms && !perms.profit && PROFIT_VIEWS.has(view)) setView('despesas-categoria') }, [perms, view])
   const [hasCsv, setHasCsv] = useState(false)
 
   const def = REPORTS.find((r) => r.key === view)!
@@ -95,7 +103,7 @@ export default function ReportsHub() {
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1 print:hidden">
-        {REPORTS.map((r) => {
+        {REPORTS.filter((r) => perms?.profit !== false || !PROFIT_VIEWS.has(r.key)).map((r) => {
           const Icon = r.icon
           return (
             <button key={r.key} type="button" onClick={() => select(r.key)}
@@ -107,7 +115,7 @@ export default function ReportsHub() {
         })}
       </div>
 
-      <Toolbar onCsv={hasCsv ? () => csv.current && downloadCsv(csv.current.name, csv.current.headers, csv.current.rows) : undefined}>
+      <Toolbar onCsv={hasCsv && perms?.export !== false ? () => csv.current && downloadCsv(csv.current.name, csv.current.headers, csv.current.rows) : undefined}>
         {has('range') && <MonthInput label="De" value={from} onChange={setFrom} />}
         {(has('range') || has('to')) && <MonthInput label={has('range') ? 'Até' : 'Mês final'} value={to} onChange={setTo} />}
         {has('regime') && <RegimeToggle value={regime} onChange={setRegime} />}
