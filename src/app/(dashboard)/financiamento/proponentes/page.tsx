@@ -16,6 +16,8 @@ import SearchBox from '@/components/reports/SearchBox'
 import { RequiredMark } from '@/components/ui/field'
 import { isValidCPF } from '@/lib/br-docs/cpf'
 import { isValidCNPJ } from '@/lib/br-docs/cnpj'
+import { useSession } from 'next-auth/react'
+import { identityLocked } from '@/lib/identity-lock'
 
 type Occ = 'AUTONOMO' | 'CLT' | 'EMPRESARIO' | 'APOSENTADO_PENSIONISTA'
 interface Row { id: string; nomeCompleto: string; cpf: string | null; celular: string | null; occupation: Occ | null; cidade: string | null; estado: string | null; renda: number; proposals: number }
@@ -62,6 +64,10 @@ export default function ProponentesPage() {
   const [modal, setModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<Form>(emptyForm)
+  // CPF/e-mail já gravados: só o MASTER altera (o servidor também barra).
+  const [saved, setSaved] = useState<{ cpf: string; email: string }>({ cpf: '', email: '' })
+  const role = useSession().data?.user?.role
+  const lock = (k: 'cpf' | 'email') => !!editingId && identityLocked(role, saved[k])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [cepLoading, setCepLoading] = useState<'res' | 'emp' | null>(null)
@@ -87,6 +93,7 @@ export default function ProponentesPage() {
       const json = await res.json()
       const p = json?.data
       if (!p) return
+      setSaved({ cpf: p.cpf ?? '', email: p.email ?? '' })
       setForm({
         ...emptyForm, ...p,
         dataNascimento: p.dataNascimento ? String(p.dataNascimento).slice(0, 10) : '',
@@ -212,9 +219,9 @@ export default function ProponentesPage() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <div className="col-span-2 sm:col-span-2"><Field label="Nome completo" required><input className={inputCls} value={form.nomeCompleto} onChange={(e) => set('nomeCompleto', e.target.value)} /></Field></div>
               <Field label="Data de nascimento" required><input type="date" className={inputCls} value={form.dataNascimento} onChange={(e) => set('dataNascimento', e.target.value)} /></Field>
-              <Field label="CPF" required><input className={inputCls} value={maskCPF(form.cpf)} onChange={(e) => set('cpf', e.target.value)} placeholder="000.000.000-00" /></Field>
+              <Field label="CPF" required><input className={`${inputCls} ${lock('cpf') ? 'cursor-not-allowed bg-gray-50 text-gray-500' : ''}`} readOnly={lock('cpf')} value={maskCPF(form.cpf)} onChange={(e) => set('cpf', e.target.value)} placeholder="000.000.000-00" /></Field>
               <Field label="RG" required><input className={inputCls} value={form.rg} onChange={(e) => set('rg', e.target.value)} /></Field>
-              <Field label="E-mail" required><input className={inputCls} value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="email@exemplo.com" /></Field>
+              <Field label="E-mail" required><input className={`${inputCls} ${lock('email') ? 'cursor-not-allowed bg-gray-50 text-gray-500' : ''}`} readOnly={lock('email')} value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="email@exemplo.com" /></Field>
               <Field label="Nome da mãe" required><input className={inputCls} value={form.nomeMae} onChange={(e) => set('nomeMae', e.target.value)} /></Field>
               <Field label="Nome do pai" required><input className={inputCls} value={form.nomePai} onChange={(e) => set('nomePai', e.target.value)} /></Field>
               <Field label="Celular" required><input className={inputCls} value={maskPhone(form.celular)} onChange={(e) => set('celular', e.target.value)} placeholder="(00) 00000-0000" /></Field>

@@ -12,6 +12,7 @@ import { fireAutomations } from '@/lib/crm/automations'
 import { validateStageTransition } from '@/lib/crm/transitions'
 import { clearsReturn, unseenReturn } from '@/lib/crm/lead-return'
 import { isMaterialized, loadPipelines, loadPlacement, planLeadMove, resolveLeadPipeline, resolveLeadStage, savePlacement, type MovePlan } from '@/lib/crm/pipelines'
+import { identityLockError } from '@/lib/identity-lock'
 
 /** Situação da atribuição no histórico (em português). */
 const ASSIGNMENT_LABEL: Record<string, string> = {
@@ -335,6 +336,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!canAccessLeadByScope(scope, user, lead)) return forbiddenResponse('Sem acesso a este lead.')
 
     const body = await req.json().catch(() => ({})) as Record<string, unknown>
+    { const lockErr = identityLockError(user.role, lead as unknown as Record<string, unknown>, body, { email: 'email' }); if (lockErr) return NextResponse.json({ success: false, error: lockErr }, { status: 403 }) }
     const canEditUnit = await canAccessModuleForUser(user, 'crm.lead.edit.unit')
     const canTransfer = await canAccessModuleForUser(user, 'crm.lead.transfer')
     const canMarkLost = await canAccessModuleForUser(user, 'crm.lead.mark_lost')

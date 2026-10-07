@@ -5,6 +5,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { canPerformAction } from '@/lib/permissions'
 import { canActOn } from '@/lib/role-hierarchy'
+import { identityLockError } from '@/lib/identity-lock'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,6 +55,7 @@ export async function PATCH(req: Request, ctxArg: { params: { id: string } | Pro
 
     const body = await req.json()
     const { fullName, cpf, whatsapp, email, unitId, accessProfile, active, receivesNotifications, positionId } = body
+    { const lockErr = identityLockError(user.role, existing as unknown as Record<string, unknown>, body); if (lockErr) return NextResponse.json({ success: false, error: lockErr }, { status: 403 }) }
 
     if (unitId !== undefined && unitId !== null && unitId !== '') {
       await assertUnitBelongsToTenant(String(unitId), user.tenantId, user.role)

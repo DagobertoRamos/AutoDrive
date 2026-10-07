@@ -5,6 +5,7 @@ import { getSessionUser, assertTenantId, tenantWhere, unauthorizedResponse, forb
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
 import { supplierData } from '@/lib/stock/suppliers'
+import { identityLockError } from '@/lib/identity-lock'
 
 export const dynamic = 'force-dynamic'
 type Ctx = { params: Promise<{ id: string }> }
@@ -25,6 +26,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     const g = await load(ctx)
     if ('error' in g) return g.error
     const body = await req.json().catch(() => ({})) as Record<string, unknown>
+    { const lockErr = identityLockError(g.user.role, g.row as unknown as Record<string, unknown>, body, { document: 'document', email: 'email' }); if (lockErr) return NextResponse.json({ success: false, error: lockErr }, { status: 403 }) }
     let data: Record<string, unknown>
     if (Object.keys(body).length === 1 && typeof body.active === 'boolean') data = { active: body.active }
     else {

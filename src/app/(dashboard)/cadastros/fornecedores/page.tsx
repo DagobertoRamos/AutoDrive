@@ -9,6 +9,7 @@
 import { HelpHint } from '@/components/ui/help-hint'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
+import { identityLocked } from '@/lib/identity-lock'
 import { AlertCircle, Loader2, Pencil, Plus, Save, Search, Truck, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { canAccessModule } from '@/lib/permissions'
@@ -67,6 +68,10 @@ export default function FornecedoresPage() {
 
   const f = editing?.form
   const pt = f ? personTypeOf(f.document) : null
+  // CPF/CNPJ/e-mail já gravados: só o MASTER altera (o servidor também barra).
+  const savedRow = editing?.id ? rows?.find((r) => r.id === editing.id) : null
+  const lockedDoc = identityLocked(role, savedRow?.document)
+  const lockedEmail = identityLocked(role, savedRow?.email)
   const isVeh = f?.kind === 'VEICULOS'
   const set = (k: Key, v: string) => { setFormErr(''); setEditing((e) => e && { ...e, form: { ...e.form, [k]: v } }) }
   const fill = (patch: Partial<Form>) => setEditing((e) => e && { ...e, form: { ...e.form, ...Object.fromEntries(Object.entries(patch).filter(([k, v]) => v && !e.form[k as Key])) } })
@@ -185,7 +190,7 @@ export default function FornecedoresPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <L label="Tipo" req help="Ramo do fornecedor. Use Veículos para lojas parceiras (repasse) e para quem vende ou consigna carros à loja: esse tipo pede endereço e representante."><select className={inputCls} value={f.kind} onChange={(e) => set('kind', e.target.value)}><option value="">Selecione</option>{SUPPLIER_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></L>
                 <L label="CPF/CNPJ" req hint={lookup === 'cnpj' ? 'consultando…' : pt === 'PJ' ? 'Pessoa jurídica' : pt === 'PF' ? 'Pessoa física' : undefined}>
-                  <input className={inputCls} inputMode="numeric" value={fmtDoc(f.document)} onChange={(e) => void onDocument(e.target.value)} />
+                  <input className={`${inputCls} ${lockedDoc ? 'cursor-not-allowed bg-gray-50 text-gray-500' : ''}`} readOnly={lockedDoc} inputMode="numeric" value={fmtDoc(f.document)} onChange={(e) => void onDocument(e.target.value)} />
                 </L>
               </div>
 
@@ -205,7 +210,7 @@ export default function FornecedoresPage() {
               <Section title="Contato">
                 <L label="WhatsApp" req={!f.phone}><input className={inputCls} inputMode="tel" value={formatPhone(f.whatsapp)} onChange={(e) => set('whatsapp', digits(e.target.value).slice(0, 11))} /></L>
                 <L label="Telefone" req={!f.whatsapp}><input className={inputCls} inputMode="tel" value={formatPhone(f.phone)} onChange={(e) => set('phone', digits(e.target.value).slice(0, 11))} /></L>
-                <div className="sm:col-span-2"><L label="E-mail"><input className={inputCls} type="email" value={f.email} onChange={(e) => set('email', e.target.value)} /></L></div>
+                <div className="sm:col-span-2"><L label="E-mail"><input className={`${inputCls} ${lockedEmail ? 'cursor-not-allowed bg-gray-50 text-gray-500' : ''}`} readOnly={lockedEmail} type="email" value={f.email} onChange={(e) => set('email', e.target.value)} /></L></div>
               </Section>
 
               <Section title="Endereço">

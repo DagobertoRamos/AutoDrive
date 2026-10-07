@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { canPerformAction } from '@/lib/permissions'
+import { identityLockError } from '@/lib/identity-lock'
 
 export async function PUT(req: Request, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
   /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
@@ -22,7 +23,7 @@ export async function PUT(req: Request, ctxArg: { params: { id: string } | Promi
       where: session.user.role === 'MASTER'
         ? { id: params.id }
         : { id: params.id, tenantId: session.user.tenantId ?? '__none__' },
-      select: { id: true, tenantId: true },
+      select: { id: true, tenantId: true, cnpj: true, email: true },
     })
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Unidade não encontrada' }, { status: 404 })
@@ -30,6 +31,7 @@ export async function PUT(req: Request, ctxArg: { params: { id: string } | Promi
 
     const body = await req.json()
     const { name, razaoSocial, cnpj, address, city, state, phone, email, responsavel, active } = body
+    { const lockErr = identityLockError(session.user.role, existing, body); if (lockErr) return NextResponse.json({ success: false, error: lockErr }, { status: 403 }) }
 
     if (!name) {
       return NextResponse.json({ success: false, error: 'Nome é obrigatório' }, { status: 400 })

@@ -21,6 +21,7 @@ import { createDealAudit } from '@/lib/negotiation-service'
 import { upsertPerson, type PersonInput } from '@/lib/people/upsert-person'
 import { isValidCPF } from '@/lib/br-docs/cpf'
 import { isValidCNPJ } from '@/lib/br-docs/cnpj'
+import { identityLockError } from '@/lib/identity-lock'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,6 +57,11 @@ export async function PATCH(
   if (!name) return NextResponse.json({ error: isPJ ? 'Informe a razão social.' : 'Informe o nome do cliente.' }, { status: 400 })
   if (!isPJ && input.cpf && !isValidCPF(input.cpf)) return NextResponse.json({ error: 'CPF inválido.' }, { status: 400 })
   if (isPJ && input.cnpj && !isValidCNPJ(input.cnpj)) return NextResponse.json({ error: 'CNPJ inválido.' }, { status: 400 })
+  if (deal.personId) {
+    const cur = await prisma.person.findUnique({ where: { id: deal.personId }, select: { cpf: true, cnpj: true, email: true } })
+    const lockErr = identityLockError(session.user.role, cur, input as unknown as Record<string, unknown>)
+    if (lockErr) return NextResponse.json({ error: lockErr }, { status: 403 })
+  }
 
   try {
     const result = await prisma.$transaction(async (tx) => {

@@ -13,6 +13,8 @@ import { maskCPF, maskPhone } from '@/lib/masks'
 import { isValidCPF } from '@/lib/br-docs/cpf'
 import { isValidPhone } from '@/lib/br-docs/phone'
 import { RequiredMark } from '@/components/ui/field'
+import { useSession } from 'next-auth/react'
+import { identityLocked } from '@/lib/identity-lock'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -107,6 +109,9 @@ function Modal({
   positions: Position[]
 }) {
   const [form, setForm] = useState<ManagerForm>(emptyForm)
+  // CPF/e-mail já gravados: só o MASTER altera.
+  const role = useSession().data?.user?.role
+  const locked = (k: 'cpf' | 'email') => identityLocked(role, initial?.[k])
   const [formErr, setFormErr] = useState('')
 
   useEffect(() => {
@@ -175,7 +180,7 @@ function Modal({
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">CPF<RequiredMark className="ml-0.5" /></label>
-              <input className={inputClass()} value={maskCPF(form.cpf)} onChange={(e) => set('cpf', maskCPF(e.target.value))} placeholder="000.000.000-00" inputMode="numeric" />
+              <input className={cn(inputClass(), locked('cpf') && 'bg-gray-50 text-gray-500 cursor-not-allowed')} readOnly={locked('cpf')} value={maskCPF(form.cpf)} onChange={(e) => set('cpf', maskCPF(e.target.value))} placeholder="000.000.000-00" inputMode="numeric" />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">WhatsApp<RequiredMark className="ml-0.5" /></label>
@@ -183,7 +188,7 @@ function Modal({
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1.5 block text-xs font-medium text-gray-700">E-mail{!initial && <RequiredMark className="ml-0.5" />}</label>
-              <input type="email" className={inputClass()} value={form.email} onChange={(e) => set('email', e.target.value)} />
+              <input type="email" className={cn(inputClass(), locked('email') && 'bg-gray-50 text-gray-500 cursor-not-allowed')} readOnly={locked('email')} value={form.email} onChange={(e) => set('email', e.target.value)} />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Unidade<RequiredMark className="ml-0.5" /></label>

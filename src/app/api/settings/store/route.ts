@@ -18,6 +18,7 @@ import {
 import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
+import { identityLockError } from '@/lib/identity-lock'
 
 // Campos cadastrais que o ADM pode editar na própria loja.
 const storeSchema = z.object({
@@ -85,6 +86,8 @@ export async function PUT(req: Request) {
     }
 
     const data = storeSchema.parse(await req.json())
+    const current = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { cnpj: true, email: true, responsavelEmail: true } })
+    { const lockErr = identityLockError(user.role, current, data as Record<string, unknown>, { cnpj: 'cnpj', email: 'email', responsavelEmail: 'responsavelEmail' }); if (lockErr) return NextResponse.json({ success: false, error: lockErr }, { status: 403 }) }
 
     // name comercial = nomeFantasia || razaoSocial (mantém compatibilidade).
     const name =

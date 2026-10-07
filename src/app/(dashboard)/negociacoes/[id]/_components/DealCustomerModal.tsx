@@ -11,6 +11,8 @@ import { maskCPFInput, isValidCPF } from '@/lib/br-docs/cpf'
 import { maskCNPJInput, isValidCNPJ } from '@/lib/br-docs/cnpj'
 import { maskPhoneInput, formatPhone } from '@/lib/br-docs/phone'
 import { maskCEPInput, formatCEP, normalizeCEP } from '@/lib/br-docs/cep'
+import { useSession } from 'next-auth/react'
+import { identityLocked } from '@/lib/identity-lock'
 
 export interface CustomerPerson {
   type?: string | null
@@ -107,6 +109,10 @@ export default function DealCustomerModal({
     }
   }
 
+  // CPF/CNPJ/e-mail já gravados no cadastro: só o MASTER altera.
+  const role = useSession().data?.user?.role
+  const saved = initialForm(person, customer) as unknown as Record<string, unknown>
+  const lockedKey = (k: string) => (k === 'cpf' || k === 'cnpj' || k === 'email') && identityLocked(role, saved[k])
   const input = (k: (typeof KEYS)[number], opts: { label: string; required?: boolean; mask?: (v: string) => string; type?: string; className?: string; maxLength?: number; onBlur?: (v: string) => void } ) => (
     <div className={opts.className}>
       <FieldLabel htmlFor={`cli-${k}`} required={opts.required}>{opts.label}</FieldLabel>
@@ -114,10 +120,11 @@ export default function DealCustomerModal({
         id={`cli-${k}`}
         type={opts.type ?? 'text'}
         value={form[k] as string}
+        readOnly={lockedKey(k)}
         maxLength={opts.maxLength}
         onChange={(e) => set({ [k]: opts.mask ? opts.mask(e.target.value) : e.target.value } as Partial<Form>)}
         onBlur={opts.onBlur ? (e) => opts.onBlur!(e.target.value) : undefined}
-        className={`mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 ${bad.includes(k) ? FIELD_ERROR_CLASS : ''}`}
+        className={`mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 ${bad.includes(k) ? FIELD_ERROR_CLASS : ''} ${lockedKey(k) ? 'cursor-not-allowed bg-gray-50 text-gray-500' : ''}`}
       />
     </div>
   )

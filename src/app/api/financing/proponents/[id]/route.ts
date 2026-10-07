@@ -11,6 +11,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateProponentSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant, num } from '@/lib/finance/finance-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { identityLockError } from '@/lib/identity-lock'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Proponente não encontrado.' }, { status: 404 })
@@ -45,6 +46,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (!ownsTenant(user.role, user.tenantId, existing.tenantId)) return forbiddenResponse('Proponente de outro tenant.')
 
     const d = updateProponentSchema.parse(await req.json())
+    { const lockErr = identityLockError(user.role, existing as unknown as Record<string, unknown>, d as Record<string, unknown>); if (lockErr) return NextResponse.json({ success: false, error: lockErr }, { status: 403 }) }
     const proponent = await prisma.financeProponent.update({
       where: { id },
       data: {

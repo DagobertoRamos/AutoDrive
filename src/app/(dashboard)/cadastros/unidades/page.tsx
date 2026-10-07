@@ -14,6 +14,8 @@ import { ROLE_LABELS } from '@/lib/permissions'
 import { isValidCNPJ } from '@/lib/br-docs/cnpj'
 import { isValidPhone } from '@/lib/br-docs/phone'
 import { RequiredMark } from '@/components/ui/field'
+import { useSession } from 'next-auth/react'
+import { identityLocked } from '@/lib/identity-lock'
 
 // Cargos que podem receber comissão (para a chave da unidade). ADM incluído:
 // ADM também pode vender (em qualquer unidade) e receber comissão.
@@ -97,6 +99,9 @@ interface ModalProps {
 
 function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
   const [form, setForm] = useState<UnitForm>(emptyForm)
+  // CNPJ/e-mail já gravados: só o MASTER altera.
+  const role = useSession().data?.user?.role
+  const locked = (k: 'cnpj' | 'email') => identityLocked(role, initial?.[k])
   const [commEnabled, setCommEnabled] = useState(true)
   const [commRoles, setCommRoles] = useState<string[]>([])
   const [rankingOn, setRankingOn] = useState(true)
@@ -192,7 +197,7 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">CNPJ</label>
-              <input className={inputClass()} value={maskCNPJ(form.cnpj)} onChange={(e) => set('cnpj', maskCNPJ(e.target.value))} inputMode="numeric" />
+              <input className={cn(inputClass(), locked('cnpj') && 'bg-gray-50 text-gray-500 cursor-not-allowed')} readOnly={locked('cnpj')} value={maskCNPJ(form.cnpj)} onChange={(e) => set('cnpj', maskCNPJ(e.target.value))} inputMode="numeric" />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Telefone</label>
@@ -212,7 +217,7 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">E-mail</label>
-              <input type="email" className={inputClass()} value={form.email} onChange={(e) => set('email', e.target.value)} />
+              <input type="email" className={cn(inputClass(), locked('email') && 'bg-gray-50 text-gray-500 cursor-not-allowed')} readOnly={locked('email')} value={form.email} onChange={(e) => set('email', e.target.value)} />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Responsável</label>

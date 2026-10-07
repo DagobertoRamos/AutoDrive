@@ -19,6 +19,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import type { UserRole } from '@prisma/client'
 import { canActOn } from '@/lib/role-hierarchy'
+import { identityLockError } from '@/lib/identity-lock'
 
 // ── Verificar se seller pertence ao tenant do usuário ────────────────────────
 
@@ -63,6 +64,7 @@ export async function PATCH(req: Request, ctxArg: { params: { id: string } | Pro
 
     const body = await req.json()
     const { fullName, shortName, cpf, whatsapp, email, unitId, cargo, active, receivesCharge, positionId } = body
+    { const lockErr = identityLockError(user.role, existing as unknown as Record<string, unknown>, body); if (lockErr) return NextResponse.json({ success: false, error: lockErr }, { status: 403 }) }
 
     if (unitId !== undefined && unitId !== null && unitId !== '') {
       await assertUnitBelongsToTenant(String(unitId), user.tenantId, user.role)

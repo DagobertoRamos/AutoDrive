@@ -14,6 +14,8 @@ import { RequiredMark } from '@/components/ui/field'
 import { isValidCNPJ } from '@/lib/br-docs/cnpj'
 import { isValidPhone } from '@/lib/br-docs/phone'
 import { isValidCEP } from '@/lib/br-docs/cep'
+import { useSession } from 'next-auth/react'
+import { identityLocked } from '@/lib/identity-lock'
 
 interface StoreForm {
   nomeFantasia: string; razaoSocial: string; cnpj: string; inscricaoEstadual: string
@@ -35,17 +37,20 @@ const STATUS_LABEL: Record<string, string> = { ATIVO: 'Ativo', TESTE: 'Em teste'
 function inputCls(extra?: string) {
   return cn('w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500', extra)
 }
-function Field({ label, value, onChange, ph, span, required }: { label: string; value: string; onChange: (v: string) => void; ph?: string; span?: boolean; required?: boolean }) {
+function Field({ label, value, onChange, ph, span, required, readOnly }: { label: string; value: string; onChange: (v: string) => void; ph?: string; span?: boolean; required?: boolean; readOnly?: boolean }) {
   return (
     <div className={span ? 'sm:col-span-2' : ''}>
       <label className="mb-1 block text-xs font-medium text-gray-700">{label}{required && <> <RequiredMark /></>}</label>
-      <input className={inputCls()} value={value} onChange={(e) => onChange(e.target.value)} placeholder={ph} />
+      <input className={`${inputCls()} ${readOnly ? 'cursor-not-allowed bg-gray-50 text-gray-500' : ''}`} readOnly={readOnly} value={value} onChange={(e) => onChange(e.target.value)} placeholder={ph} />
     </div>
   )
 }
 
 export default function ConfiguracaoLojaPage() {
   const [form, setForm] = useState<StoreForm>(EMPTY)
+  // CNPJ/e-mails já gravados: só o MASTER altera (o servidor também barra).
+  const [saved, setSaved] = useState<{ cnpj: string; email: string; responsavelEmail: string }>({ cnpj: '', email: '', responsavelEmail: '' })
+  const role = useSession().data?.user?.role
   const [meta, setMeta] = useState<{ publicId?: string; plan?: string; status?: string }>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -62,6 +67,7 @@ export default function ConfiguracaoLojaPage() {
       if (!res.ok) { flash(false, json?.error ?? 'Erro ao carregar.'); return }
       const d = json.data ?? {}
       setMeta({ publicId: d.publicId, plan: d.plan, status: d.status })
+      setSaved({ cnpj: d.cnpj ?? '', email: d.email ?? '', responsavelEmail: d.responsavelEmail ?? '' })
       setForm({
         nomeFantasia: d.nomeFantasia ?? '', razaoSocial: d.razaoSocial ?? '', cnpj: d.cnpj ?? '',
         inscricaoEstadual: d.inscricaoEstadual ?? '', isentoInscricaoEstadual: !!d.isentoInscricaoEstadual,
@@ -140,10 +146,10 @@ export default function ConfiguracaoLojaPage() {
         <div className="grid gap-4 p-5 sm:grid-cols-2">
           <Field label="Nome fantasia" required value={form.nomeFantasia} onChange={(v) => set('nomeFantasia', v)} />
           <Field label="Razão social" required value={form.razaoSocial} onChange={(v) => set('razaoSocial', v)} />
-          <Field label="CNPJ" required value={form.cnpj} onChange={(v) => set('cnpj', v)} ph="00.000.000/0000-00" />
+          <Field label="CNPJ" required value={form.cnpj} onChange={(v) => set('cnpj', v)} ph="00.000.000/0000-00" readOnly={identityLocked(role, saved.cnpj)} />
           <Field label="Inscrição estadual" value={form.inscricaoEstadual} onChange={(v) => set('inscricaoEstadual', v)} />
           <Field label="Telefone" required value={form.phone} onChange={(v) => set('phone', v)} />
-          <Field label="E-mail" required value={form.email} onChange={(v) => set('email', v)} ph="contato@loja.com" />
+          <Field label="E-mail" required value={form.email} onChange={(v) => set('email', v)} ph="contato@loja.com" readOnly={identityLocked(role, saved.email)} />
           <Field label="Slogan" value={form.slogan} onChange={(v) => set('slogan', v)} span />
         </div>
       </div>
@@ -165,7 +171,7 @@ export default function ConfiguracaoLojaPage() {
         <div className="section-header"><Building2 size={16} className="text-brand-700" /><h2 className="text-sm font-semibold text-gray-800">Responsável</h2></div>
         <div className="grid gap-4 p-5 sm:grid-cols-2">
           <Field label="Nome do responsável" value={form.responsavel} onChange={(v) => set('responsavel', v)} />
-          <Field label="E-mail do responsável" value={form.responsavelEmail} onChange={(v) => set('responsavelEmail', v)} />
+          <Field label="E-mail do responsável" value={form.responsavelEmail} onChange={(v) => set('responsavelEmail', v)} readOnly={identityLocked(role, saved.responsavelEmail)} />
           <Field label="Telefone do responsável" value={form.responsavelPhone} onChange={(v) => set('responsavelPhone', v)} />
         </div>
       </div>
