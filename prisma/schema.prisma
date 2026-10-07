@@ -6958,20 +6958,103 @@ model OpsOutbox {
   @@map("ops_outbox")
 }
 
-/// Webhooks recebidos de provedores — cada evento é processado uma única vez.
+/// Webhooks/eventos recebidos de provedores — cada evento é processado uma única vez.
+/// Também é o registro bruto do Gateway de Entrada do CRM (leads, mensagens, e-mails):
+/// o evento é GRAVADO antes de qualquer processamento e reprocessado pelo job se falhar.
 model WebhookInbox {
-  id          String    @id @default(cuid())
-  provider    String
-  eventId     String
-  tenantId    String?
-  payloadHash String?
-  status      String    @default("RECEIVED") // RECEIVED | PROCESSED | FAILED | IGNORED
-  error       String?
-  receivedAt  DateTime  @default(now())
-  processedAt DateTime?
+  id            String    @id @default(cuid())
+  provider      String
+  eventId       String
+  tenantId      String?
+  payloadHash   String?
+  status        String    @default("RECEIVED") // RECEIVED | PROCESSING | PROCESSED | FAILED | IGNORED | DEAD
+  error         String?
+  receivedAt    DateTime  @default(now())
+  processedAt   DateTime?
+  /// LEAD | MESSAGE | EMAIL | WEBHOOK (null = eventos antigos de operações).
+  kind          String?
+  /// Canal/conexão de origem (ex.: id do canal de captação, phone_number_id).
+  channelRef    String?
+  unitId        String?
+  /// Corpo original (para auditoria e reprocessamento). Limpo pela retenção.
+  payload       Json?
+  correlationId String?
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime?
+  /// Resultado (ex.: id do lead/conversa criada).
+  resultRef     String?
 
   @@unique([provider, eventId])
+  @@index([status, nextAttemptAt])
+  @@index([tenantId, kind, receivedAt])
   @@map("webhook_inbox")
+}
+
+/// Conversa (thread) de um canal de mensagens com um contato: WhatsApp, Instagram
+/// Direct, Messenger, chat da OLX, perguntas do Mercado Livre, chat do site...
+/// Liga a conversa ao cliente, ao lead e ao veículo — sem duplicar nenhum deles.
+model Conversation {
+  id                String    @id @default(cuid())
+  tenantId          String
+  unitId            String?
+  /// WHATSAPP | INSTAGRAM | MESSENGER | OLX | MERCADO_LIVRE | SITE_CHAT | ...
+  channel           String
+  /// Conta/número da loja no canal (ex.: phone_number_id do WhatsApp).
+  accountRef        String
+  /// Id do contato no canal (ex.: wa_id). Junto com channel+accountRef = a thread.
+  externalContactId String
+  contactName       String?
+  contactPhone      String?
+  customerId        String?
+  leadId            String?
+  vehicleId         String?
+  assignedToUserId  String?
+  /// OPEN | PENDING | CLOSED
+  status            String    @default("OPEN")
+  unreadCount       Int       @default(0)
+  lastMessageAt     DateTime?
+  lastMessagePreview String?
+  lastInboundAt     DateTime?
+  lastOutboundAt    DateTime?
+  firstResponseAt   DateTime?
+  metadata          Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  messages ConversationMessage[]
+
+  @@unique([tenantId, channel, accountRef, externalContactId])
+  @@index([tenantId, status, lastMessageAt])
+  @@index([tenantId, assignedToUserId, lastMessageAt])
+  @@index([leadId])
+  @@map("conversations")
+}
+
+model ConversationMessage {
+  id                String    @id @default(cuid())
+  tenantId          String
+  conversationId    String
+  /// IN (cliente → loja) | OUT (loja → cliente)
+  direction         String
+  /// Id da mensagem no canal — idempotência do webhook.
+  externalMessageId String?
+  /// TEXT | IMAGE | AUDIO | VIDEO | DOCUMENT | LOCATION | TEMPLATE | OTHER
+  type              String    @default("TEXT")
+  body              String?
+  /// RECEIVED | PENDING | SENT | DELIVERED | READ | FAILED
+  status            String    @default("RECEIVED")
+  error             String?
+  authorUserId      String?
+  authorName        String?
+  sentAt            DateTime  @default(now())
+  metadata          Json?
+  createdAt         DateTime  @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, externalMessageId])
+  @@index([conversationId, sentAt])
+  @@map("conversation_messages")
 }
 
 /// Certificado digital A1 da loja/filial (arquivo e senha cifrados).

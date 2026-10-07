@@ -157,6 +157,16 @@ export const CHANNEL_SOURCES: { code: string; label: string }[] = [
   { code: 'ICARROS', label: 'iCarros' },
   { code: 'MERCADO_LIVRE', label: 'Mercado Livre' },
   { code: 'MOBIAUTO', label: 'Mobiauto' },
+  { code: 'NAPISTA', label: 'NaPista' },
+  { code: 'USADOSBR', label: 'UsadosBR' },
+  { code: 'CHAVES_NA_MAO', label: 'Chaves na Mão' },
+  { code: 'SOCARRAO', label: 'SóCarrão' },
+  { code: 'AUTOLINE', label: 'Autoline' },
+  { code: 'CARROSP', label: 'CarroSP' },
+  { code: 'SEMINOVOSBH', label: 'SeminovosBH' },
+  { code: 'VRUM', label: 'Vrum' },
+  { code: 'MEUCARRONOVO', label: 'Meu Carro Novo' },
+  { code: 'COMPRECAR', label: 'CompreCar' },
   { code: 'PORTAL', label: 'Outros portais' },
   { code: 'RD_STATION', label: 'RD Station' },
   { code: 'OUTROS', label: 'Outras integrações' },
@@ -230,6 +240,8 @@ export interface InboundLead {
   /** Perguntas extras do formulário (pergunta → resposta). */
   answers: [string, string][]
   isTest: boolean
+  /** Todos os campos simples recebidos (chave normalizada → valor) — p/ atribuição. */
+  fields: Record<string, string>
 }
 
 export type ParseResult =
@@ -350,6 +362,7 @@ export function parseInboundLead(body: unknown, headers: { authorization?: strin
       formName: pick(flat, KEYS.formName).slice(0, 160),
       answers: extra.slice(0, 30).map(([k, v]) => [k.slice(0, 80), v.slice(0, 500)]),
       isTest,
+      fields: Object.fromEntries([...flat.entries()].slice(0, 120).map(([k, v]) => [k.slice(0, 80), v.slice(0, 500)])),
     },
   }
 }
@@ -366,8 +379,15 @@ export function inboundLeadNotes(lead: InboundLead, channelName: string): string
   return lines.join('\n').slice(0, 4000)
 }
 
-/** Confere a chave extra quando o canal tem uma configurada. */
+/**
+ * Confere a chave extra quando o canal tem uma configurada. Comparação em tempo
+ * constante (sem `crypto`: este arquivo também roda no navegador).
+ */
 export function secretMatches(channel: Pick<LeadChannel, 'secret'>, received: string): boolean {
   if (!channel.secret) return true
-  return received === channel.secret
+  const a = received ?? ''
+  const b = channel.secret
+  let diff = a.length ^ b.length
+  for (let i = 0; i < b.length; i++) diff |= (a.charCodeAt(i % (a.length || 1)) || 0) ^ b.charCodeAt(i)
+  return diff === 0
 }

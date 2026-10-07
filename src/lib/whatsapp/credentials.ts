@@ -7,7 +7,11 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
+import { decrypt, encrypt, isEncrypted } from '@/lib/crypto'
 import type { WhatsappCreds, WhatsappProviderKind } from './types'
+
+/** Campos secretos dos provedores (ver adapters): sempre cifrados no banco. */
+const SECRET_FIELDS = new Set(['accessToken', 'webhookVerifyToken', 'authToken'])
 
 export interface TenantWhatsappConfig {
   kind:  WhatsappProviderKind
@@ -26,7 +30,15 @@ export async function getTenantWhatsappConfig(tenantId?: string | null): Promise
   const rows = await prisma.systemSetting.findMany({ where: { key: { startsWith: prefix } }, select: { key: true, value: true } })
   if (rows.length) {
     const m: Record<string, string> = {}
-    for (const r of rows) m[r.key.slice(prefix.length)] = r.value
+    // Tokens são gravados cifrados; valores antigos em texto passam direto (decrypt tolera)
+    // e são cifrados agora, para não ficarem em texto aberto no banco.
+    for (const r of rows) {
+      const field = r.key.slice(prefix.length)
+      m[field] = decrypt(r.value)
+      if (SECRET_FIELDS.has(field) && r.value && !isEncrypted(r.value)) {
+        await prisma.systemSetting.updateMany({ where: { key: r.key, value: r.value }, data: { value: encrypt(r.value) } }).catch(() => {})
+      }
+    }
     const active = m.active === 'true' || m.active === '"true"'
     if (active) {
       const kind = (m.provider || 'META').toUpperCase() as WhatsappProviderKind

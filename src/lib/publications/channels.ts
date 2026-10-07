@@ -167,7 +167,7 @@ export const CHANNELS: ChannelSpec[] = [
   },
   {
     id: 'META_PAGE', name: 'Facebook — Página', aliases: ['facebook', 'facebook pagina', 'pagina do facebook', 'fb'], group: 'SOCIAL',
-    devStatus: 'AGUARDANDO_HOMOLOGACAO', verified: 'CONTRATO', mechanism: 'API', direction: 'ENVIO', connect: 'OAUTH', campaigns: true,
+    devStatus: 'DISPONIVEL', verified: 'PRODUCAO', mechanism: 'API', direction: 'ENVIO', connect: 'OAUTH', campaigns: true,
     capabilities: { authenticate: 'SIM', testConnection: 'SIM', validate: 'SIM', publish: 'SIM', get: 'SIM', update: 'SIM', pause: 'NAO', resume: 'NAO', remove: 'SIM', limits: 'NAO', webhooks: 'NAO' },
     auth: 'Facebook Login for Business; token de Página. Permissões: pages_manage_posts, pages_read_engagement, pages_show_list (Advanced Access exige App Review para atender outras empresas).',
     protocol: 'Graph API: fotos da Página sem publicar (/{page-id}/photos published=false) + post com attached_media em /{page-id}/feed; editar texto POST /{post-id} (só posts criados pelo app); DELETE /{post-id}.',
@@ -182,7 +182,7 @@ export const CHANNELS: ChannelSpec[] = [
   },
   {
     id: 'INSTAGRAM', name: 'Instagram profissional', aliases: ['instagram', 'ig', 'instagram business', 'instagram profissional'], group: 'SOCIAL',
-    devStatus: 'AGUARDANDO_HOMOLOGACAO', verified: 'CONTRATO', mechanism: 'API', direction: 'ENVIO', connect: 'OAUTH', campaigns: true,
+    devStatus: 'DISPONIVEL', verified: 'PRODUCAO', mechanism: 'API', direction: 'ENVIO', connect: 'OAUTH', campaigns: true,
     capabilities: { authenticate: 'SIM', testConnection: 'SIM', validate: 'SIM', publish: 'SIM', get: 'SIM', update: 'NAO', pause: 'NAO', resume: 'NAO', remove: 'MANUAL', limits: 'SIM', webhooks: 'NAO' },
     auth: 'Facebook Login for Business (conta profissional vinculada à Página; instagram_basic, instagram_content_publish, pages_read_engagement) — ou Instagram Login (instagram_business_basic, instagram_business_content_publish). Implementado o fluxo via Facebook Login.',
     protocol: 'Content Publishing: POST /{ig-id}/media (image_url; is_carousel_item) → CAROUSEL (children) → status_code FINISHED → POST /{ig-id}/media_publish.',
@@ -287,6 +287,19 @@ export function findChannelByName(name: string): ChannelSpec | undefined {
 }
 
 /** Canal que aceita envio automático (conector implementado) para a loja escolher. */
+/**
+ * Publicação REAL (conta de produção) só em canal comprovado em sandbox/produção.
+ * Conector só testado por contrato publica no ambiente de homologação da conta —
+ * ou em produção se a plataforma liberar o piloto (env PUBLICATIONS_PILOT_CHANNELS=OLX,TIKTOK).
+ * Canais internos, feed e manuais não passam por homologação.
+ */
+export function needsHomologation(spec: ChannelSpec, environment: string | null | undefined, pilot = process.env.PUBLICATIONS_PILOT_CHANNELS ?? ''): boolean {
+  if (spec.mechanism === 'INTERNO' || spec.mechanism === 'FEED' || spec.mechanism === 'MANUAL') return false
+  if (spec.verified === 'SANDBOX' || spec.verified === 'PRODUCAO') return false
+  if ((environment ?? 'PRODUCAO') !== 'PRODUCAO') return false
+  return !pilot.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean).includes(spec.id)
+}
+
 export function isPublishable(spec: ChannelSpec): boolean {
   return spec.capabilities.publish === 'SIM' && spec.devStatus !== 'EM_AVALIACAO' && spec.devStatus !== 'EM_DESENVOLVIMENTO'
 }

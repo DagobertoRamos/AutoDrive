@@ -59,6 +59,16 @@ export async function resolveChannel(key: string): Promise<{ tenantId: string; c
   return channel ? { tenantId: row.value, channel } : null
 }
 
+/** Mesmo que resolveChannel, sem diferenciar maiúsculas (endereço de e-mail perde a caixa). */
+export async function resolveChannelInsensitive(key: string): Promise<{ tenantId: string; channel: LeadChannel } | null> {
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(key)) return null
+  const rows = await prisma.systemSetting.findMany({ where: { key: { equals: idxKey(key), mode: 'insensitive' } }, select: { key: true, value: true }, take: 2 }).catch(() => [])
+  if (rows.length !== 1) return null
+  const real = rows[0].key.slice(idxKey('').length)
+  const channel = (await loadChannels(rows[0].value)).find((c) => c.key === real)
+  return channel ? { tenantId: rows[0].value, channel } : null
+}
+
 export interface ChannelLogEntry {
   at: string
   channelId: string

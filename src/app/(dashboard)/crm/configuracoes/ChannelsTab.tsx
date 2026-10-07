@@ -19,7 +19,7 @@ import { HelpHint } from '@/components/ui/help-hint'
 import { opsHint } from '@/lib/glossary-ops'
 
 interface LogEntry { at: string; channelId: string; ok: boolean; outcome: string; message: string; leadId?: string; leadNumber?: number | null; name?: string; test?: boolean }
-interface Data { channels: LeadChannel[]; log: LogEntry[]; catalog: ChannelCatalogItem[]; groups: Record<ChannelGroup, string>; baseUrl: string }
+interface Data { channels: LeadChannel[]; log: LogEntry[]; catalog: ChannelCatalogItem[]; groups: Record<ChannelGroup, string>; baseUrl: string; emailDomain?: string | null }
 interface PipelineOpt { id: string; name: string; virtual: boolean; active: boolean }
 type Draft = Partial<LeadChannel> & { type: string; name: string }
 
@@ -127,6 +127,7 @@ export default function ChannelsTab({ canManage }: { canManage: boolean }) {
             const key = c.id ?? `new-${idx}`
             const expanded = open === key
             const url = c.key ? `${data.baseUrl}${c.key}` : null
+            const mail = c.key && data.emailDomain ? `leads+${c.key}@${data.emailDomain}` : null
             const st = c.id ? stats.get(c.id) : undefined
             return (
               <li key={key} className="rounded-xl border border-gray-200">
@@ -167,6 +168,16 @@ export default function ChannelsTab({ canManage }: { canManage: boolean }) {
                       ) : <p className="text-xs text-amber-700">Clique em Salvar para gerar a URL deste canal.</p>}
                       <p className="mt-1 text-[11px] text-gray-500">Trate a URL como senha. Se vazar, remova o canal.</p>
                     </div>
+
+                    {mail && (
+                      <div>
+                        <p className="mb-1 flex items-center gap-1 text-xs font-semibold text-gray-700">E-mail exclusivo <HelpHint title="E-mail exclusivo" text="Cadastre este e-mail no painel do portal como destino dos leads. Cada e-mail recebido vira lead neste canal, com o original guardado." /></p>
+                        <div className="flex items-center gap-2">
+                          <code className="min-w-0 flex-1 break-all rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] text-gray-800">{mail}</code>
+                          <CopyBtn value={mail} />
+                        </div>
+                      </div>
+                    )}
 
                     <div className="grid gap-3 md:grid-cols-2">
                       <label className="text-xs font-medium text-gray-700">Nome do canal <RequiredMark />

@@ -6,6 +6,7 @@
 //   • Pendências: auto-arquivar resolvidas
 //   • Comunicação: avisos agendados (dispara os que chegaram na hora)
 //   • CRM: SLA/follow-up, distribuição e automações (só lojas que configuraram)
+//   • Gateway de Entrada: reprocessa leads/mensagens que falharam (nenhum se perde)
 // Cada job é isolado (um erro não derruba os outros). Protegido por
 // QUEUE_JOB_SECRET ou CRON_SECRET (header x-cron-secret / Bearer). GET+POST.
 // Aponte UM cron (cron-job.org) a cada 1 min para este endpoint.
@@ -23,6 +24,7 @@ import { dispatchScheduledAvisos } from '@/lib/comunicacao/scheduled-avisos'
 import { runQualityAutoSweep } from '@/lib/quality/auto-sweep'
 import { runCrmSlaSweep } from '@/lib/crm/sla-sweep'
 import { runCrmAutomationSweep } from '@/lib/crm/automations'
+import { runInboxJob } from '@/lib/integrations/inbox-dispatch'
 
 function authorized(req: Request): boolean {
   const header = req.headers.get('x-cron-secret') ?? ''
@@ -41,6 +43,8 @@ async function tick() {
   const startedAt = Date.now()
   // Sequencial (não paralelo) para não sobrecarregar o Neon numa function só.
   const jobs = [
+    // Primeiro: lead/mensagem recebido e ainda não processado é o mais urgente.
+    await safe('inboxRetry', () => runInboxJob()),
     await safe('queueSweep', () => runQueueSweepAll()),
     await safe('queueReminders', () => processAttendanceReminders({})),
     await safe('queueCompliance', () => runQueueComplianceSweep()),

@@ -7,6 +7,8 @@
 //   4. conteúdo mudou no estoque (preço, fotos, descrição) → ATUALIZAR;
 //   5. pedido de publicação travado por pendência (ex.: fotos não aprovadas)
 //      → tenta de novo sozinho quando a pendência some;
+//   6. carro VENDIDO ainda anunciado há mais de 2 h (retirada pendente ou
+//      manual) → avisa os gestores uma vez por anúncio;
 //   0. saúde das contas: token vencido → RECONECTAR + aviso aos gestores.
 // Tudo por loja; limitado por execução para não estourar tempo nem cotas.
 // =============================================================================
@@ -15,10 +17,12 @@ import { prisma } from '@/lib/prisma'
 import { createPublications, enqueue, onVehicleStockChanged, syncLive, SYSTEM_ACTOR } from './service'
 import { checkConnectionHealth } from './health'
 import { PUBLISHABLE_STOCK } from './sale-rules-core'
+import { channelSpec } from './channels'
+import { notifyByRole } from '@/services/notification.service'
 
 export async function reconcile(opts: { limit?: number } = {}) {
   const limit = opts.limit ?? 200
-  const out = { stockDrift: 0, verify: 0, stuck: 0, sync: 0, retried: 0, expired: 0, expiring: 0 }
+  const out = { stockDrift: 0, verify: 0, stuck: 0, sync: 0, retried: 0, expired: 0, expiring: 0, soldAlerts: 0 }
 
   // 0) Contas com acesso vencido/vencendo (antes de qualquer envio falhar).
   const h = await checkConnectionHealth().catch((e) => { console.error('[publications] saúde das contas', e); return { expired: 0, expiring: 0 } })
@@ -80,5 +84,37 @@ export async function reconcile(opts: { limit?: number } = {}) {
     else await prisma.publication.updateMany({ where: { tenantId: p.tenantId, vehicleId: p.vehicleId, connectionId: p.connectionId, campaignKey: p.campaignKey }, data: { updatedAt: new Date() } })
   }
 
+  // 6) Vendido e ainda anunciado: nunca deixar passar em silêncio.
+  out.soldAlerts = await alertSoldStillListed(limit).catch((e) => { console.error('[publications] alerta vendido anunciado', e); return 0 })
+
   return out
+}
+
+const SOLD_ALERT = 'ALERTA_VENDIDO_ANUNCIADO'
+
+async function alertSoldStillListed(limit: number): Promise<number> {
+  const rows = await prisma.publication.findMany({
+    where: {
+      archivedAt: null, status: { in: ['REMOCAO_PENDENTE', 'ACAO_MANUAL'] }, desiredState: 'REMOVIDO',
+      updatedAt: { lt: new Date(Date.now() - 2 * 3_600_000) },
+      vehicle: { stockStatus: 'VENDIDO' },
+    },
+    select: { id: true, tenantId: true, vehicleId: true, channel: true, remoteUrl: true, vehicle: { select: { brand: true, model: true, plate: true } } },
+    take: limit,
+  })
+  let sent = 0
+  for (const p of rows) {
+    const already = await prisma.publicationEvent.findFirst({ where: { publicationId: p.id, type: SOLD_ALERT }, select: { id: true } })
+    if (already) continue
+    const car = [p.vehicle.brand, p.vehicle.model, p.vehicle.plate].filter(Boolean).join(' ')
+    const where = channelSpec(p.channel)?.name ?? p.channel
+    const message = `${car || 'Veículo'} foi vendido e ainda está anunciado em ${where}. Retire o anúncio${p.remoteUrl ? ' pelo link no histórico da publicação' : ''}.`
+    await prisma.publicationEvent.create({ data: { tenantId: p.tenantId, publicationId: p.id, vehicleId: p.vehicleId, channel: p.channel, type: SOLD_ALERT, message } })
+    await notifyByRole({
+      tenantId: p.tenantId, roles: ['ADM', 'GERENTE_GERAL', 'GERENTE'], type: 'SISTEMA', title: 'Carro vendido ainda anunciado',
+      message, actionUrl: `/marketing/publicacoes`, metadata: { kind: 'sold_still_listed', publicationId: p.id }, channels: ['APP_WEB', 'APP_MOBILE', 'PUSH'],
+    }).catch(() => {})
+    sent++
+  }
+  return sent
 }

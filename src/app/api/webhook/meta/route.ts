@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
+import { processInboxEvent, receiveEvent } from '@/lib/integrations/inbox'
+import { applyWhatsappStatus, handleWhatsappEvent, WHATSAPP_PROVIDER } from '@/lib/inbox/whatsapp-inbound'
 
 // Sem fallback fixo: o token vem do ambiente (ver .env.example).
 const VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN
 
 // Assinatura X-Hub-Signature-256 (HMAC-SHA256 do corpo BRUTO com o App Secret
-// do app da Meta que entrega o webhook). Sem a env configurada, aceita mas avisa.
+// do app da Meta que entrega o webhook). Sem a env configurada, aceita mas avisa
+// (compatibilidade com o retorno de pendências) — porém mensagens de CLIENTE
+// só entram no CRM com a assinatura conferida (ver signatureVerified).
 let warnedNoSecret = false
 function verifySignature(raw: string, header: string | null): boolean {
   const secret = process.env.META_WEBHOOK_APP_SECRET
@@ -52,6 +56,9 @@ export async function GET(req: Request) {
 // =============================================================================
 // POST — Recebimento de eventos da Meta
 // =============================================================================
+/** Assinatura conferida de fato (env configurada e válida) — exigida para criar conversa/lead. */
+const signatureVerified = () => !!process.env.META_WEBHOOK_APP_SECRET
+
 export async function POST(req: Request) {
   let rawPayload: unknown
 
@@ -88,9 +95,15 @@ export async function POST(req: Request) {
 
     // Processar mensagens recebidas
     if (value.messages?.length > 0) {
-      const tenantId = await tenantByPhoneNumberId(value.metadata?.phone_number_id)
+      const phoneNumberId: string | undefined = value.metadata?.phone_number_id
+      const tenantId = await tenantByPhoneNumberId(phoneNumberId)
       for (const msg of value.messages) {
-        await processInboundMessage(msg, value.contacts?.[0], tenantId)
+        const contact = (value.contacts ?? []).find((c: any) => c?.wa_id === msg.from) ?? value.contacts?.[0]
+        const fromSeller = await processInboundMessage(msg, contact, tenantId)
+        // Mensagem de CLIENTE (não é vendedor respondendo pendência) → Caixa de Entrada do CRM.
+        if (!fromSeller && tenantId && phoneNumberId && signatureVerified()) {
+          await routeToInbox(tenantId, phoneNumberId, msg, contact)
+        }
       }
     }
 
@@ -98,6 +111,7 @@ export async function POST(req: Request) {
     if (value.statuses?.length > 0) {
       for (const status of value.statuses) {
         await processMessageStatus(status)
+        await applyWhatsappStatus(status).catch(() => {})
       }
     }
 
@@ -118,10 +132,26 @@ export async function POST(req: Request) {
   return NextResponse.json({ status: 'ok' })
 }
 
+// Gateway de Entrada: grava a mensagem (única pelo id do WhatsApp) e processa.
+// Se falhar, o job reprocessa — a mensagem do cliente não se perde.
+async function routeToInbox(tenantId: string, phoneNumberId: string, msg: any, contact: any) {
+  try {
+    const ev = await receiveEvent({
+      provider: WHATSAPP_PROVIDER, kind: 'MESSAGE', tenantId, channelRef: phoneNumberId,
+      scope: `${tenantId}:${phoneNumberId}`, providerEventId: msg?.id ?? null,
+      payload: { phoneNumberId, message: msg, contact: contact ?? null },
+    })
+    if (!ev.duplicate) await processInboxEvent(ev.id, handleWhatsappEvent)
+  } catch (err) {
+    console.error('[webhook/meta] não gravou mensagem do cliente:', err)
+  }
+}
+
 // =============================================================================
-// Processamento de mensagem recebida
+// Processamento de mensagem recebida (retorno de pendência do vendedor).
+// Devolve true quando o remetente é um vendedor (fluxo de pendências).
 // =============================================================================
-async function processInboundMessage(msg: any, contact: any, tenantId: string | null) {
+async function processInboundMessage(msg: any, contact: any, tenantId: string | null): Promise<boolean> {
   const from = msg.from // número WhatsApp do remetente
   const messageType = msg.type
   const messageBody = msg.text?.body ?? msg.caption ?? ''
@@ -135,6 +165,10 @@ async function processInboundMessage(msg: any, contact: any, tenantId: string | 
     take: 2,
   })
   const seller = tenantId ? (sellers[0] ?? null) : (sellers.length === 1 ? sellers[0] : null)
+  // Cliente (não vendedor) com a loja conhecida vai para a Caixa de Entrada do CRM.
+  if (!seller && tenantId && signatureVerified()) return false
+  // Reentrega do mesmo evento pela Meta: não duplica o retorno.
+  if (whatsappMessageId && await prisma.messageReturn.findFirst({ where: { whatsappMessageId }, select: { id: true } })) return !!seller
 
   // Buscar pendência mais recente deste vendedor
   let pendencyId: string | null = null
@@ -192,6 +226,7 @@ async function processInboundMessage(msg: any, contact: any, tenantId: string | 
       })
     }
   }
+  return !!seller
 }
 
 // =============================================================================

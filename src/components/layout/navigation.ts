@@ -5,7 +5,7 @@
 
 import type { LucideIcon } from 'lucide-react'
 import type { Module } from '@/lib/permissions'
-import { HandCoins,
+import { HandCoins, MessagesSquare, Plug,
   ArrowDownCircle, ArrowUpCircle, LineChart, FileBarChart, PieChart, Repeat, Network,
   Home,
   Car,
@@ -314,6 +314,7 @@ export const NAV_GROUPS: NavItem[] = [
     module: 'crm',
     children: [
       { label: 'Cockpit CRM',   href: '/crm/cockpit',       icon: LayoutDashboard, module: 'crm' },
+      { label: 'Conversas',     href: '/crm/conversas',     icon: MessagesSquare,  module: 'crm.view.own' },
       { label: 'Atendimentos',  href: '/crm/atendimentos',  icon: ClipboardList,   module: 'crm.attendance.view.own' },
       { label: 'Leads',         href: '/crm/leads',         icon: Inbox,           module: 'crm.view.own' },
       { label: 'Kanban',        href: '/crm/kanban',        icon: Columns3,        module: 'crm.kanban.view.own' },
@@ -467,6 +468,7 @@ export const NAV_GROUPS: NavItem[] = [
     children: [
       { label: 'Loja',       href: '/configuracoes/loja',       icon: Building2,  module: 'settings' },
       { label: 'Identidade', href: '/configuracoes/identidade', icon: Palette,    module: 'settings.identity' },
+      { label: 'Canais e integrações', href: '/configuracoes/canais', icon: Plug, module: 'settings' },
       { label: 'F&I',        href: '/configuracoes/fi',         icon: Banknote,   module: 'financing.config' },
       { label: 'Operações',  href: '/configuracoes/operacoes',  icon: ShieldCheck, module: 'ops.settings' },
       { label: 'Perfil',     href: '/perfil',                   icon: UserCircle, module: 'profile' },

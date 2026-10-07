@@ -16,6 +16,8 @@ import { fireAutomations } from '@/lib/crm/automations'
 import { savePlacement } from '@/lib/crm/pipelines'
 import { distributeLeadById } from '@/lib/marketing/distribution'
 import { notify, notifyByRole } from '@/services/notification.service'
+import { addTouch, readAttribution, type Touch } from '@/lib/crm/attribution-core'
+import { matchLeadVehicle, similarVehicles } from '@/lib/crm/lead-vehicle-match'
 
 const MANAGER_ROLES = ['ADM', 'GERENTE_GERAL', 'GERENTE']
 
@@ -40,6 +42,14 @@ export interface InboundLeadInput {
   notifyTitle: string
   notifyMessage: string
   pipelineId?: string | null
+  /** Toque de marketing desta entrada (canal, campanha, UTM, gclid...). */
+  touch?: Touch | null
+  /** Primeiro toque conhecido antes deste (ex.: guardado pelo navegador no site). Só vale para lead novo. */
+  firstTouch?: Touch | null
+  /** Id do anúncio no portal — liga o lead ao veículo do nosso estoque. */
+  externalListingId?: string | null
+  /** Evento do Gateway de Entrada que originou este lead (rastreio). */
+  correlationId?: string | null
 }
 
 export interface InboundLeadResult {
@@ -53,6 +63,7 @@ export interface InboundLeadResult {
 export async function createInboundLead(i: InboundLeadInput): Promise<InboundLeadResult> {
   const { tenantId } = i
   const now = new Date()
+  i = await resolveVehicle(i)
 
   // 1) Reenvio do mesmo lead pela plataforma (webhooks reentregam).
   if (i.externalLeadId) {
@@ -92,7 +103,11 @@ export async function createInboundLead(i: InboundLeadInput): Promise<InboundLea
       where: { id: existing.id },
       data: {
         lastContactAt: now, ...(i.vehicleId && !existing.vehicleId ? { vehicleId: i.vehicleId } : {}),
-        metadata: JSON.parse(JSON.stringify({ ...meta, returnCount: returns, lastReturnAt: now.toISOString(), lastReturnFrom: i.authorName, lastReturnVehicle: i.vehicleTitle ?? null, returnSeenAt: null })) as Prisma.InputJsonValue,
+        metadata: JSON.parse(JSON.stringify({
+          ...meta, returnCount: returns, lastReturnAt: now.toISOString(), lastReturnFrom: i.authorName, lastReturnVehicle: i.vehicleTitle ?? null, returnSeenAt: null,
+          ...(i.touch ? { attribution: addTouch(readAttribution(meta), i.touch) } : {}),
+          ...(i.correlationId ? { lastCorrelationId: i.correlationId } : {}),
+        })) as Prisma.InputJsonValue,
       },
     })
     // Avisa quem está atendendo (sem responsável: os gestores).
@@ -115,7 +130,13 @@ export async function createInboundLead(i: InboundLeadInput): Promise<InboundLea
       ...(i.vehicleId ? { vehicleId: i.vehicleId } : {}),
       ...(identity?.customerId ? { customerId: identity.customerId } : {}),
       // JSON ida-e-volta tira os campos `undefined` (o Prisma recusa em Json).
-      metadata: JSON.parse(JSON.stringify({ ...i.metadata, ...(i.externalLeadId ? { externalLeadId: i.externalLeadId } : {}) })) as Prisma.InputJsonValue,
+      metadata: JSON.parse(JSON.stringify({
+        ...i.metadata,
+        ...(i.externalLeadId ? { externalLeadId: i.externalLeadId } : {}),
+        ...(i.externalListingId ? { externalListingId: i.externalListingId } : {}),
+        ...(i.touch ? { attribution: addTouch(i.firstTouch ? addTouch(null, i.firstTouch) : null, i.touch) } : {}),
+        ...(i.correlationId ? { correlationId: i.correlationId } : {}),
+      })) as Prisma.InputJsonValue,
     },
     select: { id: true },
   })
@@ -134,4 +155,28 @@ export async function createInboundLead(i: InboundLeadInput): Promise<InboundLea
   }
   await fireAutomations(tenantId, 'LEAD_CREATED', lead.id)
   return { leadId: lead.id, leadNumber, created: true, outcome: 'created' }
+}
+
+/**
+ * Completa o veículo do lead pelo id do anúncio no portal ou pela placa citada.
+ * Carro já vendido: o lead continua (não se perde o cliente) e leva até 3
+ * sugestões semelhantes do estoque para o vendedor oferecer.
+ */
+async function resolveVehicle(i: InboundLeadInput): Promise<InboundLeadInput> {
+  const found = await matchLeadVehicle(i.tenantId, {
+    vehicleId: i.vehicleId ?? null, externalListingId: i.externalListingId ?? null, source: i.source,
+    text: [i.vehicleTitle, i.notes].filter(Boolean).join(' '),
+  }).catch(() => null)
+  if (!found) return i
+  const out: InboundLeadInput = { ...i, vehicleId: found.vehicleId, vehicleTitle: i.vehicleTitle || found.title, metadata: { ...i.metadata, vehicleMatch: found.via } }
+  if (!found.sold) return out
+  const similar = await similarVehicles(i.tenantId, found.vehicleId).catch(() => [])
+  const hint = similar.length ? ` Sugestões: ${similar.map((s) => s.title).join('; ')}.` : ''
+  return {
+    ...out,
+    notes: `${i.notes}
+ATENÇÃO: este veículo já foi vendido.${hint}`.slice(0, 4000),
+    notifyMessage: `${i.notifyMessage} Veículo já vendido — ofereça um semelhante.`,
+    metadata: { ...out.metadata, vehicleSold: { vehicleId: found.vehicleId, title: found.title }, similarVehicles: similar },
+  }
 }

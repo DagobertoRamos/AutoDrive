@@ -63,7 +63,12 @@ export function formatCnpj(v: string): string {
   const d = v.replace(/\D/g, '').slice(0, 14)
   return d.replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d)/, '$1-$2')
 }
-const TRACK_KEYS = ['pageUrl', 'utmSource', 'utmMedium', 'utmCampaign'] as const
+const TRACK_KEYS = [
+  'pageUrl', 'utmSource', 'utmMedium', 'utmCampaign', 'utmContent', 'utmTerm',
+  'gclid', 'gbraid', 'wbraid', 'fbclid', 'ttclid', 'msclkid', 'referrer', 'landingPage',
+  // Primeira campanha que trouxe este visitante (JSON curto guardado no navegador).
+  'firstTouch',
+] as const
 const str = (v: unknown, max: number) => String(v ?? '').trim().slice(0, max)
 
 export type ParseResult = { ok: true; value: SiteLeadInput } | { ok: false; status: number; error: string; spam?: boolean }

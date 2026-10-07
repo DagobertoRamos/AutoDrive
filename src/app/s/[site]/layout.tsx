@@ -13,6 +13,7 @@ import { SiteHeader } from '@/components/site/SiteHeader'
 import { SitePreviewBar } from '@/components/site/SitePreviewBar'
 import { SiteFooter } from '@/components/site/SiteFooter'
 import { SiteTracking } from '@/components/site/SiteTracking'
+import { SiteCampaignMemory } from '@/components/site/SiteCampaignMemory'
 import { cleanGoogleTagId, tagBootstrapScript } from '@/lib/site/tracking-core'
 import { CONSENT_COOKIE } from '@/lib/site/tracking-cookie'
 import { SiteAnalytics } from '@/components/site/SiteAnalytics'
@@ -83,6 +84,7 @@ export default async function SiteLayout({ children, params }: { children: React
         legalLinks={[{ label: 'Política de privacidade', href: ctx.href('/privacidade') }, { label: 'Termos de uso', href: ctx.href('/termos') }, { label: 'Política de cookies', href: ctx.href('/cookies') }]} />
       {/* useSearchParams exige Suspense */}
       <Suspense fallback={null}><SiteAnalytics trackUrl={`/api/site/${encodeURIComponent(ctx.key)}/track`} /></Suspense>
+      <SiteCampaignMemory />
       <SiteTracking pixelId={ctx.config.tracking.metaPixelId} googleTagId={ctx.config.tracking.googleTagId} privacyHref={ctx.href('/privacidade')} />
       {wa && <a className="whatsapp-float" href={wa} target="_blank" rel="noreferrer" aria-label="Falar pelo WhatsApp" title="Falar pelo WhatsApp"><MessageCircle size={24} aria-hidden="true" /></a>}
     </div>

@@ -213,6 +213,7 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
       let created = 0
       let updated = 0
       const revived: Array<{ id: string; since: Date }> = []
+      const stockTouched: string[] = []
       for (const item of plan.create) {
         const v = await prisma.vehicle.create({
           data: {
@@ -252,6 +253,7 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
           data: { ...data, ...(locked ? {} : { mainPhotoUrl }), ...reservedSync, ...reviveData },
         })
         delete state.removed[vehicleId]
+        if ('stockStatus' in reservedSync) stockTouched.push(vehicleId)
         if (revive) revived.push({ id: vehicleId, since: cur.exitDate ?? new Date(0) })
         if (!locked && !samePhotos(cur?.photos.map((p) => p.url) ?? [], realPhotoUrls(item.photos))) await writePhotos(vehicleId, item.photos)
         await upsertListing(src.tenantId, vehicleId, item)
@@ -263,7 +265,10 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
       if (plan.remove.length) {
         await prisma.vehicle.updateMany({ where: { id: { in: plan.remove }, tenantId: src.tenantId }, data: { active: false, exitDate: new Date() } })
         for (const id of plan.remove) state.removed[id] = true
+        stockTouched.push(...plan.remove)
       }
+      // Reservado/retirado pelo feed: pausa/retira os anúncios na hora (antes só na reconciliação).
+      if (stockTouched.length) await import('@/lib/publications/service').then((m) => m.notifyStockChanged(src.tenantId, stockTouched)).catch(() => {})
       // Saiu do feed e voltou: os anúncios retirados pela saída voltam ao ar (site incluso).
       if (revived.length) await import('@/lib/publications/service').then((m) => m.resumeAfterRestock(src.tenantId, revived)).catch((e) => console.error('[feed-import] reativar anúncios', e instanceof Error ? e.message : e))
       result = { ...base, ok: true, feed: items.length, created, updated, removed: plan.remove.length, aborted: null, ...enrichInfo }

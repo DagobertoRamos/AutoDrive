@@ -19,7 +19,7 @@ import { Prisma } from '@prisma/client'
 import { after } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { decrypt, encrypt } from '@/lib/crypto'
-import { channelSpec, isPublishable, type ChannelSpec } from './channels'
+import { channelSpec, isPublishable, needsHomologation, type ChannelSpec } from './channels'
 import { buildPayload, fuelLabel, gearLabel, payloadHash, shortRef, type ContentSource, type ListingPayload, type VehicleFacts } from './content-core'
 import { priorityOf, statusWhileQueued, type DesiredState, type JobOp, type PubStatus } from './states'
 import { isPublishableStock, saleAction, type SaleReason } from './sale-rules-core'
@@ -287,6 +287,7 @@ export async function createPublications(tenantId: string, targets: TargetInput[
     const spec = conn ? channelSpec(conn.channel) : undefined
     if (!conn || !spec) { results.push({ ...base, status: 'ERRO', message: 'Conta de destino não encontrada nesta loja.' }); continue }
     if (!isPublishable(spec) && spec.mechanism !== 'MANUAL') { results.push({ ...base, status: 'BLOQUEADO', message: `${spec.name} ainda não tem envio automático (${spec.devStatus.toLowerCase().replace(/_/g, ' ')}).` }); continue }
+    if (opts.mode !== 'RASCUNHO' && needsHomologation(spec, conn.environment)) { results.push({ ...base, status: 'BLOQUEADO', message: `${spec.name} está em homologação: a publicação real é liberada após a homologação com o portal.` }); continue }
     const pv = preview.find((p) => p.vehicleId === t.vehicleId && p.connectionId === t.connectionId)
     if (!pv) { results.push({ ...base, status: 'ERRO', message: 'Veículo não encontrado nesta loja.' }); continue }
     const blocked = pv.blocked && opts.mode !== 'RASCUNHO'

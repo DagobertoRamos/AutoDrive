@@ -12,6 +12,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
 import { loadChannelLog, loadChannels, saveChannels } from '@/lib/crm/channels'
 import { CHANNEL_CATALOG, CHANNEL_GROUP_LABEL } from '@/lib/crm/channels-core'
+import { inboundEmailDomain } from '@/lib/crm/email-intake'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,7 +31,7 @@ export async function GET(req: Request) {
   const [channels, log] = await Promise.all([loadChannels(g.tenantId), loadChannelLog(g.tenantId)])
   return NextResponse.json({
     success: true,
-    data: { channels, log: log.slice(0, 150), catalog: CHANNEL_CATALOG, groups: CHANNEL_GROUP_LABEL, baseUrl: `${new URL(req.url).origin}/api/integrations/leads/` },
+    data: { channels, log: log.slice(0, 150), catalog: CHANNEL_CATALOG, groups: CHANNEL_GROUP_LABEL, baseUrl: `${new URL(req.url).origin}/api/integrations/leads/`, emailDomain: inboundEmailDomain() },
   })
 }
 

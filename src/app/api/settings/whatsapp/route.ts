@@ -10,6 +10,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { listWhatsappProviders } from '@/lib/whatsapp/registry'
+import { encrypt } from '@/lib/crypto'
 
 const GROUP = 'whatsapp'
 
@@ -90,7 +91,9 @@ export async function POST(req: NextRequest) {
       if (SENSITIVE_KEYS.includes(field) && (body[field] === '••••••••' || body[field] === '')) continue
 
       const key   = tenantKey(tid, field)
-      const value = String(body[field] ?? '')
+      // Token/senha do provedor: gravado cifrado (nunca em texto aberto).
+      const raw   = String(body[field] ?? '')
+      const value = SENSITIVE_KEYS.includes(field) ? encrypt(raw) : raw
 
       const existing = await prisma.systemSetting.findFirst({ where: { key } })
 

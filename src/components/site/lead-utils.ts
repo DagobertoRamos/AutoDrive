@@ -20,13 +20,47 @@ export function todayIso() {
   return now.toISOString().slice(0, 10)
 }
 
+const CAMPAIGN_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'gclid', 'gbraid', 'wbraid', 'fbclid', 'ttclid', 'msclkid'] as const
+const FIRST_KEY = 'ad_first_touch'
+const LAST_KEY = 'ad_last_touch'
+const camel = (k: string) => k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())
+
+function readStore(store: 'local' | 'session', key: string): Record<string, string> | null {
+  try {
+    const raw = (store === 'local' ? window.localStorage : window.sessionStorage).getItem(key)
+    return raw ? JSON.parse(raw) as Record<string, string> : null
+  } catch { return null }
+}
+
+/**
+ * Guarda a campanha da página de entrada (só parâmetros de campanha, nada do
+ * cliente): a primeira fica no navegador (primeiro toque), a da visita atual
+ * na sessão (último toque). Chamado em toda página do site.
+ */
+export function rememberCampaign() {
+  try {
+    const url = new URL(window.location.href)
+    const params: Record<string, string> = {}
+    for (const k of CAMPAIGN_KEYS) { const v = url.searchParams.get(k); if (v) params[camel(k)] = v.slice(0, 300) }
+    const external = document.referrer && !document.referrer.startsWith(window.location.origin) ? document.referrer.slice(0, 300) : ''
+    if (!Object.keys(params).length && !external) return
+    const touch = { ...params, landingPage: `${url.origin}${url.pathname}`.slice(0, 300), ...(external ? { referrer: external } : {}), at: new Date().toISOString() }
+    window.sessionStorage.setItem(LAST_KEY, JSON.stringify(touch))
+    if (!window.localStorage.getItem(FIRST_KEY)) window.localStorage.setItem(FIRST_KEY, JSON.stringify(touch))
+  } catch { /* navegador sem armazenamento: segue sem atribuição */ }
+}
+
 function tracking() {
   const url = new URL(window.location.href)
+  const last = readStore('session', LAST_KEY) ?? {}
+  const first = readStore('local', FIRST_KEY)
+  const pick = (k: string) => url.searchParams.get(k) ?? last[camel(k)] ?? ''
   return {
     pageUrl: url.href,
-    utmSource: url.searchParams.get('utm_source') ?? '',
-    utmMedium: url.searchParams.get('utm_medium') ?? '',
-    utmCampaign: url.searchParams.get('utm_campaign') ?? '',
+    ...Object.fromEntries(CAMPAIGN_KEYS.map((k) => [camel(k), pick(k)])),
+    landingPage: last.landingPage ?? '',
+    referrer: last.referrer ?? '',
+    firstTouch: first ? JSON.stringify(first).slice(0, 500) : '',
   }
 }
 

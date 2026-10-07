@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import type { SessionUser } from '@/lib/auth-guards'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
+import { CHANNEL_SOURCES } from './channels-core'
 
 export const CRM_STAGE_OPTIONS = [
   { value: 'NEW', label: 'Novo' },
@@ -52,6 +53,8 @@ export function crmSourceLabel(value: string | null | undefined): string {
     FILA_ATENDIMENTO: 'Fila de atendimento',
     CRM_MANUAL: 'CRM manual',
     CLIENTE_NA_LOJA: 'Cliente na loja',
+    SITE: 'Site',
+    ...Object.fromEntries(CHANNEL_SOURCES.map((s) => [s.code, s.label])),
   }
   return labels[source] ?? value ?? 'Sem origem'
 }
