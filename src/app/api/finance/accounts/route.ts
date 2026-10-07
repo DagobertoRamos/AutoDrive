@@ -3,7 +3,7 @@
 //   GET  : finance         → { data: Conta[] (com saldo atual), units, totals }
 //   POST : finance.manage
 // Saldo atual = saldo inicial + realizados (RECEBIDO − PAGO) desde a data do
-// saldo inicial (mesma regra do razão — ledger.ts).
+// saldo inicial (mesma regra do razão — ledger.ts), somado no banco.
 // =============================================================================
 
 import { NextResponse } from 'next/server'
@@ -14,8 +14,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { financeCan, financeGuard } from '@/lib/finance/access'
 import { tenantRefError } from '@/lib/finance/tenant-refs'
-import { balancesByAccount } from '@/lib/finance/ledger'
-import { loadRealized } from '@/lib/finance/ledger-server'
+import { accountBalancesSql } from '@/lib/finance/ledger-server'
 import { accountSchema, accountData } from './schema'
 
 export async function GET(req: Request) {
@@ -27,13 +26,12 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
     const onlyActive = searchParams.get('active') === 'true'
-    const [rows, units, realized] = await Promise.all([
+    // Saldos somados no banco (não carrega o histórico); sem "ver saldos", nem consulta.
+    const [rows, units, byAccount] = await Promise.all([
       prisma.financialAccount.findMany({ where: { tenantId, ...(onlyActive ? { active: true } : {}) }, orderBy: [{ active: 'desc' }, { name: 'asc' }] }),
       prisma.unit.findMany({ where: { tenantId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-      loadRealized(tenantId, { accountId: { not: null } }),
+      canBalances ? accountBalancesSql(tenantId) : Promise.resolve(new Map<string, number>()),
     ])
-    const ledgerAccounts = rows.map((a) => ({ id: a.id, name: a.name, openingBalance: Number(a.openingBalance ?? 0), openingDate: a.openingDate, includeInTotal: a.includeInTotal, active: a.active }))
-    const { byAccount } = balancesByAccount(realized, ledgerAccounts)
     const unitName = new Map(units.map((u) => [u.id, u.name]))
     const data = rows.map((a) => {
       const opening = Number(a.openingBalance ?? 0)

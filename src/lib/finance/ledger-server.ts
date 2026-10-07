@@ -3,7 +3,7 @@
 // /api/finance/center/{overview,statement,cashflow}. Sempre por loja.
 // =============================================================================
 
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import type { LedgerAccount, LedgerEntry, LedgerStatus, LedgerType } from './ledger'
 
@@ -52,4 +52,25 @@ export async function loadPending(tenantId: string, extra: Prisma.FinancialEntry
     select: ENTRY_SELECT,
   })
   return rows.map(toEntry)
+}
+
+/**
+ * Saldo atual de cada conta direto no banco (soma agregada; não carrega os
+ * lançamentos). Mesma regra de ledger.balanceAsOf: realizados (PAGO/RECEBIDO)
+ * contam a partir do dia do saldo inicial (data SP; sem data de pagamento, o
+ * vencimento). Retorna centavos exatos via numeric do Postgres.
+ */
+export async function accountBalancesSql(tenantId: string): Promise<Map<string, number>> {
+  const rows = await prisma.$queryRaw<{ accountId: string; opening: Prisma.Decimal | null; movement: Prisma.Decimal | null }[]>(Prisma.sql`
+    SELECT a.id AS "accountId", a."openingBalance" AS opening,
+      COALESCE(SUM(CASE WHEN e.type = 'RECEITA' THEN e.amount ELSE -e.amount END), 0) AS movement
+    FROM financial_accounts a
+    LEFT JOIN financial_entries e
+      ON e."accountId" = a.id AND e."tenantId" = ${tenantId} AND e.status IN ('PAGO', 'RECEBIDO')
+     AND (a."openingDate" IS NULL OR COALESCE(e."paidDate", e."dueDate") IS NULL
+          OR (COALESCE(e."paidDate", e."dueDate") AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date
+             >= (a."openingDate" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date)
+    WHERE a."tenantId" = ${tenantId}
+    GROUP BY a.id, a."openingBalance"`)
+  return new Map(rows.map((r) => [r.accountId, Math.round((Number(r.opening ?? 0) + Number(r.movement ?? 0)) * 100) / 100]))
 }
