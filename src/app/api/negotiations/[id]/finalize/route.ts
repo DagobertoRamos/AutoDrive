@@ -17,6 +17,7 @@ import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { notifyStockChanged } from '@/lib/publications/service'
 import { resolveNegotiationGate } from '@/lib/stock/intake'
 import { generateOnFinalize } from '@/lib/negotiation/contracts/generate'
+import { runTracked } from '@/lib/finance/integration-retry'
 
 export const dynamic = 'force-dynamic'
 
@@ -89,13 +90,16 @@ export async function POST(
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
-      const d = await tx.deal.update({
-        where: { id: params.id },
+      // Trava: só finaliza se o status ainda é o que foi validado (dois cliques/abas).
+      const locked = await tx.deal.updateMany({
+        where: { id: params.id, status: deal.status },
         data: {
           status:      'FINALIZADA',
           finalizedAt: new Date(),
         },
       })
+      if (locked.count !== 1) throw new Error('DEAL_STATUS_CHANGED')
+      const d = await tx.deal.findUniqueOrThrow({ where: { id: params.id } })
 
       // Marcar veículo vendido como VENDIDO no estoque
       for (const dv of deal.vehicles) {
@@ -176,40 +180,35 @@ export async function POST(
       .catch((e) => console.error('[esteira] portão de negociação', e))
 
     // Gera comissões automaticamente (não bloqueia o close em caso de falha)
+    // Falha aqui não desfaz a venda: fica registrada e o reprocessamento diário refaz.
+    const track = { tenantId: deal.tenantId ?? null, entity: 'Deal', entityId: params.id, userId: session.user.id }
     let commissionResult: Awaited<ReturnType<typeof generateCommissionsForDeal>> | null = null
-    try {
-      commissionResult = await generateCommissionsForDeal({
-        dealId:      params.id,
-        tenantId:    deal.tenantId ?? null,
-        triggeredBy: session.user.id,
-      })
-    } catch (err) {
-      console.error('[finalize] commission generation failed', err)
-    }
-
-    // Sincroniza o Financeiro (RECEITA da venda + DESPESA das comissões geradas).
-    // Idempotente; não bloqueia a finalização em caso de falha.
-    try {
-      await syncTenantFinance(deal.tenantId ?? null)
-    } catch (err) {
-      console.error('[finalize] finance sync failed', err)
-    }
+    const failed = [
+      await runTracked('finalize:comissoes', track, async () => {
+        commissionResult = await generateCommissionsForDeal({ dealId: params.id, tenantId: deal.tenantId ?? null, triggeredBy: session.user.id })
+      }),
+      // Financeiro: receita da venda + despesas das comissões geradas (idempotente).
+      await runTracked('finalize:financeiro', track, () => syncTenantFinance(deal.tenantId ?? null)),
+    ].filter(Boolean)
 
     // Contrato de compra e venda (e termo de intermediação, se a loja intermedeia)
     // gerado com os dados da venda — aparece na aba Contratos. Não bloqueia.
     await generateOnFinalize(params.id, session.user.id)
 
+    const cr = commissionResult as Awaited<ReturnType<typeof generateCommissionsForDeal>> | null
     return NextResponse.json({
       data: updated,
-      commissionResult: commissionResult
+      ...(failed.length ? { warning: 'Venda finalizada. Comissões/financeiro serão reprocessados automaticamente.' } : {}),
+      commissionResult: cr
         ? {
-            created:   commissionResult.created,
-            matched:   commissionResult.matched,
-            unmatched: commissionResult.unmatched,
+            created:   cr.created,
+            matched:   cr.matched,
+            unmatched: cr.unmatched,
           }
         : null,
     })
   } catch (err) {
+    if (err instanceof Error && err.message === 'DEAL_STATUS_CHANGED') return NextResponse.json({ error: 'A negociação mudou enquanto finalizava. Atualize a tela.' }, { status: 409 })
     return handlePrismaError(err)
   }
 }

@@ -5,6 +5,7 @@
 //   • financiamentos vendidos aguardando o banco há mais de 7 dias;
 //   • possíveis lançamentos duplicados (mesmo tipo, valor, vencimento e
 //     contraparte, criados nas últimas 24h).
+// Antes, reprocessa as integrações que falharam (integration-retry.healTenant).
 // Uma vez por dia por loja (SystemSetting `finance:alerts:last:<tenantId>`).
 // =============================================================================
 
@@ -13,6 +14,7 @@ import { notifyMany } from '@/services/notification.service'
 import { hasFinanceAccess } from './access'
 import { COMMISSION_ELIGIBLE_DEAL_STATUSES } from '@/lib/commission/status'
 import { loadTracks } from './fi-contract-track'
+import { healTenant } from './integration-retry'
 
 const spYmd = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(d)
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -85,6 +87,8 @@ export async function runFinanceAlerts(now = new Date()): Promise<{ tenants: num
       if (last?.value === today) continue
       const hasFinance = await prisma.financialEntry.count({ where: { tenantId: t.id }, take: 1 })
       if (!hasFinance) continue
+      // Reprocessa o que falhou depois de gravar (comissões, lançamentos, compra do carro).
+      await healTenant(t.id).catch((e) => console.error('[finance-alerts] reprocessamento', t.id, e))
       const msgs = messages(await computeAlerts(t.id, now))
       await prisma.systemSetting.upsert({ where: { key: LAST_KEY(t.id) }, create: { tenantId: t.id, key: LAST_KEY(t.id), value: today, group: 'finance' }, update: { value: today } })
       if (!msgs.length) continue

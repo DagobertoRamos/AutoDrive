@@ -1206,7 +1206,7 @@ export default function NegociacaoDetailPage() {
       // Mensagens específicas por ação
       const okMsg =
         action === 'finalize'
-          ? (data?.commissionResult
+          ? data?.warning ?? (data?.commissionResult
               ? `Negociação finalizada. Comissões geradas: ${data.commissionResult.created}.`
               : 'Negociação finalizada com sucesso.')
           : 'Ação realizada com sucesso!'

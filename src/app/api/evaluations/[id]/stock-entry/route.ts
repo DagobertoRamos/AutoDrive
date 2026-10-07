@@ -15,6 +15,7 @@ import { canApproveServices, canViewEvaluation } from '@/lib/evaluation/permissi
 import { recordHistory } from '@/lib/evaluation/history'
 import { syncIntake } from '@/lib/stock/intake'
 import { importEvaluationServices } from '@/lib/stock/vehicle-services'
+import { runTracked } from '@/lib/finance/integration-retry'
 import { createAcquisitionEntry } from '@/lib/stock/vehicle-ledger'
 import { blockConfirmStockEntry, buildEntryPendencies, EVAL_IN_STOCK } from '@/lib/evaluation/stock-entry-core'
 import {
@@ -120,7 +121,7 @@ export async function POST(req: NextRequest, ctxArg: { params: Promise<{ id: str
 
     // Preparação: serviços da avaliação viram serviços do carro; compra/repasse vai ao Financeiro.
     await importEvaluationServices(vehicle.id, { id: session.user.id, name: session.user.name, role: session.user.role }).catch((e) => console.error('[entrada] serviços', e))
-    await createAcquisitionEntry(vehicle.id, session.user.id).catch((e) => console.error('[entrada] lançamento de compra', e))
+    await runTracked('entrada:compra', { tenantId: ev.tenantId ?? null, entity: 'Vehicle', entityId: vehicle.id, userId: session.user.id }, () => createAcquisitionEntry(vehicle.id, session.user.id))
     await syncIntake(vehicle.id, { id: session.user.id, name: session.user.name, role: session.user.role })
     await recordHistory({
       tenantId: ev.tenantId ?? '', evaluationId: id,
