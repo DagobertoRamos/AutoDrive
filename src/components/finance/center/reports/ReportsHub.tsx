@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Ban, BarChart3, Handshake, Building2, CalendarClock, CarFront, Landmark, PieChart, Scale, Target, Truck, Users, Wrench } from 'lucide-react'
+import { Ban, BarChart3, BookOpen, Handshake, Building2, CalendarClock, CarFront, Landmark, PieChart, Scale, Target, Truck, Users, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MonthInput, RegimeToggle, SelectInput, Toolbar, currentMonth, downloadCsv, monthLabel, monthsBack, qs, type Option } from './shared'
 import { ExpensesByCategoryReport, SuppliersReport } from './CategoryReports'
@@ -16,11 +16,12 @@ import { DealResultReport } from './DealResultReport'
 import { TransitReport } from './TransitReport'
 import { PartnersReport } from './PartnersReport'
 import { BetweenUnitsReport } from './BetweenUnitsReport'
+import { JournalReport } from './JournalReport'
 import type { CsvSpec } from './types'
 
 type View =
   | 'resultado-centros' | 'servicos' | 'receitas-fi' | 'despesas-categoria' | 'fornecedores' | 'lucratividade-veiculo' | 'lucratividade-vendedor'
-  | 'lucratividade-unidade' | 'comparativo-mensal' | 'orcado-realizado' | 'aging' | 'cancelamentos' | 'resultado-negociacao' | 'contratos-transito' | 'parceiros' | 'entre-unidades'
+  | 'lucratividade-unidade' | 'comparativo-mensal' | 'orcado-realizado' | 'aging' | 'cancelamentos' | 'resultado-negociacao' | 'contratos-transito' | 'parceiros' | 'entre-unidades' | 'diario'
 
 type Filter = 'range' | 'to' | 'regime' | 'costCenter' | 'unit' | 'seller'
 
@@ -40,6 +41,7 @@ const REPORTS: { key: View; label: string; icon: typeof PieChart; filters: Filte
   { key: 'contratos-transito', label: 'Contratos em trânsito', icon: Landmark, filters: ['unit', 'seller'] },
   { key: 'parceiros', label: 'Parceiros e consignados', icon: Users, filters: ['unit'] },
   { key: 'entre-unidades', label: 'Entre unidades', icon: Building2, filters: ['range'] },
+  { key: 'diario', label: 'Diário e balancete', icon: BookOpen, filters: ['range', 'unit'] },
   { key: 'cancelamentos', label: 'Cancelamentos e estornos', icon: Ban, filters: ['range', 'unit', 'seller'] },
 ]
 
@@ -143,6 +145,7 @@ export default function ReportsHub() {
       {view === 'contratos-transito' && <TransitReport key={view} {...props} />}
       {view === 'parceiros' && <PartnersReport key={view} {...props} />}
       {view === 'entre-unidades' && <BetweenUnitsReport key={view} {...props} />}
+      {view === 'diario' && <JournalReport key={view} {...props} />}
     </div>
   )
 }

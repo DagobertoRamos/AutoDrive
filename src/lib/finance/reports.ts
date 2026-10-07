@@ -29,7 +29,7 @@ import {
 export const REPORT_VIEWS = [
   'resultado-centros', 'servicos', 'receitas-fi',
   'despesas-categoria', 'centro-custo', 'fornecedores', 'lucratividade-veiculo', 'lucratividade-vendedor',
-  'lucratividade-unidade', 'comparativo-mensal', 'orcado-realizado', 'aging', 'cancelamentos', 'resultado-negociacao', 'contratos-transito', 'parceiros', 'entre-unidades',
+  'lucratividade-unidade', 'comparativo-mensal', 'orcado-realizado', 'aging', 'cancelamentos', 'resultado-negociacao', 'contratos-transito', 'parceiros', 'entre-unidades', 'diario',
 ] as const
 export type ReportView = (typeof REPORT_VIEWS)[number]
 export const isReportView = (v: string | null): v is ReportView => !!v && (REPORT_VIEWS as readonly string[]).includes(v)
@@ -87,6 +87,7 @@ export async function getReport(p: ReportParams) {
     case 'contratos-transito': return { ...base, ...(await contractsInTransit(p)) }
     case 'parceiros': return { ...base, ...(await partnersReport(p)) }
     case 'entre-unidades': return { ...base, ...(await betweenUnits(p)) }
+    case 'diario': return { ...base, ...(await journal(p, refs)) }
   }
 }
 
@@ -843,4 +844,54 @@ async function betweenUnits(p: ReportParams) {
     entries: cross.slice(0, 300).map((r) => ({ id: r.id, date: r.paidDate, type: r.type, amount: r2(Number(r.amount)), description: r.description, payer: name(r.account!.unitId!), owner: name(r.unitId!), account: r.account!.name })),
     totals: { count: cross.length, open: r2(balances.reduce((s, x) => s + x.amount, 0)) },
   }
+}
+
+// ── Diário contábil (regime de caixa) e balancete ────────────────────────────
+// Partidas dobradas dos movimentos realizados no período (data do pagamento):
+//   recebimento → D conta financeira / C receita (categoria)
+//   pagamento   → D despesa (categoria) / C conta financeira
+//   transferência → D conta destino / C conta origem
+// Sem categoria: a linha da DRE. Base para o contador; não substitui a
+// escrituração por competência.
+async function journal(p: ReportParams, refs: FinanceRefs) {
+  const { start, end } = monthBounds(p.periods[0], p.periods[p.periods.length - 1])
+  const rows = await prisma.financialEntry.findMany({
+    where: { tenantId: p.tenantId, status: { in: ['PAGO', 'RECEBIDO'] }, paidDate: { gte: start, lte: end }, ...(p.unitId ? { unitId: p.unitId } : {}) },
+    select: { id: true, type: true, amount: true, paidDate: true, description: true, documentNumber: true, categoryId: true, source: true, transferGroupId: true, employeeUserId: true, account: { select: { name: true } } },
+    orderBy: [{ paidDate: 'asc' }, { createdAt: 'asc' }],
+    take: 20000,
+  })
+  const bank = (r: (typeof rows)[number]) => r.account?.name ?? 'Caixa (sem conta)'
+  const result = (r: (typeof rows)[number]) => {
+    if (r.employeeUserId && !p.canSeePayroll) return 'Folha de pagamento'
+    if (r.categoryId) return refs.catName(r.categoryId)
+    const g = refs.groupOf({ type: r.type as 'RECEITA' | 'DESPESA', source: r.source, categoryId: null })
+    return DRE_GROUP_BY_KEY[g]?.label ?? (r.type === 'RECEITA' ? 'Outras receitas' : 'Outras despesas')
+  }
+  const lines: { date: Date | null; debit: string; credit: string; amount: number; history: string; document: string | null }[] = []
+  const transfers = new Map<string, { date: Date | null; from?: string; to?: string; amount: number; history: string }>()
+  for (const r of rows) {
+    const amount = r2(Number(r.amount))
+    if (!(amount > 0)) continue
+    if (r.transferGroupId) {
+      const t = transfers.get(r.transferGroupId) ?? { date: r.paidDate, amount, history: r.description }
+      if (r.type === 'DESPESA') t.from = bank(r); else t.to = bank(r)
+      transfers.set(r.transferGroupId, t)
+      continue
+    }
+    const history = r.employeeUserId && !p.canSeePayroll ? PAYROLL_LABEL : r.description
+    lines.push(r.type === 'RECEITA'
+      ? { date: r.paidDate, debit: bank(r), credit: result(r), amount, history, document: r.documentNumber }
+      : { date: r.paidDate, debit: result(r), credit: bank(r), amount, history, document: r.documentNumber })
+  }
+  for (const t of transfers.values()) if (t.from && t.to) lines.push({ date: t.date, debit: t.to, credit: t.from, amount: t.amount, history: t.history, document: null })
+  lines.sort((a, b) => +(a.date ?? 0) - +(b.date ?? 0))
+  const bal = new Map<string, { debit: number; credit: number }>()
+  for (const l of lines) {
+    const d = bal.get(l.debit) ?? { debit: 0, credit: 0 }; d.debit = r2(d.debit + l.amount); bal.set(l.debit, d)
+    const c = bal.get(l.credit) ?? { debit: 0, credit: 0 }; c.credit = r2(c.credit + l.amount); bal.set(l.credit, c)
+  }
+  const trial = [...bal.entries()].map(([account, v]) => ({ account, ...v, balance: r2(v.debit - v.credit) })).sort((a, b) => a.account.localeCompare(b.account, 'pt-BR'))
+  const totalDebit = r2(trial.reduce((s, x) => s + x.debit, 0)), totalCredit = r2(trial.reduce((s, x) => s + x.credit, 0))
+  return { lines: lines.slice(0, 5000), count: lines.length, trial, totals: { debit: totalDebit, credit: totalCredit, balanced: Math.abs(totalDebit - totalCredit) < 0.01 } }
 }
