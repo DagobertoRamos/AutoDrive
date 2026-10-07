@@ -6,17 +6,17 @@
 // como "Folha de pagamento", a não ser para quem tem 'finance.payroll'.
 // =============================================================================
 
-import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { commissionEligibleDealWindowWhere } from '@/lib/commission/status'
 import { DRE_GROUP_BY_KEY } from './dre-core'
 import { parseAddOns, summarizeFiContract } from './fi-receipt-core'
-import { commissionRefOf } from './result-centers'
 import {
   FI_REVENUE_TYPES, SERVICE_KINDS, SERVICE_KIND_BY_KEY, aggregateByCenter, aggregateServiceLines,
   fiRevenueType, isChargedDocDebt, serviceKindOf, serviceProfit,
 } from './result-centers-core'
 import { loadDealRefundLines } from './deal-refunds'
+import { costOf, loadDealCommissions, type CostEntry, type DealCommission } from './deal-costs'
+import { dealResultsReport } from './deal-result'
 import { SALE_DEAL_TYPES, loadAllocated, loadFinanceRefs, monthBounds, type EntryFilters, type FinanceRefs } from './dre'
 import {
   AGING_BUCKETS, addMonths, agingBucket, agingSummary, aggregateProfit, budgetVsActual, buildCategoryTree, daysBetweenSP,
@@ -27,7 +27,7 @@ import {
 export const REPORT_VIEWS = [
   'resultado-centros', 'servicos', 'receitas-fi',
   'despesas-categoria', 'centro-custo', 'fornecedores', 'lucratividade-veiculo', 'lucratividade-vendedor',
-  'lucratividade-unidade', 'comparativo-mensal', 'orcado-realizado', 'aging', 'cancelamentos',
+  'lucratividade-unidade', 'comparativo-mensal', 'orcado-realizado', 'aging', 'cancelamentos', 'resultado-negociacao',
 ] as const
 export type ReportView = (typeof REPORT_VIEWS)[number]
 export const isReportView = (v: string | null): v is ReportView => !!v && (REPORT_VIEWS as readonly string[]).includes(v)
@@ -81,6 +81,7 @@ export async function getReport(p: ReportParams) {
     case 'orcado-realizado': return { ...base, regime: 'competencia' as Regime, ...(await budgetReport(p, refs)) }
     case 'aging': return { ...base, ...(await aging(p)) }
     case 'cancelamentos': return { ...base, ...(await cancellations(p)) }
+    case 'resultado-negociacao': return { ...base, ...(await dealResultsReport(p, refs)) }
   }
 }
 
@@ -182,7 +183,7 @@ async function centerDetail(p: ReportParams, refs: FinanceRefs, dre: AllocatedEn
 }
 
 // ── Serviços vendidos (cobrado × custo real × comissões) ────────────────────
-type CostStatus = 'PAGO' | 'PREVISTO' | 'CADASTRO' | 'SEM_CUSTO'
+type CostStatus = import('./deal-costs').CostStatus
 
 export interface ServiceSaleRow {
   id: string
@@ -207,32 +208,6 @@ export interface ServiceSaleRow {
   status: CostStatus
   /** Garantia de catálogo (WarrantySale): o preço não entra no saldo da negociação nem no rateio da DRE. */
   outsideBalance: boolean
-}
-
-interface DealCommission { ruleType: string; dealId: string | null; serviceId: string | null; warrantySaleId: string | null; value: number }
-
-/** Comissões não canceladas das negociações (ruleDetails.dealId). */
-async function loadDealCommissions(tenantId: string, dealIds: string[]): Promise<DealCommission[]> {
-  const out: DealCommission[] = []
-  for (let i = 0; i < dealIds.length; i += 2000) {
-    const chunk = dealIds.slice(i, i + 2000)
-    const rows = await prisma.$queryRaw<{ ruleType: string; commissionValue: unknown; ruleDetails: unknown }[]>(Prisma.sql`
-      SELECT "ruleType"::text AS "ruleType", "commissionValue", "ruleDetails"
-      FROM commission_calculations
-      WHERE "tenantId" = ${tenantId} AND status::text <> 'CANCELADO' AND ("ruleDetails"->>'dealId') IN (${Prisma.join(chunk)})`)
-    for (const r of rows) out.push({ ...commissionRefOf(r), value: Number(r.commissionValue ?? 0) })
-  }
-  return out
-}
-
-type CostEntry = { amount: number; status: string; supplier: string | null; items: { description: string; amount: number }[] }
-const costOf = (entries: CostEntry[], fallback: number) => {
-  if (!entries.length) return { cost: r2(fallback), status: (fallback > 0 ? 'CADASTRO' : 'SEM_CUSTO') as CostStatus, items: [] as { description: string; amount: number }[] }
-  return {
-    cost: r2(entries.reduce((s, e) => s + e.amount, 0)),
-    status: (entries.every((e) => e.status === 'PAGO') ? 'PAGO' : 'PREVISTO') as CostStatus,
-    items: entries.flatMap((e) => e.items),
-  }
 }
 
 /**

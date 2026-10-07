@@ -46,6 +46,7 @@ import FinancingPanel from './_components/FinancingPanel'
 import DealSummary from './_components/DealSummary'
 import CancelDealModal from '@/components/deals/CancelDealModal'
 import CancellationPanel from './_components/CancellationPanel'
+import DealResultCard from './_components/DealResultCard'
 import DealHistory, { useDealHistory } from './_components/DealHistory'
 import AttachmentUploader, { type Attachment } from './_components/AttachmentUploader'
 import ContractsTab from './_components/ContractsTab'
@@ -1541,6 +1542,7 @@ export default function NegociacaoDetailPage() {
           {/* ── Valores Detalhados (clean, read-only) ── */}
           {deal.status === 'CANCELADA' && <CancellationPanel dealId={deal.id} onToast={showToast} />}
           <DealValuesCard deal={deal} />
+          {deal.status !== 'CANCELADA' && <DealResultCard dealId={deal.id} version={(deal as { updatedAt?: string }).updatedAt} />}
 
           {/* Editor de pagamentos / débitos / troco / descontos — movido pra
               aba "Valores". Mantém o resumo limpo. Pra adicionar, use os

@@ -4,7 +4,7 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Ban, BarChart3, Building2, CalendarClock, CarFront, Landmark, PieChart, Scale, Target, Truck, Users, Wrench } from 'lucide-react'
+import { Ban, BarChart3, Handshake, Building2, CalendarClock, CarFront, Landmark, PieChart, Scale, Target, Truck, Users, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MonthInput, RegimeToggle, SelectInput, Toolbar, currentMonth, downloadCsv, monthLabel, monthsBack, qs, type Option } from './shared'
 import { ExpensesByCategoryReport, SuppliersReport } from './CategoryReports'
@@ -12,11 +12,12 @@ import { FiRevenueReport, ResultByCenterReport, ServicesSoldReport } from './Cen
 import { GroupProfitReport, VehicleProfitReport } from './ProfitReports'
 import { AgingReport, BudgetReport, MonthlyComparisonReport } from './PeriodReports'
 import { CancellationReport } from './CancellationReport'
+import { DealResultReport } from './DealResultReport'
 import type { CsvSpec } from './types'
 
 type View =
   | 'resultado-centros' | 'servicos' | 'receitas-fi' | 'despesas-categoria' | 'fornecedores' | 'lucratividade-veiculo' | 'lucratividade-vendedor'
-  | 'lucratividade-unidade' | 'comparativo-mensal' | 'orcado-realizado' | 'aging' | 'cancelamentos'
+  | 'lucratividade-unidade' | 'comparativo-mensal' | 'orcado-realizado' | 'aging' | 'cancelamentos' | 'resultado-negociacao'
 
 type Filter = 'range' | 'to' | 'regime' | 'costCenter' | 'unit' | 'seller'
 
@@ -26,6 +27,7 @@ const REPORTS: { key: View; label: string; icon: typeof PieChart; filters: Filte
   { key: 'receitas-fi', label: 'Receitas de F&I', icon: Landmark, filters: ['range', 'regime', 'unit', 'seller'] },
   { key: 'despesas-categoria', label: 'Despesas por categoria', icon: PieChart, filters: ['range', 'regime', 'costCenter', 'unit'] },
   { key: 'fornecedores', label: 'Fornecedores', icon: Truck, filters: ['range', 'regime', 'costCenter', 'unit'] },
+  { key: 'resultado-negociacao', label: 'Resultado por negociação', icon: Handshake, filters: ['range', 'unit', 'seller'] },
   { key: 'lucratividade-veiculo', label: 'Lucro por veículo', icon: CarFront, filters: ['range', 'unit', 'seller'] },
   { key: 'lucratividade-vendedor', label: 'Lucro por vendedor', icon: Users, filters: ['range', 'unit'] },
   { key: 'lucratividade-unidade', label: 'Lucro por unidade', icon: Building2, filters: ['range'] },
@@ -123,6 +125,7 @@ export default function ReportsHub() {
       {view === 'orcado-realizado' && <BudgetReport key={view} {...props} />}
       {view === 'aging' && <AgingReport key={view} {...props} />}
       {view === 'cancelamentos' && <CancellationReport key={view} {...props} />}
+      {view === 'resultado-negociacao' && <DealResultReport key={view} {...props} />}
     </div>
   )
 }
