@@ -7,6 +7,7 @@
 
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { userIdentityConflict } from '@/lib/users/unique'
 import {
   getSessionUser,
   unauthorizedResponse,
@@ -102,6 +103,11 @@ export async function PATCH(req: Request, ctxArg: { params: { id: string } | Pro
     // (manter o papel atual do alvo é permitido, ex.: salvar o próprio cadastro).
     if (derivedRole && derivedRole !== targetUser?.role && !canActOn(user.role, derivedRole)) {
       return forbiddenResponse('Você não pode atribuir cargo igual ou superior ao seu.')
+    }
+
+    if (email !== undefined && existing.userId) {
+      const conflict = await userIdentityConflict({ email }, existing.userId)
+      if (conflict) return NextResponse.json({ success: false, error: conflict }, { status: 409 })
     }
 
     const seller = await prisma.seller.update({

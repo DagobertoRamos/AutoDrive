@@ -10,6 +10,7 @@ import crypto from 'crypto'
 import { requireMaster, logMasterAction } from '@/lib/master-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { prisma } from '@/lib/prisma'
+import { userIdentityConflict } from '@/lib/users/unique'
 import bcrypt from 'bcryptjs'
 import { sendActivationEmail } from '@/lib/auth-mailer'
 
@@ -121,6 +122,9 @@ export async function POST(req: NextRequest) {
       }
       validatedPositionId = pos.id
     }
+
+    const conflict = await userIdentityConflict({ email })
+    if (conflict) return NextResponse.json({ success: false, error: conflict, field: 'email' }, { status: 409 })
 
     const passwordHash = await bcrypt.hash(password, 12)
 

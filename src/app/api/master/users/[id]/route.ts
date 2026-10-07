@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireMaster, logMasterAction } from '@/lib/master-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { prisma } from '@/lib/prisma'
+import { userIdentityConflict } from '@/lib/users/unique'
 import bcrypt from 'bcryptjs'
 
 // ── GET ───────────────────────────────────────────────────────────────────────
@@ -194,6 +195,9 @@ export async function PATCH(
         updateData.positionId = pos.id
       }
     }
+
+    const conflict = await userIdentityConflict({ email: updateData.email as string | undefined, cpf: updateData.cpf as string | null | undefined }, params.id)
+    if (conflict) return NextResponse.json({ success: false, error: conflict, field: /e-mail/.test(conflict) ? 'email' : 'cpf' }, { status: 409 })
 
     const updated = await prisma.user.update({
       where: { id: params.id },

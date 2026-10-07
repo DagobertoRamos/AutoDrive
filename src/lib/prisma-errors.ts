@@ -9,7 +9,7 @@ import { NextResponse } from 'next/server'
 // ── Mapa de código → mensagem amigável ────────────────────────────────────────
 
 const PRISMA_CODE_MAP: Record<string, { message: string; status: number }> = {
-  P2002: { message: 'Registro duplicado. Verifique os campos únicos (ex: CPF, CNPJ, slug).', status: 409 },
+  P2002: { message: 'Já existe um cadastro com esses dados.', status: 409 },
   P2003: { message: 'Referência inválida. O registro relacionado não existe (ex: unidade ou tenant incorreto).', status: 400 },
   P2004: { message: 'Operação violou uma restrição do banco de dados.', status: 400 },
   P2005: { message: 'Valor inválido para o tipo do campo.', status: 400 },
@@ -28,6 +28,30 @@ export interface ApiError {
   code?:   string  // Apenas em desenvolvimento
   field?:  string  // Nome da coluna/relação que falhou (P2002/P2003)
   hint?:   string  // Sugestão amigável de próxima ação
+}
+
+// ── P2002: diz QUAL campo repetiu (nunca chuta "CPF" se foi o e-mail) ─────────
+const UNIQUE_LABELS: Array<[RegExp, string]> = [
+  [/email/i, 'e-mail'], [/cpf/i, 'CPF'], [/cnpj/i, 'CNPJ'], [/document/i, 'CPF/CNPJ'],
+  [/plate|placa/i, 'placa'], [/chassi|vin/i, 'chassi'], [/renavam/i, 'Renavam'],
+  [/slug/i, 'endereço (slug)'], [/publicId/i, 'código público'], [/phone|whatsapp/i, 'telefone'],
+  [/code|codigo/i, 'código'], [/name|nome/i, 'nome'], [/key/i, 'chave'],
+]
+
+/** Campos do P2002 (meta.target: ["email"] | "User_email_key" | driver adapter). */
+export function uniqueFields(meta: unknown): string[] {
+  const m = (meta ?? {}) as Record<string, unknown>
+  const t = m.target ?? (m.driverAdapterError as { cause?: { constraint?: { fields?: unknown } } } | undefined)?.cause?.constraint?.fields
+  if (Array.isArray(t)) return t.map(String)
+  if (typeof t === 'string') return [t.replace(/_key$/, '').replace(/^[^_]+_/, '')]
+  return []
+}
+
+/** "Já existe outro cadastro com esse valor no campo e-mail." — genérica só se o banco não disser o campo. */
+export function duplicateMessage(fields: string[]): string {
+  const labels = [...new Set(fields.filter((f) => !/^(tenantId|unitId|id)$/i.test(f)).map((f) => UNIQUE_LABELS.find(([re]) => re.test(f))?.[1] ?? f))]
+  if (!labels.length) return 'Já existe um cadastro com esses dados.'
+  return `Já existe outro cadastro com esse valor no${labels.length === 1 ? ` campo ${labels[0]}` : `s campos ${labels.join(', ')}`}.`
 }
 
 // ── Mensagens específicas P2003 por campo conhecido ──────────────────────────
@@ -91,6 +115,14 @@ export function mapPrismaError(err: unknown): { body: ApiError; status: number }
           ...(isDev ? { code: err.code } : {}),
         },
         status: 400,
+      }
+    }
+
+    if (err.code === 'P2002') {
+      const fields = uniqueFields(err.meta)
+      return {
+        body: { success: false, error: duplicateMessage(fields), field: fields.join(', ') || undefined, ...(isDev ? { code: err.code } : {}) },
+        status: 409,
       }
     }
 

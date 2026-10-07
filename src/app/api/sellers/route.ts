@@ -13,6 +13,7 @@
 import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
+import { userIdentityConflict } from '@/lib/users/unique'
 import {
   getSessionUser,
   assertTenantId,
@@ -154,13 +155,8 @@ export async function POST(req: Request) {
 
     // ── Checa duplicidade de e-mail ──────────────────────────────────────────
     const emailNorm = String(email).toLowerCase().trim()
-    const existingUserByEmail = await prisma.user.findUnique({ where: { email: emailNorm } })
-    if (existingUserByEmail) {
-      return NextResponse.json(
-        { success: false, error: 'Já existe um usuário cadastrado com este e-mail.' },
-        { status: 409 },
-      )
-    }
+    const identityConflict = await userIdentityConflict({ email: emailNorm, cpf })
+    if (identityConflict) return NextResponse.json({ success: false, error: identityConflict }, { status: 409 })
 
     // ── Checa duplicidade de CPF (se informado) ──────────────────────────────
     const cpfDigits = cpf ? String(cpf).replace(/\D/g, '') : null
