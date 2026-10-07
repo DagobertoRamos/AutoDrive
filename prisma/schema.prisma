@@ -4186,6 +4186,54 @@ model FinancialAccount {
   @@map("financial_accounts")
 }
 
+/// Linha de extrato bancário importada (OFX/CSV) para conciliação. Nunca é apagada:
+/// conciliada aponta os lançamentos (1×1 ou 1×N); ignorada fica marcada.
+model BankStatementLine {
+  id              String    @id @default(cuid())
+  tenantId        String
+  accountId       String
+  importId        String
+  date            DateTime
+  /// + entrada, − saída
+  amount          Decimal   @db.Decimal(14, 2)
+  description     String
+  document        String?
+  /// Idempotência da importação (conta + data + valor + FITID/descrição).
+  fingerprint     String
+  status          String    @default("PENDENTE") // PENDENTE | CONCILIADO | IGNORADO
+  matchedEntryIds String[]  @default([])
+  matchedAt       DateTime?
+  matchedById     String?
+  createdById     String?
+  createdAt       DateTime  @default(now())
+
+  @@unique([tenantId, fingerprint])
+  @@index([tenantId, accountId, status])
+  @@index([tenantId, date])
+  @@map("bank_statement_lines")
+}
+
+/// Aprovação de pagamento por alçada (lib/finance/approvals).
+model FinancialApproval {
+  id            String    @id @default(cuid())
+  tenantId      String
+  entryId       String    @unique
+  amount        Decimal   @db.Decimal(14, 2)
+  /// Papéis que podem aprovar (faixa da alçada).
+  roles         String[]  @default([])
+  status        String    @default("PENDENTE") // PENDENTE | APROVADO | RECUSADO
+  requestedById String?
+  decidedById   String?
+  decidedByName String?
+  decidedAt     DateTime?
+  reason        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId, status])
+  @@map("financial_approvals")
+}
+
 model FinancialCategory {
   id        String             @id @default(cuid())
   tenantId  String?
