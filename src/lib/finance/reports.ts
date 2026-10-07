@@ -29,7 +29,7 @@ import {
 export const REPORT_VIEWS = [
   'resultado-centros', 'servicos', 'receitas-fi',
   'despesas-categoria', 'centro-custo', 'fornecedores', 'lucratividade-veiculo', 'lucratividade-vendedor',
-  'lucratividade-unidade', 'comparativo-mensal', 'orcado-realizado', 'aging', 'cancelamentos', 'resultado-negociacao', 'contratos-transito', 'parceiros',
+  'lucratividade-unidade', 'comparativo-mensal', 'orcado-realizado', 'aging', 'cancelamentos', 'resultado-negociacao', 'contratos-transito', 'parceiros', 'entre-unidades',
 ] as const
 export type ReportView = (typeof REPORT_VIEWS)[number]
 export const isReportView = (v: string | null): v is ReportView => !!v && (REPORT_VIEWS as readonly string[]).includes(v)
@@ -86,6 +86,7 @@ export async function getReport(p: ReportParams) {
     case 'resultado-negociacao': return { ...base, ...(await dealResultsReport(p, refs)) }
     case 'contratos-transito': return { ...base, ...(await contractsInTransit(p)) }
     case 'parceiros': return { ...base, ...(await partnersReport(p)) }
+    case 'entre-unidades': return { ...base, ...(await betweenUnits(p)) }
   }
 }
 
@@ -802,5 +803,44 @@ async function contractsInTransit(p: ReportParams) {
       late: list.filter((x) => x.late).length, lateAmount: r2(list.filter((x) => x.late).reduce((s, x) => s + x.amount, 0)),
       avgDays: list.length ? Math.round(list.reduce((s, x) => s + x.days, 0) / list.length) : 0,
     },
+  }
+}
+
+// ── Entre unidades (conta-corrente) ──────────────────────────────────────────
+// Despesa da unidade B paga pela conta da unidade A → B deve a A; receita de B
+// recebida na conta de A → A deve a B. Só realizados, sem transferências.
+async function betweenUnits(p: ReportParams) {
+  const { start, end } = monthBounds(p.periods[0], p.periods[p.periods.length - 1])
+  const rows = await prisma.financialEntry.findMany({
+    where: { tenantId: p.tenantId, status: { in: ['PAGO', 'RECEBIDO'] }, transferGroupId: null, unitId: { not: null }, account: { unitId: { not: null } }, paidDate: { gte: start, lte: end } },
+    select: { id: true, type: true, amount: true, paidDate: true, description: true, unitId: true, account: { select: { unitId: true, name: true } } },
+    orderBy: { paidDate: 'desc' }, take: 5000,
+  })
+  const cross = rows.filter((r) => r.account?.unitId && r.unitId && r.account.unitId !== r.unitId)
+  const units = new Map((await prisma.unit.findMany({ where: { tenantId: p.tenantId }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
+  // Saldo por par (ordem alfabética do id): positivo = "b" deve a "a".
+  const pairs = new Map<string, { a: string; b: string; aPaidForB: number; bPaidForA: number; aReceivedForB: number; bReceivedForA: number }>()
+  for (const r of cross) {
+    const payer = r.account!.unitId!, owner = r.unitId!
+    const [a, b] = payer < owner ? [payer, owner] : [owner, payer]
+    const k = `${a}|${b}`
+    const cur = pairs.get(k) ?? { a, b, aPaidForB: 0, bPaidForA: 0, aReceivedForB: 0, bReceivedForA: 0 }
+    const v = Number(r.amount)
+    if (r.type === 'DESPESA') { if (payer === a) cur.aPaidForB = r2(cur.aPaidForB + v); else cur.bPaidForA = r2(cur.bPaidForA + v) }
+    else { if (payer === a) cur.aReceivedForB = r2(cur.aReceivedForB + v); else cur.bReceivedForA = r2(cur.bReceivedForA + v) }
+    pairs.set(k, cur)
+  }
+  const name = (id: string) => units.get(id) ?? 'Unidade'
+  const balances = [...pairs.values()].map((x) => {
+    // b deve a a: o que a pagou por b + o que b recebeu de a − (o que b pagou por a + o que a recebeu de b)
+    const net = r2(x.aPaidForB + x.bReceivedForA - x.bPaidForA - x.aReceivedForB)
+    return net >= 0
+      ? { debtor: name(x.b), creditor: name(x.a), amount: net, paidFor: r2(x.aPaidForB), receivedFor: r2(x.aReceivedForB) }
+      : { debtor: name(x.a), creditor: name(x.b), amount: -net, paidFor: r2(x.bPaidForA), receivedFor: r2(x.bReceivedForA) }
+  }).filter((x) => x.amount > 0.009).sort((a, b) => b.amount - a.amount)
+  return {
+    balances,
+    entries: cross.slice(0, 300).map((r) => ({ id: r.id, date: r.paidDate, type: r.type, amount: r2(Number(r.amount)), description: r.description, payer: name(r.account!.unitId!), owner: name(r.unitId!), account: r.account!.name })),
+    totals: { count: cross.length, open: r2(balances.reduce((s, x) => s + x.amount, 0)) },
   }
 }

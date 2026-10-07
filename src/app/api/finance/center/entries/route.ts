@@ -207,7 +207,7 @@ const createSchema = z.object({
   amount: z.coerce.number().positive('Informe o valor.').max(100_000_000),
   dueDate: ymd,
   competenceDate: ymd.nullable().optional(),
-  accountId: optId, categoryId: optId, costCenterId: optId, supplierId: optId, vehicleId: optId, employeeUserId: optId, dealId: optId,
+  accountId: optId, categoryId: optId, costCenterId: optId, supplierId: optId, vehicleId: optId, employeeUserId: optId, dealId: optId, unitId: optId,
   counterparty: optText(160), documentNumber: optText(80), paymentMethod: optText(60), notes: optText(2000),
   installments: z.coerce.number().int().min(1).max(120).optional(),
   paid: z.object({ paidDate: ymd, accountId: optId }).nullable().optional(),
@@ -232,6 +232,14 @@ export async function POST(req: Request) {
     if (d.dealId && !deal) return bad('Negociação inválida.')
     const counterparty = d.counterparty || (await supplierName(d.supplierId)) || deal?.customer || null
     const vehicleId = d.vehicleId || deal?.vehicleId || null
+    // Unidade dona do lançamento (DRE por loja): informada → negociação → veículo → conta.
+    if (d.unitId && !(await prisma.unit.findFirst({ where: { id: d.unitId, tenantId }, select: { id: true } }))) return bad('Unidade inválida.')
+    const accId = d.paid?.accountId || d.accountId || null
+    const unitId = d.unitId
+      || (deal ? (await prisma.deal.findUnique({ where: { id: deal.id }, select: { unitId: true } }))?.unitId : null)
+      || (vehicleId ? (await prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { unitId: true } }))?.unitId : null)
+      || (accId ? (await prisma.financialAccount.findUnique({ where: { id: accId }, select: { unitId: true } }))?.unitId : null)
+      || null
     const n = d.installments ?? 1
     const plan = buildInstallmentPlan({ description: d.description, total: d.amount, count: n, firstDueDate: d.dueDate })
     const groupId = n > 1 ? randomUUID() : null
@@ -254,7 +262,7 @@ export async function POST(req: Request) {
       const competence = i === 0 && d.competenceDate ? d.competenceDate : p.dueDate
       return prisma.financialEntry.create({
         data: {
-          tenantId, type: d.type, status: paidNow ? settledStatus : 'PREVISTO',
+          tenantId, unitId, type: d.type, status: paidNow ? settledStatus : 'PREVISTO',
           description: p.description, amount: p.amount,
           dueDate: noonUtc(p.dueDate), competenceDate: noonUtc(competence),
           paidDate: paidNow ? noonUtc(d.paid!.paidDate) : null,
