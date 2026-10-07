@@ -2,20 +2,20 @@
 // Exclusão definitiva de usuário (Painel MASTER).
 // As referências são lidas do próprio banco (pg_constraint), então o purge
 // acompanha o schema sem lista manual:
-//   • FK opcional  → o registro fica e perde o vínculo (SET NULL)
-//     ex.: negociações em que ele era vendedor/gerente continuam na loja.
-//   • FK obrigatória → o registro depende do usuário e é apagado junto
-//     (recursivo: o que depende dele também), ex.: notificações, vendedor,
-//     pendências sob responsabilidade dele, ranking, extratos.
+// Se o usuário tem histórico na loja (auditoria, negociações, avaliações…),
+// ele é ARQUIVADO: nada perde o autor. Sem histórico, apaga de vez:
+//   • FK opcional  → SET NULL; FK obrigatória → apagado junto (recursivo).
 // Tudo numa transação: falhou um passo, nada é apagado.
 // =============================================================================
 
 import type { Prisma } from '@prisma/client'
+import { randomBytes } from 'crypto'
+import bcrypt from 'bcryptjs'
 
 type Tx = Prisma.TransactionClient
 
 interface FkRef { table: string; column: string; refColumn: string; notNull: boolean }
-export interface PurgeStep { table: string; action: 'delete' | 'unlink'; count: number }
+export interface PurgeStep { table: string; action: 'delete' | 'unlink' | 'keep'; count: number }
 
 const MAX_DEPTH = 6
 const q = (id: string) => `"${id.replace(/"/g, '""')}"`
@@ -73,11 +73,64 @@ async function walk(
   if (n) steps.set(table, { table, action: 'delete', count: (steps.get(table)?.count ?? 0) + n })
 }
 
-/** Prévia (apply=false) ou exclusão (apply=true) do usuário e do que depende dele. */
-export async function purgeUser(tx: Tx, userId: string, apply: boolean): Promise<PurgeStep[]> {
+// Dados só do acesso da pessoa (sem valor histórico): apagados na exclusão.
+// Todo o resto (auditoria, negociações, avaliações, comissões…) é histórico
+// da loja e precisa continuar no nome dela.
+const PERSONAL_TABLES = new Set([
+  'notifications', 'notification_deliveries', 'notification_preferences', 'mobile_devices',
+  'password_resets', 'api_tokens', 'user_modules',
+])
+
+/** Domínio dos e-mails de usuários arquivados (libera o e-mail original). */
+export const ARCHIVED_EMAIL_DOMAIN = '@removido.invalid'
+
+export interface PurgeResult { mode: 'delete' | 'archive'; steps: PurgeStep[] }
+
+/**
+ * Prévia (apply=false) ou exclusão (apply=true).
+ * • Sem histórico → apaga o usuário de vez (como antes).
+ * • Com histórico → ARQUIVA: o cadastro fica (nome preservado em logs,
+ *   negociações, avaliações…), mas perde o acesso — senha inutilizada,
+ *   e-mail/CPF/telefone liberados, status INATIVO, vendedor/gerente inativos.
+ *   Só os dados pessoais de acesso (notificações, dispositivos…) são apagados.
+ */
+export async function purgeUser(tx: Tx, userId: string, apply: boolean): Promise<PurgeResult> {
   const steps = new Map<string, PurgeStep>()
-  await walk(tx, 'users', `"id" = $1`, [userId], apply, steps, new Map(), 0)
-  return [...steps.values()].sort((a, b) => (a.action === b.action ? b.count - a.count : a.action === 'delete' ? -1 : 1))
+  await walk(tx, 'users', `"id" = $1`, [userId], false, steps, new Map(), 0)
+  const all = [...steps.values()]
+  const history = all.filter((s) => s.table !== 'users' && !PERSONAL_TABLES.has(s.table))
+
+  if (history.length === 0) {
+    if (apply) {
+      steps.clear()
+      await walk(tx, 'users', `"id" = $1`, [userId], true, steps, new Map(), 0)
+    }
+    return { mode: 'delete', steps: sortSteps([...steps.values()]) }
+  }
+
+  // Arquivar: apaga só os dados pessoais de acesso e mantém o resto ligado ao nome.
+  const personal = new Map<string, PurgeStep>()
+  const cache = new Map<string, FkRef[]>()
+  for (const ref of (await refsTo(tx, 'users', cache)).filter((r) => PERSONAL_TABLES.has(r.table))) {
+    await walk(tx, ref.table, `${q(ref.column)} = $1`, [userId], apply, personal, cache, 1)
+  }
+  if (apply) {
+    const hash = await bcrypt.hash(randomBytes(32).toString('hex'), 10)
+    await tx.$executeRawUnsafe(
+      `update "users" set "email" = $2, "cpf" = null, "phone" = null, "image" = null,
+              "passwordHash" = $3, "status" = 'INATIVO', "mustChangePassword" = false, "updatedAt" = now()
+        where "id" = $1`,
+      userId, `excluido.${userId}${ARCHIVED_EMAIL_DOMAIN}`, hash,
+    )
+    await tx.$executeRawUnsafe(`update "sellers" set "active" = false where "userId" = $1`, userId)
+    await tx.$executeRawUnsafe(`update "managers" set "active" = false where "userId" = $1`, userId)
+  }
+  const kept = history.map((s) => ({ ...s, action: 'keep' as const }))
+  return { mode: 'archive', steps: sortSteps([...personal.values(), ...kept]) }
+}
+
+function sortSteps(list: PurgeStep[]): PurgeStep[] {
+  return list.sort((a, b) => (a.action === b.action ? b.count - a.count : a.action === 'delete' ? -1 : 1))
 }
 
 // Nomes amigáveis para a prévia (tabela sem nome aqui aparece como está).

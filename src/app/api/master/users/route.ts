@@ -13,6 +13,7 @@ import { prisma } from '@/lib/prisma'
 import { userIdentityConflict } from '@/lib/users/unique'
 import bcrypt from 'bcryptjs'
 import { sendActivationEmail } from '@/lib/auth-mailer'
+import { ARCHIVED_EMAIL_DOMAIN } from '@/lib/master/purge-user'
 
 export async function GET(req: NextRequest) {
   const { error } = await requireMaster()
@@ -28,7 +29,8 @@ export async function GET(req: NextRequest) {
   const skip      = (page - 1) * limit
 
   try {
-    const where: Record<string, unknown> = {}
+    // Arquivados pela exclusão definitiva não aparecem (o histórico mantém o nome).
+    const where: Record<string, unknown> = { NOT: { email: { endsWith: ARCHIVED_EMAIL_DOMAIN } } }
     if (tenantId) where.tenantId = tenantId
     if (role)     where.role     = role
     if (status)   where.status   = status

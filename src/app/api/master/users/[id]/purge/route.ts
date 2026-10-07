@@ -1,6 +1,6 @@
 // =============================================================================
 // /api/master/users/[id]/purge — exclusão definitiva (hard delete) pelo MASTER.
-//   GET  → prévia: o que será apagado e o que só perde o vínculo
+//   GET  → prévia: o que será apagado e o que fica no nome do usuário
 //   POST → { confirmEmail } — apaga de vez, de qualquer loja (sem inativar antes)
 // Salvaguardas: só MASTER; não apaga a si mesmo nem o último MASTER ativo;
 // confirmação digitando o e-mail do usuário; AuditLog gravado antes.
@@ -40,8 +40,8 @@ export async function GET(_req: NextRequest, ctxArg: Ctx) {
   const r = await load(ctxArg)
   if ('error' in r) return r.error
   try {
-    const steps = await prisma.$transaction((tx) => purgeUser(tx, r.user.id, false), { timeout: 30_000 })
-    return NextResponse.json({ success: true, data: steps.map((s) => ({ ...s, label: label(s.table) })) })
+    const { mode, steps } = await prisma.$transaction((tx) => purgeUser(tx, r.user.id, false), { timeout: 30_000 })
+    return NextResponse.json({ success: true, mode, data: steps.map((s) => ({ ...s, label: label(s.table) })) })
   } catch (err) {
     return purgeError(err)
   }
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest, ctxArg: Ctx) {
     return NextResponse.json({ success: false, error: 'Digite o e-mail do usuário para confirmar.' }, { status: 400 })
   }
 
-  // Registra antes: depois o vínculo do usuário nos logs some.
+  // Registra antes (e-mail/CPF originais ficam no log; o cadastro pode ser arquivado).
   await logMasterAction(session, 'PURGE_USER', 'User', user.id, {
     tenantId: user.tenantId,
     beforeData: { email: user.email, role: user.role, name: user.name, status: user.status },
@@ -65,12 +65,15 @@ export async function POST(req: NextRequest, ctxArg: Ctx) {
   }).catch((e) => console.error('[purge] log falhou:', e))
 
   try {
-    const steps = await prisma.$transaction((tx) => purgeUser(tx, user.id, true), { timeout: 60_000 })
+    const { mode, steps } = await prisma.$transaction((tx) => purgeUser(tx, user.id, true), { timeout: 60_000 })
     const deleted = steps.filter((s) => s.action === 'delete').reduce((n, s) => n + s.count, 0)
     return NextResponse.json({
       success: true,
+      mode,
       data: steps.map((s) => ({ ...s, label: label(s.table) })),
-      message: `${user.name} (${user.email}) excluído definitivamente — ${deleted} registro(s) apagado(s).`,
+      message: mode === 'archive'
+        ? `${user.name} (${user.email}) excluído — acesso removido; o histórico continua no nome dele.`
+        : `${user.name} (${user.email}) excluído definitivamente — ${deleted} registro(s) apagado(s).`,
     })
   } catch (err) {
     console.error('[purge user]', err)

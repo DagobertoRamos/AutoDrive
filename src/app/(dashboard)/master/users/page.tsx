@@ -596,7 +596,7 @@ function DeleteUserModal({
 
 // ── PurgeUserModal — exclusão definitiva (qualquer loja) ────────────────────
 
-interface PurgeStep { table: string; label: string; action: 'delete' | 'unlink'; count: number }
+interface PurgeStep { table: string; label: string; action: 'delete' | 'unlink' | 'keep'; count: number }
 
 function PurgeUserModal({
   user, isSelf, onClose, onPurged,
@@ -640,7 +640,7 @@ function PurgeUserModal({
 
   const canConfirm = !isSelf && steps !== null && typed.trim().toLowerCase() === user.email.toLowerCase()
   const deletes = (steps ?? []).filter((s) => s.action === 'delete')
-  const unlinks = (steps ?? []).filter((s) => s.action === 'unlink')
+  const kept    = (steps ?? []).filter((s) => s.action !== 'delete')
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -677,10 +677,11 @@ function PurgeUserModal({
               {deletes.map((s) => <p key={s.table} className="flex justify-between text-gray-700"><span>{s.label}</span><span className="tabular-nums">{s.count}</span></p>)}
             </div>
           )}
-          {unlinks.length > 0 && (
-            <div className="rounded-lg border border-gray-200 p-3 text-xs">
-              <p className="mb-1 font-semibold text-gray-800">Fica na loja, sem o vínculo com o usuário</p>
-              {unlinks.map((s, i) => <p key={`${s.table}-${i}`} className="flex justify-between text-gray-600"><span>{s.label}</span><span className="tabular-nums">{s.count}</span></p>)}
+          {kept.length > 0 && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 text-xs">
+              <p className="mb-1 font-semibold text-emerald-800">Continua no nome de {user.name}</p>
+              <p className="mb-1.5 text-[11px] text-gray-500">Logs e registros da loja não perdem o autor. O cadastro fica arquivado, sem acesso, e o e-mail/CPF ficam livres.</p>
+              {kept.map((s, i) => <p key={`${s.table}-${i}`} className="flex justify-between text-gray-600"><span>{s.label}</span><span className="tabular-nums">{s.count}</span></p>)}
             </div>
           )}
 
