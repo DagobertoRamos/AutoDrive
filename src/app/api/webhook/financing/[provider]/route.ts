@@ -1,81 +1,110 @@
 // =============================================================================
-// /api/webhook/financing/[provider] — receptor de webhook de F&I (Fase 7b).
-// PÚBLICO (chamado por sistemas externos) — fica sob /api/webhook, que o
-// middleware deixa passar sem sessão. PROTEGIDO POR SEGREDO: exige
-// FINANCE_WEBHOOK_SECRET (header `x-webhook-secret` ou `?secret=`). Sem a env
-// definida, o endpoint fica DESLIGADO (503) — nunca um sink aberto de escrita.
-// Segredo inválido → 401 SEM gravar nada. Com segredo válido: registra o evento,
-// casa a submissão por externalId e atualiza o status (linha do tempo WEBHOOK).
-// NOTA: a verificação de assinatura OFICIAL (HMAC do provedor) substitui o
-// segredo compartilhado quando houver integração homologada. Sem RPA oculto.
+// /api/webhook/financing/[provider] — retorno assíncrono dos bancos (F&I Core).
+// PÚBLICO (sem sessão), protegido por:
+//   • assinatura HMAC-SHA256 do corpo bruto (header x-signature) com a chave da
+//     plataforma FINANCE_WEBHOOK_SECRET — ou o header legado x-webhook-secret.
+//     Segredo na URL (?secret=) NÃO é mais aceito (vaza em logs).
+//   • deduplicação: (provider, eventId) único — evento repetido responde 200 e
+//     não muda nada. Sem eventId, usa o hash do corpo.
+//   • escopo: a proposta é procurada só entre bancos ligados a ESTE canal; id
+//     externo ambíguo (mais de uma loja) não é aplicado.
+//   • máquina de estados: evento atrasado não faz a proposta regredir.
+// Sem FINANCE_WEBHOOK_SECRET o receptor fica desligado (503).
 // =============================================================================
 
 import { NextResponse } from 'next/server'
+import { createHash } from 'node:crypto'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { handlePrismaError } from '@/lib/prisma-errors'
 import { secretsMatch, extractWebhookFields, mapProviderStatus } from '@/lib/finance/webhook-service'
+import { getBankProvider } from '@/lib/finance/fi/gateway/registry'
+import type { WebhookEvent } from '@/lib/finance/fi/gateway/types'
+import { advancePostApproval, applyDecision, FiError } from '@/lib/finance/fi/orchestrator'
 
 type Ctx = { params: Promise<{ provider: string }> }
+const SYSTEM_ACTOR = { id: 'sistema', name: 'Banco (webhook)', role: 'MASTER' }
+
+function genericEvents(payload: unknown, raw: string, headers: Headers): WebhookEvent[] {
+  const { externalId, statusRaw, message } = extractWebhookFields(payload)
+  const p = (payload ?? {}) as Record<string, unknown>
+  const eventId = [p.eventId, p.event_id, p.idEvento, headers.get('x-event-id')].find((v) => typeof v === 'string' && v.trim()) as string | undefined
+  const status = mapProviderStatus(statusRaw)
+  return [{
+    eventId: eventId ?? `sha256:${createHash('sha256').update(raw).digest('hex')}`,
+    externalId,
+    decision: status ? { status, reason: message } : null,
+    raw: payload,
+  }]
+}
 
 export async function POST(req: Request, { params }: Ctx) {
-  const expected = process.env.FINANCE_WEBHOOK_SECRET
-  if (!expected || expected.trim().length < 8) {
-    return NextResponse.json({ success: false, error: 'Webhook desativado (FINANCE_WEBHOOK_SECRET não configurado).' }, { status: 503 })
+  const secret = process.env.FINANCE_WEBHOOK_SECRET
+  if (!secret || secret.trim().length < 16) {
+    return NextResponse.json({ success: false, error: 'Receptor desativado.' }, { status: 503 })
   }
+  const { provider: key } = await params
+  const provider = getBankProvider(key)
+  if (!provider) return NextResponse.json({ success: false, error: 'Canal desconhecido.' }, { status: 404 })
 
-  const { provider } = await params
-  const url = new URL(req.url)
-  const provided = req.headers.get('x-webhook-secret') ?? url.searchParams.get('secret')
-  if (!secretsMatch(provided, expected)) {
-    // Não grava nada para não virar sink de spam.
-    return NextResponse.json({ success: false, error: 'Não autorizado.' }, { status: 401 })
-  }
+  const raw = await req.text()
+  if (raw.length > 512_000) return NextResponse.json({ success: false, error: 'Payload grande demais.' }, { status: 413 })
+  const headers: Record<string, string> = {}
+  req.headers.forEach((v, k) => { headers[k.toLowerCase()] = v })
+  const signed = provider.verifyWebhook(raw, headers, secret)
+  const legacy = secretsMatch(req.headers.get('x-webhook-secret'), secret)
+  if (!signed && !legacy) return NextResponse.json({ success: false, error: 'Não autorizado.' }, { status: 401 })
 
   let payload: unknown
-  try { payload = await req.json() } catch { payload = null }
-  if (payload == null) {
-    return NextResponse.json({ success: false, error: 'Payload inválido.' }, { status: 400 })
-  }
+  try { payload = JSON.parse(raw) } catch { return NextResponse.json({ success: false, error: 'Payload inválido.' }, { status: 400 }) }
 
-  try {
-    const { externalId, statusRaw, message } = extractWebhookFields(payload)
-    const mapped = mapProviderStatus(statusRaw)
+  const parsed = provider.parseWebhook(payload)
+  const events = parsed.length ? parsed : genericEvents(payload, raw, req.headers)
+  const results: { eventId: string | null; processed: boolean; duplicate?: boolean; error?: string | null }[] = []
 
-    // Casa a submissão pelo externalId (provedores reais retornam um id).
-    const submission = externalId
-      ? await prisma.financeProposalSubmission.findFirst({ where: { externalId }, orderBy: { submittedAt: 'desc' } })
-      : null
-
-    let processed = false
-    let error: string | null = null
-    if (!externalId) error = 'Sem externalId no payload.'
-    else if (!submission) error = 'Nenhuma submissão com este externalId.'
-    else if (!mapped) error = `Status não reconhecido: ${statusRaw ?? '(vazio)'}.`
-
-    // Registra o evento bruto (sem segredo) para auditoria/depuração.
-    await prisma.financeWebhookEvent.create({
-      data: {
-        tenantId: submission?.tenantId ?? null, provider: provider || null, externalId: externalId ?? null,
-        signatureValid: true, payload: payload as never, processed: false, error,
-      },
-    })
-
-    // Aplica o status na submissão + linha do tempo.
-    if (submission && mapped) {
-      await prisma.financeProposalSubmission.update({ where: { id: submission.id }, data: { status: mapped } })
-      await prisma.financeProposalEvent.create({
-        data: { tenantId: submission.tenantId, proposalId: submission.proposalId, submissionId: submission.id, type: 'WEBHOOK', status: mapped, message, source: 'WEBHOOK' },
+  for (const ev of events.slice(0, 50)) {
+    const eventId = ev.eventId ?? `sha256:${createHash('sha256').update(JSON.stringify(ev.raw ?? null)).digest('hex')}`
+    // Proposta só entre os bancos que usam ESTE canal.
+    const matches = ev.externalId
+      ? await prisma.financeProposalSubmission.findMany({
+          where: { externalId: ev.externalId, bankId: { in: (await prisma.financeBank.findMany({ where: { adapterKey: provider.key }, select: { id: true } })).map((b) => b.id) } },
+          select: { id: true, tenantId: true, proposalId: true }, take: 2,
+        })
+      : []
+    const sub = matches.length === 1 ? matches[0] : null
+    let row: { id: string }
+    try {
+      row = await prisma.financeWebhookEvent.create({
+        data: {
+          provider: provider.key, eventId, externalId: ev.externalId, tenantId: sub?.tenantId ?? null, submissionId: sub?.id ?? null,
+          signatureValid: signed, payload: (ev.raw ?? payload) as Prisma.InputJsonValue, processed: false,
+        },
+        select: { id: true },
       })
-      if (mapped === 'APROVADA' && submission.proposalId) {
-        await prisma.financeProposal.update({ where: { id: submission.proposalId }, data: { status: 'APROVADA' } }).catch(() => {})
-      }
-      await prisma.financeWebhookEvent.updateMany({ where: { externalId, processed: false }, data: { processed: true } })
-      processed = true
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') { results.push({ eventId, processed: false, duplicate: true }); continue }
+      throw e
     }
-
-    // 200 sempre que autenticado, para o provedor não entrar em retry storm.
-    return NextResponse.json({ success: true, processed, status: mapped })
-  } catch (err) {
-    return handlePrismaError(err)
+    let error: string | null = null
+    if (!ev.externalId) error = 'Evento sem identificação da proposta.'
+    else if (matches.length > 1) error = 'Identificação ambígua: mais de uma proposta com este id externo.'
+    else if (!sub) error = 'Nenhuma proposta deste canal com este id externo.'
+    else {
+      try {
+        if (ev.decision) {
+          const r = await applyDecision(sub.id, ev.decision, { source: 'WEBHOOK' })
+          if (!r.applied && r.reason && r.reason !== 'Sem mudança.') error = `Ignorado: ${r.reason}`
+        }
+        if (ev.funding?.status === 'PAGO') {
+          await advancePostApproval(sub.proposalId, 'funding', { to: 'PAGO', amount: ev.funding.amount ?? null, date: ev.funding.paidAt ?? null, note: 'Informado pelo banco.' }, SYSTEM_ACTOR)
+        }
+      } catch (e) {
+        error = e instanceof FiError ? e.message : 'Falha ao aplicar o evento.'
+        if (!(e instanceof FiError)) console.error('[fi/webhook]', e instanceof Error ? e.message : e)
+      }
+    }
+    await prisma.financeWebhookEvent.update({ where: { id: row.id }, data: { processed: !error, processedAt: new Date(), error } })
+    results.push({ eventId, processed: !error, error })
   }
+  // 200 sempre que autenticado: o banco não entra em reenvio infinito; erros ficam nos Logs técnicos.
+  return NextResponse.json({ success: true, results })
 }

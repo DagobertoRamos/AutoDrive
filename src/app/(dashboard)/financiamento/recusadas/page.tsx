@@ -1,6 +1,6 @@
-'use client'
-import ProposalsManager from '@/components/financing/ProposalsManager'
+import { redirect } from 'next/navigation'
 
+// Mantido para links antigos: as fichas recusadas ficam no filtro da lista de Fichas.
 export default function RecusadasPage() {
-  return <ProposalsManager fixedStatus="RECUSADA" title="Fichas Recusadas" subtitle="recusadas" allowCreate={false} />
+  redirect('/financiamento/fichas?status=RECUSADA')
 }

@@ -60,3 +60,20 @@ export function decryptSecrets(blob: string | null | undefined): Record<string, 
   if (!blob) return {}
   try { return JSON.parse(decryptSecret(blob)) as Record<string, string> } catch { return {} }
 }
+
+export class SecretsDecryptError extends Error {
+  constructor() { super('Não foi possível ler a credencial salva (chave de criptografia trocada ou dado corrompido). Cadastre a credencial novamente.'); this.name = 'SecretsDecryptError' }
+}
+
+/** Como decryptSecrets, mas FALHA em vez de devolver {} — use onde perder o segredo seria silencioso. */
+export function decryptSecretsStrict(blob: string | null | undefined): Record<string, string> {
+  if (!blob) return {}
+  try {
+    const parsed = JSON.parse(decryptSecret(blob)) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new SecretsDecryptError()
+    return parsed as Record<string, string>
+  } catch (e) {
+    if (e instanceof SecretsDecryptError) throw e
+    throw new SecretsDecryptError()
+  }
+}

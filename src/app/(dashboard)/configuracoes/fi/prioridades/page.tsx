@@ -35,7 +35,7 @@ export default function FiPrioritiesPage() {
       setRows(json?.data ?? [])
     } catch { setRows([]) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (allowed) load() }, [allowed, load])
+  useEffect(() => { if (!allowed) return; const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [allowed, load])
 
   const move = (i: number, dir: -1 | 1) => {
     setRows((rs) => {

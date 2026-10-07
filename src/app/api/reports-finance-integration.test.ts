@@ -19,7 +19,7 @@ const { prismaMock, authMock } = vi.hoisted(() => {
       messageReturn: { count: fn() },
       notificationDelivery: { findMany: fn(), groupBy: fn() },
       auditLog: { findMany: fn(), groupBy: fn(), create: fn() },
-      financialEntry: { findMany: fn(), groupBy: fn(), aggregate: fn(), create: fn(), createMany: fn(), findUnique: fn(), update: fn(), updateMany: fn(), delete: fn(), deleteMany: fn() },
+      financialEntry: { findMany: fn(), findFirst: fn(), groupBy: fn(), aggregate: fn(), create: fn(), createMany: fn(), findUnique: fn(), update: fn(), updateMany: fn(), delete: fn(), deleteMany: fn() },
       financialAccount: { findMany: fn(), create: fn(), findUnique: fn(), findFirst: fn(), update: fn() },
       financialCategory: { findMany: fn(), findFirst: fn(), create: fn(), findUnique: fn(), update: fn(), count: fn() },
       seller: { findMany: fn(), findFirst: fn() },
@@ -27,6 +27,8 @@ const { prismaMock, authMock } = vi.hoisted(() => {
       user: { findMany: fn() },
       userModule: { findUnique: fn() },
       tenantModule: { findUnique: fn() },
+      systemSetting: { findFirst: fn(), findUnique: fn(), findMany: fn() },
+      $queryRaw: fn(),
     },
     authMock: vi.fn(),
   }
@@ -65,6 +67,14 @@ beforeEach(() => {
     if ('groupBy' in m) (m as { groupBy: ReturnType<typeof vi.fn> }).groupBy.mockResolvedValue([])
   }
   prismaMock.messageReturn.count.mockResolvedValue(0)
+  // Overrides de módulo por colaborador e período fechado do financeiro: nenhum.
+  prismaMock.userModule.findUnique.mockResolvedValue(null)
+  prismaMock.tenantModule.findUnique.mockResolvedValue(null)
+  prismaMock.systemSetting.findFirst.mockResolvedValue(null)
+  prismaMock.systemSetting.findUnique.mockResolvedValue(null)
+  prismaMock.systemSetting.findMany.mockResolvedValue([])
+  prismaMock.$queryRaw.mockResolvedValue([])
+  prismaMock.financialEntry.findFirst.mockResolvedValue(null)
   prismaMock.financialEntry.aggregate.mockResolvedValue({ _sum: { amount: null } })
   prismaMock.financialEntry.create.mockResolvedValue({ id: 'e1', amount: 100 })
   prismaMock.financialEntry.createMany.mockResolvedValue({ count: 0 })

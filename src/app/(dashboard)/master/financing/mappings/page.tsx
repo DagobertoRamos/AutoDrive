@@ -36,13 +36,14 @@ export default function MasterMappingsPage() {
       setSelected((cur) => cur || list[0]?.id || '')
     } catch { setProviders([]) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (isMaster) load() }, [isMaster, load])
+  useEffect(() => { if (!isMaster) return; const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [isMaster, load])
 
   // Carrega os pares quando muda o provedor selecionado.
   useEffect(() => {
     const p = providers.find((x) => x.id === selected)
     const map = p?.fieldMappings ?? {}
-    setPairs(Object.entries(map).map(([key, value]) => ({ key, value: String(value) })))
+    const t = setTimeout(() => setPairs(Object.entries(map).map(([key, value]) => ({ key, value: String(value) }))), 0)
+    return () => clearTimeout(t)
   }, [selected, providers])
 
   const setPair = (i: number, field: keyof Pair, v: string) => setPairs((ps) => ps.map((p, idx) => idx === i ? { ...p, [field]: v } : p))

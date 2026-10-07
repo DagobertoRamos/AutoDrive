@@ -4550,77 +4550,111 @@ enum ProponentOccupation {
 }
 
 enum FinanceProposalStatus {
-  SIMULACAO // simulação (ainda não enviada ao banco)
+  SIMULACAO // rascunho (ainda não enviada ao banco)
   ENVIADA // ficha passada/enviada ao banco
   APROVADA
   RECUSADA
   CANCELADA
+  // F&I Core — situação consolidada da ficha (a partir das tentativas por banco)
+  PREENCHENDO
+  EM_ANALISE
+  PRE_APROVADA
+  EXPIRADA
 }
 
 model FinanceProponent {
-  id                 String               @id @default(cuid())
-  tenantId           String?
+  id                   String               @id @default(cuid())
+  tenantId             String?
   // ── Dados pessoais (obrigatórios, exceto telefoneFixo) ──────────────────
-  nomeCompleto       String
-  dataNascimento     DateTime?
-  cpf                String?
-  rg                 String?
-  nomeMae            String?
-  nomePai            String?
-  email              String?
-  celular            String?
-  telefoneFixo       String?
+  nomeCompleto         String
+  dataNascimento       DateTime?
+  cpf                  String?
+  rg                   String?
+  nomeMae              String?
+  nomePai              String?
+  email                String?
+  celular              String?
+  telefoneFixo         String?
   // ── Endereço residencial ────────────────────────────────────────────────
-  cep                String?
-  logradouro         String?
-  bairro             String?
-  cidade             String?
-  estado             String?
-  numero             String?
-  complemento        String?
+  cep                  String?
+  logradouro           String?
+  bairro               String?
+  cidade               String?
+  estado               String?
+  numero               String?
+  complemento          String?
   // ── Ocupação / renda ─────────────────────────────────────────────────────
-  occupation         ProponentOccupation?
-  cargo              String? // autônomo: cargo
-  renda              Decimal?             @db.Decimal(14, 2)
-  outrasRendas       Json? // [{ descricao, valor }]
-  numeroBeneficio    String? // aposentado/pensionista
+  occupation           ProponentOccupation?
+  cargo                String? // autônomo: cargo
+  renda                Decimal?             @db.Decimal(14, 2)
+  outrasRendas         Json? // [{ descricao, valor }]
+  numeroBeneficio      String? // aposentado/pensionista
   // ── Dados da empresa (CLT/empresário/autônomo opcional) ──────────────────
-  empresaNome        String?
-  empresaCnpj        String?
-  empresaTelefone    String?
-  empresaCep         String?
-  empresaLogradouro  String?
-  empresaBairro      String?
-  empresaCidade      String?
-  empresaEstado      String?
-  empresaNumero      String?
-  empresaComplemento String?
+  empresaNome          String?
+  empresaCnpj          String?
+  empresaTelefone      String?
+  empresaCep           String?
+  empresaLogradouro    String?
+  empresaBairro        String?
+  empresaCidade        String?
+  empresaEstado        String?
+  empresaNumero        String?
+  empresaComplemento   String?
+  // ── F&I Core: ficha universal (PF/PJ) — informada uma vez, adaptada por banco ──
+  personType           String               @default("PF") // PF | PJ
+  personId             String? // cadastro único (Person), quando houver
+  customerId           String? // cliente da loja (Customer), quando houver
+  estadoCivil          String?
+  nacionalidade        String?
+  naturalidade         String?
+  rgOrgao              String?
+  cnh                  String?
+  profissao            String?
+  tipoResidencia       String? // PROPRIA | ALUGADA | FAMILIAR | FINANCIADA | OUTRA
+  tempoResidenciaMeses Int?
+  tempoEmpregoMeses    Int?
+  referencias          Json? // [{ nome, telefone, relacao }]
+  // PJ (a própria empresa como compradora)
+  cnpj                 String?
+  razaoSocial          String?
+  nomeFantasia         String?
+  atividade            String?
+  faturamentoMensal    Decimal?             @db.Decimal(14, 2)
+  dataFundacao         DateTime?
+  socios               Json? // [{ nome, cpf, participacao }]
+  representanteNome    String?
+  representanteCpf     String?
   // ── Meta ─────────────────────────────────────────────────────────────────
-  notes              String?
-  createdById        String?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  notes                String?
+  createdById          String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
   proposals   FinanceProposal[]
+  coProposals FinanceProposal[]         @relation("FinanceProposalCoBuyer")
   simulations FinanceSimulation[]
   consents    FinanceConsent[]
   documents   FinanceProposalDocument[]
 
   @@index([tenantId])
   @@index([cpf])
+  @@index([cnpj])
   @@index([nomeCompleto])
   @@map("finance_proponents")
 }
 
 model FinanceBank {
-  id        String   @id @default(cuid())
-  tenantId  String?
-  name      String
-  code      String? // código/identificador do banco
-  active    Boolean  @default(true)
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  tenantId   String?
+  name       String
+  code       String? // código/identificador do banco
+  active     Boolean  @default(true)
+  notes      String?
+  // F&I Core: qual conector do gateway atende este banco (bv, pan, santander,
+  // itau, safra, c6, bradesco, daycoval, agregador…). Nulo = acompanhamento manual.
+  adapterKey String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   proposals FinanceProposal[]
 
@@ -4629,29 +4663,57 @@ model FinanceBank {
 }
 
 model FinanceProposal {
-  id               String                @id @default(cuid())
-  tenantId         String?
-  proponentId      String
-  bankId           String?
-  sellerId         String?
-  dealId           String? // ligação opcional com a negociação (F&I)
+  id                   String                @id @default(cuid())
+  tenantId             String?
+  proponentId          String
+  bankId               String?
+  sellerId             String?
+  dealId               String? // ligação opcional com a negociação (F&I)
   // ── Dados da operação ────────────────────────────────────────────────────
-  vehicle          String?
-  amountRequested  Decimal?              @db.Decimal(14, 2)
-  downPayment      Decimal?              @db.Decimal(14, 2)
-  installments     Int?
-  status           FinanceProposalStatus @default(SIMULACAO)
+  vehicle              String?
+  amountRequested      Decimal?              @db.Decimal(14, 2)
+  downPayment          Decimal?              @db.Decimal(14, 2)
+  installments         Int?
+  status               FinanceProposalStatus @default(SIMULACAO)
   // ── Resultado / simulação ────────────────────────────────────────────────
-  simulationResult Json?
-  approvedValue    Decimal?              @db.Decimal(14, 2)
-  monthlyPayment   Decimal?              @db.Decimal(14, 2)
-  rejectionReason  String?
-  notes            String?
-  createdById      String?
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
+  simulationResult     Json?
+  approvedValue        Decimal?              @db.Decimal(14, 2)
+  monthlyPayment       Decimal?              @db.Decimal(14, 2)
+  rejectionReason      String?
+  notes                String?
+  createdById          String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  // ── F&I Core: ficha universal (CREDIT_APPLICATION) ───────────────────────
+  code                 String? // FI-2026-000381 (único por loja)
+  coProponentId        String? // co-comprador / avalista
+  customerId           String?
+  vehicleId            String?
+  leadId               String? // lead do CRM de origem
+  vehicleValue         Decimal?              @db.Decimal(14, 2)
+  origin               String?               @default("INTERNO") // INTERNO | SITE | CRM | NEGOCIACAO
+  originMeta           Json? // { page, campaign, utm_* , referrer }
+  revision             Int                   @default(1) // trava otimista (duas abas / dois usuários)
+  selectedSubmissionId String? // proposta escolhida para formalizar
+  // Pós-aprovação — formalização → contrato → gravame → pagamento do banco
+  formalizationStatus  String                @default("NAO_INICIADA") // NAO_INICIADA | EM_ANDAMENTO | AGUARDANDO_DOCUMENTOS | AGUARDANDO_ASSINATURA | ASSINADA | CONCLUIDA | COM_PENDENCIA
+  contractNumber       String?
+  contractSignedAt     DateTime?
+  lienStatus           String                @default("NAO_INICIADO") // NAO_INICIADO | SOLICITADO | REGISTRADO | COM_PENDENCIA | BAIXADO
+  lienRegisteredAt     DateTime?
+  fundingStatus        String                @default("NAO_ESPERADO") // NAO_ESPERADO | AGUARDANDO | ENVIADO_PAGAMENTO | COM_PENDENCIA | PAGO | PAGO_PARCIAL | BLOQUEADO
+  fundingExpectedAt    DateTime?
+  fundingRequestedAt   DateTime?
+  fundedAt             DateTime?
+  fundedAmount         Decimal?              @db.Decimal(14, 2)
+  dealPaymentId        String? // pagamento FINANCIAMENTO gerado na negociação
+  expiresAt            DateTime?
+  // Portal do cliente (link seguro): só o hash do token fica no banco
+  portalTokenHash      String?               @unique
+  portalTokenExpiresAt DateTime?
 
   proponent    FinanceProponent            @relation(fields: [proponentId], references: [id], onDelete: Cascade)
+  coProponent  FinanceProponent?           @relation("FinanceProposalCoBuyer", fields: [coProponentId], references: [id], onDelete: SetNull)
   bank         FinanceBank?                @relation(fields: [bankId], references: [id])
   deal         Deal?                       @relation("DealFinanceProposals", fields: [dealId], references: [id], onDelete: SetNull)
   submissions  FinanceProposalSubmission[]
@@ -4659,12 +4721,16 @@ model FinanceProposal {
   documents    FinanceProposalDocument[]
   productSales FinanceProductSale[]
 
+  @@unique([tenantId, code])
   @@index([tenantId])
   @@index([status])
   @@index([proponentId])
   @@index([bankId])
   @@index([sellerId])
   @@index([dealId])
+  @@index([tenantId, status, updatedAt])
+  @@index([tenantId, fundingStatus])
+  @@index([leadId])
   @@map("finance_proposals")
 }
 
@@ -4841,16 +4907,24 @@ model FinanceProductSale {
 }
 
 model FinanceConsent {
-  id          String           @id @default(cuid())
-  tenantId    String
-  proponentId String
-  type        String // TRATAMENTO_DADOS | ENVIO_BANCO
-  granted     Boolean          @default(false)
-  grantedAt   DateTime?
-  ip          String?
-  notes       String?
-  createdAt   DateTime         @default(now())
-  proponent   FinanceProponent @relation(fields: [proponentId], references: [id], onDelete: Cascade)
+  id             String           @id @default(cuid())
+  tenantId       String
+  proponentId    String
+  type           String // TRATAMENTO_DADOS | ENVIO_BANCO
+  granted        Boolean          @default(false)
+  grantedAt      DateTime?
+  ip             String?
+  notes          String?
+  // F&I Core / LGPD: registro do tratamento (não só consentimento)
+  proposalId     String?
+  purpose        String? // finalidade (ex.: análise de crédito pelos bancos selecionados)
+  legalBasis     String? // base legal configurada (ex.: PROCEDIMENTOS_PRELIMINARES_CONTRATO)
+  privacyVersion String? // versão do aviso de privacidade apresentado
+  origin         String? // SITE | PORTAL | INTERNO
+  userAgent      String?
+  sharedWith     Json? // instituições com quem os dados foram compartilhados
+  createdAt      DateTime         @default(now())
+  proponent      FinanceProponent @relation(fields: [proponentId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([proponentId])
@@ -4897,25 +4971,50 @@ model FinanceSimulationOption {
 }
 
 model FinanceProposalSubmission {
-  id              String                 @id @default(cuid())
-  tenantId        String
-  proposalId      String
-  bankId          String?
-  providerId      String?
-  environment     FinanceEnvironment     @default(HOMOLOGACAO)
-  externalId      String?
-  status          String                 @default("ENVIADA")
-  requestPayload  Json?
-  responsePayload Json?
-  submittedById   String?
-  submittedAt     DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  proposal        FinanceProposal        @relation(fields: [proposalId], references: [id], onDelete: Cascade)
-  events          FinanceProposalEvent[]
+  id                String                 @id @default(cuid())
+  tenantId          String
+  proposalId        String
+  bankId            String?
+  providerId        String?
+  environment       FinanceEnvironment     @default(HOMOLOGACAO)
+  externalId        String?
+  status            String                 @default("ENVIADA")
+  requestPayload    Json?
+  responsePayload   Json?
+  submittedById     String?
+  submittedAt       DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  // ── F&I Core: tentativa por banco (LENDER_ATTEMPT) ───────────────────────
+  idempotencyKey    String?                @unique // um clique = uma tentativa (duplo clique não duplica)
+  requestId         String? // id da requisição no banco/agregador, quando houver
+  mode              String                 @default("MANUAL") // API | MANUAL (banco ainda não integrado)
+  attemptVersion    Int                    @default(1) // versão da proposta para este banco (Ajustar proposta)
+  active            Boolean                @default(true) // false = substituída por versão mais nova
+  terms             Json? // condições pedidas: { vehicleValue, downPayment, amount, installments, products, coBuyer }
+  approvedAmount    Decimal?               @db.Decimal(14, 2)
+  offerDownPayment  Decimal?               @db.Decimal(14, 2)
+  offerInstallments Int?
+  installmentValue  Decimal?               @db.Decimal(14, 2)
+  rateMonthly       Decimal?               @db.Decimal(8, 4)
+  cetMonthly        Decimal?               @db.Decimal(8, 4)
+  cetYearly         Decimal?               @db.Decimal(8, 4)
+  totalAmount       Decimal?               @db.Decimal(14, 2)
+  tacValue          Decimal?               @db.Decimal(14, 2)
+  returnPercent     Decimal?               @db.Decimal(6, 2) // interno — retorno previsto para a loja
+  pendingItems      Json? // [{ key, label, kind: DOCUMENTO|CAMPO, done }]
+  statusReason      String?
+  respondedAt       DateTime?
+  lastCheckedAt     DateTime?
+  expiresAt         DateTime?
+  errorMessage      String?
+  proposal          FinanceProposal        @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  events            FinanceProposalEvent[]
 
   @@index([tenantId])
   @@index([proposalId])
   @@index([externalId])
+  @@index([providerId, externalId])
+  @@index([tenantId, status])
   @@map("finance_proposal_submissions")
 }
 
@@ -4927,9 +5026,10 @@ model FinanceProposalEvent {
   type         String // STATUS_CHANGE | WEBHOOK | NOTE
   status       String?
   message      String?
-  source       String? // MANUAL | WEBHOOK | API
+  source       String? // MANUAL | WEBHOOK | API | PORTAL | SITE | SISTEMA
   createdById  String?
   createdAt    DateTime                   @default(now())
+  data         Json? // F&I Core: dados estruturados do evento (sem dados pessoais)
   proposal     FinanceProposal?           @relation(fields: [proposalId], references: [id], onDelete: Cascade)
   submission   FinanceProposalSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
 
@@ -4939,21 +5039,30 @@ model FinanceProposalEvent {
 }
 
 model FinanceProposalDocument {
-  id          String            @id @default(cuid())
-  tenantId    String
-  proposalId  String?
-  proponentId String?
-  type        String // CNH | COMPROVANTE | HOLERITE | ...
-  fileUrl     String?
-  fileName    String?
-  required    Boolean           @default(false)
-  status      String            @default("PENDENTE") // PENDENTE | APROVADO | REPROVADO
-  notes       String?
-  createdById String?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  proposal    FinanceProposal?  @relation(fields: [proposalId], references: [id], onDelete: Cascade)
-  proponent   FinanceProponent? @relation(fields: [proponentId], references: [id], onDelete: SetNull)
+  id           String            @id @default(cuid())
+  tenantId     String
+  proposalId   String?
+  proponentId  String?
+  type         String // CNH | COMPROVANTE | HOLERITE | ...
+  fileUrl      String?
+  fileName     String?
+  required     Boolean           @default(false)
+  status       String            @default("PENDENTE") // PENDENTE | APROVADO | REPROVADO
+  notes        String?
+  // F&I Core: armazenamento privado + origem + pedido do banco + retenção
+  storageKey   String? // arquivo privado (nunca em /public)
+  mimeType     String?
+  sizeBytes    Int?
+  source       String? // INTERNO | PORTAL
+  submissionId String? // tentativa/banco que pediu o documento
+  extracted    Json? // dados lidos do documento (só sugestão; nunca sobrescreve a ficha)
+  uploadedAt   DateTime?
+  retainUntil  DateTime?
+  createdById  String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  proposal     FinanceProposal?  @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  proponent    FinanceProponent? @relation(fields: [proponentId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@index([proposalId])
@@ -4962,34 +5071,47 @@ model FinanceProposalDocument {
 }
 
 model FinanceWebhookEvent {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   tenantId       String?
   provider       String?
   externalId     String?
   signatureValid Boolean?
   payload        Json
-  processed      Boolean  @default(false)
+  processed      Boolean   @default(false)
   error          String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
+  // F&I Core: deduplicação (webhook repetido não muda a operação duas vezes)
+  eventId        String?
+  submissionId   String?
+  processedAt    DateTime?
 
+  @@unique([provider, eventId])
   @@index([processed])
   @@index([externalId])
   @@map("finance_webhook_events")
 }
 
 model FinanceIntegrationLog {
-  id         String   @id @default(cuid())
-  tenantId   String?
-  providerId String?
-  action     String // TEST_CONNECTION | SIMULATE | SUBMIT | STATUS | WEBHOOK
-  status     String? // OK | ERROR
-  durationMs Int?
-  message    String?
-  createdAt  DateTime @default(now())
+  id            String   @id @default(cuid())
+  tenantId      String?
+  providerId    String?
+  action        String // TEST_CONNECTION | SIMULATE | SUBMIT | STATUS | WEBHOOK
+  status        String? // OK | ERROR
+  durationMs    Int?
+  message       String?
+  createdAt     DateTime @default(now())
+  // F&I Core: rastreio técnico (sem dados pessoais)
+  correlationId String?
+  adapterKey    String?
+  proposalId    String?
+  submissionId  String?
+  attempt       Int?
+  errorCode     String?
 
   @@index([tenantId])
   @@index([providerId])
   @@index([createdAt])
+  @@index([submissionId])
   @@map("finance_integration_logs")
 }
 

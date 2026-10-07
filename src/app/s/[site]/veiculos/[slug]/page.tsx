@@ -87,6 +87,7 @@ export default async function SiteVehiclePage({ params }: Props) {
               apiUrl={ctx.apiUrl} storeName={ctx.config.identity.name}
               whatsappHref={ctx.whatsapp(`Olá! Vi o ${v.title} no site da ${ctx.config.identity.name} e gostaria de mais informações.`)}
               phone={ctx.config.contact.phone} privacyHref={ctx.href('/privacidade')} showFinancing={ctx.on('financiamento')}
+              financingHref={ctx.href(`/financiamento?veiculo=${encodeURIComponent(v.id)}`)}
             />
           </aside>
         </div>

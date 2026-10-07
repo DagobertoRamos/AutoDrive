@@ -46,7 +46,7 @@ export default function FiProductsPage() {
     try { const r = await fetch('/api/settings/financing/products', { credentials: 'include' }).then((x) => x.json()); setItems(r?.data ?? []) }
     catch { setItems([]) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (allowed) load() }, [allowed, load])
+  useEffect(() => { if (!allowed) return; const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [allowed, load])
 
   const openNew = () => { setEditingId(null); setForm(emptyForm); setError(null); setModal(true) }
   const openEdit = (r: Row) => { setEditingId(r.id); setForm({ name: r.name, kind: (r.kind as Kind) ?? 'OUTRO', defaultValue: r.defaultValue ?? 0, active: r.active }); setError(null); setModal(true) }

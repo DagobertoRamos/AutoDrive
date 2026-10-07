@@ -45,7 +45,7 @@ export default function MasterBanksPage() {
       setProviders((p?.data ?? []).map((x: { id: string; name: string }) => ({ id: x.id, name: x.name })))
     } catch { setItems([]) } finally { setLoading(false) }
   }, [filter])
-  useEffect(() => { if (isMaster) load() }, [isMaster, load])
+  useEffect(() => { if (!isMaster) return; const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [isMaster, load])
 
   const openNew = () => { setEditingId(null); setForm({ ...emptyForm, providerId: filter || providers[0]?.id || '' }); setError(null); setModal(true) }
   const openEdit = (b: Bank) => { setEditingId(b.id); setForm({ providerId: b.providerId, name: b.name, code: b.code ?? '', active: b.active }); setError(null); setModal(true) }

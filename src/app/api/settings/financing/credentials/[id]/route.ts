@@ -13,14 +13,15 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateCredentialSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
-import { encryptSecrets, decryptSecrets, maskSecret, isCryptoConfigured } from '@/lib/finance/crypto'
+import { encryptSecrets, decryptSecretsStrict, maskSecret, isCryptoConfigured, SecretsDecryptError } from '@/lib/finance/crypto'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Credencial não encontrada.' }, { status: 404 })
 
-function buildHints(d: Record<string, string | null | undefined>) {
+function buildHints(d: Record<string, string | null | undefined>, expiresAt?: string | null) {
   const h: Record<string, string> = {}
+  if (expiresAt) h.expiresAt = expiresAt
   if (d.usuario) h.usuario = d.usuario
   if (d.clientId) h.clientId = d.clientId
   if (d.storeCode) h.storeCode = d.storeCode
@@ -46,14 +47,23 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (!ownsTenant(user.role, tid, existing.tenantId)) return forbiddenResponse('Credencial de outro tenant.')
 
     const d = updateCredentialSchema.parse(await req.json())
+    if (d.bankId && d.bankId !== existing.bankId) {
+      const bank = await prisma.financeBank.findFirst({ where: { id: d.bankId, tenantId: existing.tenantId }, select: { id: true } })
+      if (!bank) return NextResponse.json({ success: false, error: 'Banco inválido para esta loja.' }, { status: 400 })
+    }
     // Merge: mantém segredos atuais; substitui só os enviados não-vazios.
-    const current = decryptSecrets(existing.secretsEncrypted)
+    // Se a credencial salva não puder ser lida, NÃO regrava por cima apagando os segredos.
+    let current: Record<string, string>
+    try { current = decryptSecretsStrict(existing.secretsEncrypted) } catch (e) {
+      if (e instanceof SecretsDecryptError) return NextResponse.json({ success: false, error: e.message }, { status: 409 })
+      throw e
+    }
     const merged: Record<string, string> = { ...current }
     for (const k of ['usuario', 'senha', 'token', 'clientId', 'clientSecret', 'storeCode'] as const) {
       const v = (d as Record<string, string | null | undefined>)[k]
       if (v !== undefined && v !== null && v !== '') merged[k] = v
     }
-    const data: Record<string, unknown> = { updatedById: user.id, secretsEncrypted: encryptSecrets(merged), maskedHints: buildHints(merged) as never }
+    const data: Record<string, unknown> = { updatedById: user.id, secretsEncrypted: encryptSecrets(merged), maskedHints: buildHints(merged, d.expiresAt !== undefined ? d.expiresAt : ((existing.maskedHints as Record<string, string> | null)?.expiresAt ?? null)) as never }
     if (d.bankId) data.bankId = d.bankId
     if (d.environment) data.environment = d.environment
     if (d.label !== undefined) data.label = d.label ?? null

@@ -45,7 +45,7 @@ export default function FiDocumentsPage() {
       setConfig({ ...emptyConfig, ...(json?.data ?? {}) })
     } catch { setConfig(emptyConfig) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (allowed) load() }, [allowed, load])
+  useEffect(() => { if (!allowed) return; const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [allowed, load])
 
   const add = (p: ProfileKey) => {
     const v = drafts[p].trim()

@@ -137,12 +137,14 @@ function IntentButton({ intent, className, children, ...rest }: { intent: Intent
   )
 }
 
-export function SiteVehicleLeadActions(props: { vehicle: LeadVehicle; apiUrl: string; storeName: string; whatsappHref: string; phone: string; privacyHref: string; showFinancing: boolean }) {
-  const { whatsappHref, phone, showFinancing, ...common } = props
+export function SiteVehicleLeadActions(props: { vehicle: LeadVehicle; apiUrl: string; storeName: string; whatsappHref: string; phone: string; privacyHref: string; showFinancing: boolean; financingHref?: string }) {
+  const { whatsappHref, phone, showFinancing, financingHref, ...common } = props
   const shared = { ...common, whatsappHref }
   return (
     <>
-      {showFinancing && <IntentButton intent="simulacao" className="button detail-sim-btn" {...shared}><HandCoins size={18} aria-hidden="true" />Faça sua simulação online</IntentButton>}
+      {showFinancing && (financingHref
+        ? <a href={financingHref} className="button detail-sim-btn"><HandCoins size={18} aria-hidden="true" />Simular financiamento</a>
+        : <IntentButton intent="simulacao" className="button detail-sim-btn" {...shared}><HandCoins size={18} aria-hidden="true" />Faça sua simulação online</IntentButton>)}
       <div className="detail-contact-card">
         {whatsappHref && (
           <a href={whatsappHref} className="detail-contact-item" target="_blank" rel="noreferrer">

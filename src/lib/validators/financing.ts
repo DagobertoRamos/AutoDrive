@@ -72,6 +72,8 @@ export const createBankSchema = z.object({
   code: optStr,
   active: z.boolean().default(true),
   notes: optStr,
+  // F&I Core: conector do gateway (bv, pan, santander… ou agregador). Nulo = manual.
+  adapterKey: z.string().trim().max(30).nullish(),
 })
 export const updateBankSchema = createBankSchema.partial()
 
@@ -84,14 +86,21 @@ export const createProposalSchema = z.object({
   amountRequested: z.number().nonnegative().nullish(),
   downPayment: z.number().nonnegative().nullish(),
   installments: z.number().int().positive().nullish(),
-  status: z.enum(['SIMULACAO', 'ENVIADA', 'APROVADA', 'RECUSADA', 'CANCELADA']).default('SIMULACAO'),
+  // Situação da ficha nasce como rascunho; aprovação/recusa só pela resposta do banco.
+  status: z.literal('SIMULACAO').default('SIMULACAO'),
   notes: optStr,
+  // F&I Core
+  vehicleValue: z.number().nonnegative().nullish(),
+  vehicleId: z.string().min(1).max(60).nullish(),
+  coProponentId: z.string().min(1).max(60).nullish(),
+  dealId: z.string().min(1).max(60).nullish(),
+  leadId: z.string().min(1).max(60).nullish(),
+  customerId: z.string().min(1).max(60).nullish(),
 })
-export const updateProposalSchema = createProposalSchema.partial().extend({
-  approvedValue: z.number().nonnegative().nullish(),
-  monthlyPayment: z.number().nonnegative().nullish(),
-  rejectionReason: optStr,
-  simulationResult: z.unknown().nullish(),
+// Edição só dos dados da operação — situação muda pelas ações da ficha (máquina de estados).
+export const updateProposalSchema = createProposalSchema.omit({ status: true, proponentId: true }).partial().extend({
+  proponentId: z.string().min(1).max(60).optional(),
+  revision: z.number().int().optional(),
 })
 
 // ── Credencial de banco (F&I) — segredos opcionais (cifrados no servidor) ─────
@@ -106,6 +115,8 @@ export const createCredentialSchema = z.object({
   clientId:     optStr,
   clientSecret: optStr,
   storeCode:    optStr,
+  // Validade informada pelo banco (para avisar "Credencial vencida"). AAAA-MM-DD.
+  expiresAt:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.').nullish(),
 })
 export const updateCredentialSchema = createCredentialSchema.partial()
 
@@ -225,7 +236,8 @@ export const createSimulationSchema = z.object({
 })
 
 // ── Documentos da ficha (F&I — checklist) ─────────────────────────────────────
-const DOC_STATUS = ['PENDENTE', 'APROVADO', 'REPROVADO'] as const
+// PENDENTE = aguardando envio · ENVIADO = recebido, conferir · APROVADO · REPROVADO = enviar de novo
+const DOC_STATUS = ['PENDENTE', 'ENVIADO', 'APROVADO', 'REPROVADO'] as const
 export const addDocumentSchema = z.object({
   type:     reqStr('Documento', 1),
   required: z.boolean().default(true),

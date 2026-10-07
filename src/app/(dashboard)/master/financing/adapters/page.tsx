@@ -37,7 +37,7 @@ export default function MasterAdaptersPage() {
     try { const r = await fetch('/api/master/financing/adapters', { credentials: 'include' }).then((x) => x.json()); setItems(r?.data ?? []) }
     catch { setItems([]) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (isMaster) load() }, [isMaster, load])
+  useEffect(() => { if (!isMaster) return; const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [isMaster, load])
 
   if (session && !isMaster) {
     return <div className="flex flex-col items-center justify-center gap-4 py-20 text-center"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div><p className="text-lg font-semibold text-gray-800">Área exclusiva do MASTER</p></div>
@@ -66,7 +66,7 @@ export default function MasterAdaptersPage() {
                   <div><p className="font-semibold text-gray-900">{r.name}</p><p className="text-xs text-gray-500">{KIND_LABEL[r.kind] ?? r.kind}</p></div>
                   <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold', st.cls)}><st.icon size={12} />{st.label}</span>
                 </div>
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Adapter</p>
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Conector</p>
                 <div className="mb-2 flex flex-wrap gap-1">
                   {CAP_KEYS.map((k) => (<span key={k} className={cn('rounded px-1.5 py-0.5 text-[10px] font-medium', r.adapterCapabilities[k] ? 'bg-brand-50 text-brand-700' : 'bg-gray-100 text-gray-400 line-through')}>{CAP_LABEL[k]}</span>))}
                 </div>

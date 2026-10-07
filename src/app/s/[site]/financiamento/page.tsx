@@ -2,9 +2,9 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getSiteContext } from '@/lib/site/context'
-import { listSiteVehicles } from '@/lib/site/vehicles'
+import { listSiteVehicles, siteVehicleRef } from '@/lib/site/vehicles'
 import { money } from '@/lib/site/listing-core'
-import { SiteFinancingForm } from '@/components/site/SiteFinancingForm'
+import { SiteFinanceSimulator } from '@/components/site/SiteFinanceSimulator'
 
 export const metadata: Metadata = { title: 'Financiamento' }
 
@@ -13,18 +13,22 @@ export default async function SiteFinancing({ params, searchParams }: { params: 
   const ctx = await getSiteContext(site)
   if (!ctx.on('financiamento')) notFound()
   const { items } = await listSiteVehicles(ctx.tenantId, { page: 1, sort: 'name' }).catch(() => ({ items: [] }))
-  const choices = items.map((v) => ({ id: v.id, label: `${v.title}${v.modelYear ? ` ${v.modelYear}` : ''} — ${money(v.price)}` }))
+  const choices = items.map((v) => ({ id: v.id, label: `${v.title}${v.modelYear ? ` ${v.modelYear}` : ''} — ${money(v.price)}`, price: v.price ?? null }))
+  // Veículo vindo do anúncio que não está na primeira página do estoque.
+  if (sp.veiculo && !choices.some((c) => c.id === sp.veiculo)) {
+    const v = await siteVehicleRef(ctx.tenantId, sp.veiculo).catch(() => null)
+    if (v) choices.unshift({ id: v.id, label: `${v.title}${v.modelYear ? ` ${v.modelYear}` : ''} — ${money(v.price)}`, price: v.price ?? null })
+  }
   return (
     <>
-      <section className="page-hero"><div className="shell"><p className="eyebrow">Crédito facilitado</p><h1>Financiamento</h1><p>Escolha um veículo do nosso estoque e envie sua simulação. A equipe apresenta as melhores condições das financeiras parceiras.</p></div></section>
+      <section className="page-hero"><div className="shell"><p className="eyebrow">Crédito facilitado</p><h1>Financiamento</h1><p>Simule em poucos segundos. Depois, nossa equipe busca as condições dos bancos parceiros para você.</p></div></section>
       <section className="shell section content-grid">
         <div className="prose">
-          <h2>Atendimento humano desde o primeiro contato</h2>
-          <p>Você envia os dados básicos e nós organizamos a conversa com as financeiras. Nesta primeira etapa não pedimos CPF pelo site.</p>
-          <ul><li>Simulação para os veículos do nosso estoque.</li><li>Seu usado pode entrar como parte do pagamento.</li><li>Condições sujeitas à análise de crédito.</li></ul>
-          <div className="notice"><strong>Crédito responsável</strong><p>As condições dependem da análise das instituições financeiras. Confirmamos os próximos passos antes de pedir qualquer documento.</p></div>
+          <h2>Como funciona</h2>
+          <ul><li>Informe o valor, a entrada e o prazo.</li><li>Depois, só nome, CPF, nascimento e celular.</li><li>Acompanhe sua ficha e envie documentos por um link seguro.</li></ul>
+          <div className="notice"><strong>Crédito responsável</strong><p>Valores estimados não são aprovação. As condições finais dependem da análise dos bancos.</p></div>
         </div>
-        <SiteFinancingForm apiUrl={ctx.apiUrl} vehicles={choices} preselected={sp.veiculo} privacyHref={ctx.href('/privacidade')} whatsappHref={ctx.whatsapp()} />
+        <SiteFinanceSimulator simulateUrl={`/api/site/${encodeURIComponent(site)}/fi/simulate`} vehicles={choices} preselected={sp.veiculo} privacyHref={ctx.href('/privacidade')} whatsappHref={ctx.whatsapp()} />
       </section>
     </>
   )

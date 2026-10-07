@@ -18,8 +18,9 @@ import { encryptSecrets, maskSecret, isCryptoConfigured } from '@/lib/finance/cr
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 // Monta os hints de exibição: usuário/clientId/storeCode visíveis; segredos mascarados.
-function buildHints(d: Record<string, string | null | undefined>) {
+function buildHints(d: Record<string, string | null | undefined>, expiresAt?: string | null) {
   const h: Record<string, string> = {}
+  if (expiresAt) h.expiresAt = expiresAt
   if (d.usuario) h.usuario = d.usuario
   if (d.clientId) h.clientId = d.clientId
   if (d.storeCode) h.storeCode = d.storeCode
@@ -70,11 +71,16 @@ export async function POST(req: Request) {
   try {
     const tenantId = tid
     const d = createCredentialSchema.parse(await req.json())
+    // Banco precisa ser DESTA loja; uma credencial por banco e ambiente.
+    const bank = await prisma.financeBank.findFirst({ where: { id: d.bankId, tenantId }, select: { id: true } })
+    if (!bank) return NextResponse.json({ success: false, error: 'Banco inválido para esta loja.' }, { status: 400 })
+    const dup = await prisma.financeCredential.findFirst({ where: { tenantId, bankId: d.bankId, environment: d.environment }, select: { id: true } })
+    if (dup) return NextResponse.json({ success: false, error: 'Já existe credencial deste banco neste ambiente. Edite a existente.' }, { status: 409 })
     const secrets = { usuario: d.usuario ?? '', senha: d.senha ?? '', token: d.token ?? '', clientId: d.clientId ?? '', clientSecret: d.clientSecret ?? '', storeCode: d.storeCode ?? '' }
     const cred = await prisma.financeCredential.create({
       data: {
         tenantId, bankId: d.bankId, environment: d.environment, label: d.label ?? null,
-        secretsEncrypted: encryptSecrets(secrets), maskedHints: buildHints(secrets) as never,
+        secretsEncrypted: encryptSecrets(secrets), maskedHints: buildHints(secrets, d.expiresAt) as never,
         createdById: user.id, updatedById: user.id,
       },
     })

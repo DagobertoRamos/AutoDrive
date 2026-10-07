@@ -83,7 +83,7 @@ export default function ProponentesPage() {
       const json = await res.json(); setItems(json?.data ?? [])
     } catch { setItems([]) } finally { setLoading(false) }
   }, [q])
-  useEffect(() => { load() }, [load])
+  useEffect(() => { const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [load])
 
   const openNew = () => { setEditingId(null); setForm(emptyForm); setError(null); setModal(true) }
   const openEdit = async (id: string) => {

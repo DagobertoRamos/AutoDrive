@@ -1,50 +1,45 @@
 // =============================================================================
-// /api/financing/documents — documentos de todas as fichas da loja (F&I).
-// GET (financing read): lista FinanceProposalDocument do tenant, com a ficha e
-// o proponente. Filtros: ?status= ?q= (proponente/tipo). Multi-tenant.
+// /api/financing/documents — documentos de todas as fichas da loja ativa.
+// GET ?status=&q=&page= — paginado; arquivo só pela rota autenticada da ficha.
 // =============================================================================
 
 import { NextResponse } from 'next/server'
-import { getSessionUser, assertTenantId, tenantWhere, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { handlePrismaError } from '@/lib/prisma-errors'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { DOC_STATUS_META } from '@/lib/finance/fi/documents'
+import { fiAuth, fiErrorResponse, proposalScope } from '@/lib/finance/fi/route'
 
-const STATUSES = ['PENDENTE', 'APROVADO', 'REPROVADO']
+const STATUSES = ['PENDENTE', 'ENVIADO', 'APROVADO', 'REPROVADO']
 
 export async function GET(req: Request) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'financing')) return forbiddenResponse('Sem acesso ao financiamento.')
-  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
-
+  const auth = await fiAuth(req, { cap: 'acessarDocumentos' })
+  if (!auth.ok) return auth.res
   try {
-    const tenantId = assertTenantId(user.tenantId, user.role)
     const sp = new URL(req.url).searchParams
+    const page = Math.max(1, Number(sp.get('page')) || 1)
     const status = sp.get('status')
     const q = sp.get('q')?.trim()
-    const extra: Record<string, unknown> = {}
-    if (status && STATUSES.includes(status)) extra.status = status
-    if (q) extra.OR = [
-      { type: { contains: q, mode: 'insensitive' } },
-      { proposal: { is: { proponent: { is: { nomeCompleto: { contains: q, mode: 'insensitive' } } } } } },
-    ]
-    const rows = await prisma.financeProposalDocument.findMany({
-      where: tenantWhere(user.role, tenantId, extra) as never,
-      orderBy: { createdAt: 'desc' },
-      take: 300,
-      include: { proposal: { select: { id: true, vehicle: true, status: true, proponent: { select: { nomeCompleto: true } } } } },
-    })
+    const where: Prisma.FinanceProposalDocumentWhereInput = {
+      tenantId: auth.tenantId,
+      proposal: { is: (await proposalScope(auth.user)) as Prisma.FinanceProposalWhereInput },
+      ...(status && STATUSES.includes(status) ? { status } : {}),
+      ...(q ? { OR: [{ type: { contains: q, mode: 'insensitive' } }, { proposal: { is: { proponent: { is: { nomeCompleto: { contains: q, mode: 'insensitive' } } } } } }, { proposal: { is: { code: { contains: q, mode: 'insensitive' } } } }] } : {}),
+    }
+    const [total, rows] = await Promise.all([
+      prisma.financeProposalDocument.count({ where }),
+      prisma.financeProposalDocument.findMany({
+        where, orderBy: { updatedAt: 'desc' }, skip: (page - 1) * 50, take: 50,
+        include: { proposal: { select: { id: true, code: true, vehicle: true, status: true, proponent: { select: { nomeCompleto: true } } } } },
+      }),
+    ])
     return NextResponse.json({
-      success: true,
+      success: true, total, page,
       data: rows.map((d) => ({
-        id: d.id, type: d.type, status: d.status, required: d.required, fileUrl: d.fileUrl, fileName: d.fileName,
-        proposalId: d.proposalId, proponentNome: d.proposal?.proponent?.nomeCompleto ?? '—',
-        vehicle: d.proposal?.vehicle ?? null, proposalStatus: d.proposal?.status ?? null, createdAt: d.createdAt,
+        id: d.id, type: d.type, status: d.status, statusLabel: DOC_STATUS_META[d.status]?.label ?? d.status, required: d.required,
+        hasFile: !!(d.storageKey || d.fileUrl), fileName: d.fileName, source: d.source,
+        proposalId: d.proposalId, proposalCode: d.proposal?.code ?? null, proponentNome: d.proposal?.proponent?.nomeCompleto ?? '—',
+        vehicle: d.proposal?.vehicle ?? null, createdAt: d.createdAt, uploadedAt: d.uploadedAt,
       })),
     })
-  } catch (err) {
-    return handlePrismaError(err)
-  }
+  } catch (err) { return fiErrorResponse(err) }
 }

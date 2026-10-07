@@ -6,7 +6,7 @@
 // oficial homologado; por ora é um segredo compartilhado simples.
 // =============================================================================
 
-export const SUBMISSION_STATUS = ['ENVIADA', 'EM_ANALISE', 'PENDENTE', 'APROVADA', 'RECUSADA', 'CANCELADA'] as const
+export const SUBMISSION_STATUS = ['ENVIADA', 'EM_ANALISE', 'PENDENTE', 'PRE_APROVADA', 'APROVADA', 'RECUSADA', 'CANCELADA', 'EXPIRADA'] as const
 export type SubmissionStatus = (typeof SUBMISSION_STATUS)[number]
 
 /** Compara o segredo recebido com o esperado (comprimento + conteúdo). */
@@ -36,7 +36,9 @@ const STATUS_MAP: Record<string, SubmissionStatus> = {
   aprovada: 'APROVADA', aprovado: 'APROVADA', approved: 'APROVADA', approve: 'APROVADA',
   recusada: 'RECUSADA', recusado: 'RECUSADA', rejected: 'RECUSADA', denied: 'RECUSADA', reproved: 'RECUSADA',
   em_analise: 'EM_ANALISE', analyzing: 'EM_ANALISE', analysis: 'EM_ANALISE', in_review: 'EM_ANALISE',
-  pendente: 'PENDENTE', pending: 'PENDENTE',
+  pendente: 'PENDENTE', pending: 'PENDENTE', pendencia: 'PENDENTE',
+  pre_aprovada: 'PRE_APROVADA', pre_aprovado: 'PRE_APROVADA', pre_approved: 'PRE_APROVADA', preapproved: 'PRE_APROVADA',
+  expirada: 'EXPIRADA', expirado: 'EXPIRADA', expired: 'EXPIRADA',
   cancelada: 'CANCELADA', cancelado: 'CANCELADA', canceled: 'CANCELADA', cancelled: 'CANCELADA',
   enviada: 'ENVIADA', enviado: 'ENVIADA', sent: 'ENVIADA', submitted: 'ENVIADA',
 }

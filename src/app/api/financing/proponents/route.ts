@@ -7,12 +7,13 @@
 import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { getSessionUser, assertTenantId, tenantWhere, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
+import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createProponentSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, num } from '@/lib/finance/finance-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { resolveActingTenant } from '@/lib/acting-tenant'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -21,24 +22,29 @@ export async function GET(req: Request) {
   { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
 
   try {
-    const tenantId = assertTenantId(user.tenantId, user.role)
+    const tenantId = await resolveActingTenant(user, req)
+    if (!tenantId) return NextResponse.json({ success: false, error: 'Escolha a loja no topo da tela.' }, { status: 400 })
     const { searchParams } = new URL(req.url)
     const extra: Record<string, unknown> = {}
     const q = searchParams.get('q')?.trim()
     if (q) {
       extra.OR = [
         { nomeCompleto: { contains: q, mode: 'insensitive' } },
-        { cpf: { contains: q.replace(/\D/g, '') } },
+        { razaoSocial: { contains: q, mode: 'insensitive' } },
         { email: { contains: q, mode: 'insensitive' } },
-        { celular: { contains: q.replace(/\D/g, '') } },
+        ...(q.replace(/\D/g, '').length >= 3 ? [
+          { cpf: { contains: q.replace(/\D/g, '') } },
+          { cnpj: { contains: q.replace(/\D/g, '') } },
+          { celular: { contains: q.replace(/\D/g, '') } },
+        ] : []),
       ]
     }
     const data = await prisma.financeProponent.findMany({
-      where: tenantWhere(user.role, tenantId, extra) as never,
+      where: { tenantId, ...extra },
       orderBy: { createdAt: 'desc' },
-      take: 500,
+      take: 300,
       select: {
-        id: true, nomeCompleto: true, cpf: true, celular: true, email: true,
+        id: true, nomeCompleto: true, cpf: true, celular: true, email: true, personType: true, cnpj: true, razaoSocial: true,
         occupation: true, cidade: true, estado: true, renda: true, createdAt: true,
         _count: { select: { proposals: true } },
       },
@@ -56,12 +62,15 @@ export async function POST(req: Request) {
   { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
 
   try {
-    const tenantId = assertTenantId(user.tenantId, user.role)
+    const tenantId = await resolveActingTenant(user, req)
+    if (!tenantId) return NextResponse.json({ success: false, error: 'Escolha a loja no topo da tela.' }, { status: 400 })
     const d = createProponentSchema.parse(await req.json())
+    const dup = await prisma.financeProponent.findFirst({ where: { tenantId, cpf: d.cpf.replace(/\D/g, '') }, select: { id: true } })
+    if (dup) return NextResponse.json({ success: false, error: 'Já existe um cliente com este CPF na loja.', id: dup.id }, { status: 409 })
     const proponent = await prisma.financeProponent.create({
       data: {
         tenantId,
-        nomeCompleto: d.nomeCompleto, dataNascimento: d.dataNascimento, cpf: d.cpf, rg: d.rg,
+        nomeCompleto: d.nomeCompleto, dataNascimento: d.dataNascimento, cpf: d.cpf.replace(/\D/g, ''), rg: d.rg,
         nomeMae: d.nomeMae, nomePai: d.nomePai, email: d.email, celular: d.celular, telefoneFixo: d.telefoneFixo ?? null,
         cep: d.cep, logradouro: d.logradouro, bairro: d.bairro, cidade: d.cidade, estado: d.estado,
         numero: d.numero, complemento: d.complemento ?? null,

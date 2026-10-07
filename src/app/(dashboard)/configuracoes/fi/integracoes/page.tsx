@@ -22,12 +22,12 @@ type Env = 'HOMOLOGACAO' | 'PRODUCAO'
 type Hints = Record<string, string>
 interface Row { id: string; bankId: string | null; bankName: string; environment: Env; label: string | null; maskedHints: Hints | null; updatedAt: string }
 interface Bank { id: string; name: string }
-interface Form { bankId: string; environment: Env; label: string; usuario: string; senha: string; token: string; clientId: string; clientSecret: string; storeCode: string }
-const emptyForm: Form = { bankId: '', environment: 'HOMOLOGACAO', label: '', usuario: '', senha: '', token: '', clientId: '', clientSecret: '', storeCode: '' }
+interface Form { bankId: string; environment: Env; label: string; usuario: string; senha: string; token: string; clientId: string; clientSecret: string; storeCode: string; expiresAt: string }
+const emptyForm: Form = { bankId: '', environment: 'HOMOLOGACAO', label: '', usuario: '', senha: '', token: '', clientId: '', clientSecret: '', storeCode: '', expiresAt: '' }
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const date = (s: string) => new Date(s).toLocaleDateString('pt-BR')
-const HINT_LABEL: Record<string, string> = { usuario: 'Usuário', senha: 'Senha', token: 'Token', clientId: 'Client ID', clientSecret: 'Client Secret', storeCode: 'Cód. loja' }
+const HINT_LABEL: Record<string, string> = { usuario: 'Usuário', senha: 'Senha', token: 'Chave de acesso', clientId: 'Identificador da aplicação', clientSecret: 'Segredo da aplicação', storeCode: 'Código da loja no banco', expiresAt: 'Validade' }
 
 export default function FiCredentialsPage() {
   const { data: session } = useSession()
@@ -57,7 +57,7 @@ export default function FiCredentialsPage() {
       setCryptoReady(json?.cryptoReady !== false)
     } catch { setItems([]) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (allowed) load() }, [allowed, load])
+  useEffect(() => { if (!allowed) return; const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [allowed, load])
 
   useEffect(() => {
     if (!allowed) return
@@ -73,7 +73,7 @@ export default function FiCredentialsPage() {
   // Edição: segredos SEMPRE em branco (nunca recebemos texto puro). Em branco = manter.
   const openEdit = (r: Row) => {
     setEditingId(r.id)
-    setForm({ ...emptyForm, bankId: r.bankId ?? '', environment: r.environment, label: r.label ?? '' })
+    setForm({ ...emptyForm, bankId: r.bankId ?? '', environment: r.environment, label: r.label ?? '', expiresAt: (r.maskedHints as Record<string, string> | null)?.expiresAt ?? '' })
     setError(null); setModal(true)
   }
 
@@ -83,7 +83,7 @@ export default function FiCredentialsPage() {
     try {
       // Em edição, só enviamos segredos preenchidos (em branco = manter o atual).
       const secretKeys = ['usuario', 'senha', 'token', 'clientId', 'clientSecret', 'storeCode'] as const
-      const payload: Record<string, unknown> = { bankId: form.bankId, environment: form.environment, label: form.label || null }
+      const payload: Record<string, unknown> = { bankId: form.bankId, environment: form.environment, label: form.label || null, expiresAt: form.expiresAt || null }
       for (const k of secretKeys) {
         const v = form[k]?.trim()
         if (editingId) { if (v) payload[k] = v } else { payload[k] = v || null }
@@ -149,7 +149,7 @@ export default function FiCredentialsPage() {
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50"><tr>{['Banco', 'Ambiente', 'Identificação', 'Segredos (mascarados)', 'Atualizado', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+            <thead className="bg-gray-50"><tr>{['Banco', 'Ambiente', 'Identificação', 'Acessos (ocultos)', 'Atualizado', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 Array.from({ length: 4 }).map((_, i) => (<tr key={i}>{Array.from({ length: 6 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
@@ -193,10 +193,11 @@ export default function FiCredentialsPage() {
 
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Usuário</label><input className={inputCls} value={form.usuario} onChange={(e) => set('usuario', e.target.value)} autoComplete="off" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Senha</label><input type="password" className={inputCls} value={form.senha} onChange={(e) => set('senha', e.target.value)} autoComplete="new-password" placeholder={editingId ? '•••••••• (manter)' : ''} /></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Client ID</label><input className={inputCls} value={form.clientId} onChange={(e) => set('clientId', e.target.value)} autoComplete="off" /></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Client Secret</label><input type="password" className={inputCls} value={form.clientSecret} onChange={(e) => set('clientSecret', e.target.value)} autoComplete="new-password" placeholder={editingId ? '•••••••• (manter)' : ''} /></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Token</label><input type="password" className={inputCls} value={form.token} onChange={(e) => set('token', e.target.value)} autoComplete="new-password" placeholder={editingId ? '•••••••• (manter)' : ''} /></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Cód. loja</label><input className={inputCls} value={form.storeCode} onChange={(e) => set('storeCode', e.target.value)} autoComplete="off" /></div>
+              <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Identificador da aplicação<HelpHint text="Código da aplicação da loja no portal de desenvolvedores do banco (chamado de Client ID pelo banco)." size={12} /></label><input className={inputCls} value={form.clientId} onChange={(e) => set('clientId', e.target.value)} autoComplete="off" /></div>
+              <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Segredo da aplicação<HelpHint text="Senha da aplicação fornecida pelo banco junto com o identificador (Client Secret). Fica cifrada." size={12} /></label><input type="password" className={inputCls} value={form.clientSecret} onChange={(e) => set('clientSecret', e.target.value)} autoComplete="new-password" placeholder={editingId ? '•••••••• (manter)' : ''} /></div>
+              <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Chave de acesso<HelpHint text="Token fornecido pelo banco ou agregador para acessar a API. Fica cifrado." size={12} /></label><input type="password" className={inputCls} value={form.token} onChange={(e) => set('token', e.target.value)} autoComplete="new-password" placeholder={editingId ? '•••••••• (manter)' : ''} /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Código da loja no banco</label><input className={inputCls} value={form.storeCode} onChange={(e) => set('storeCode', e.target.value)} autoComplete="off" /></div>
+              <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Validade da credencial<HelpHint text="Data em que o acesso vence, quando o banco informa. O F&I avisa quando vencer." size={12} /></label><input type="date" className={inputCls} value={form.expiresAt} onChange={(e) => set('expiresAt', e.target.value)} /></div>
 
               {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
             </div>

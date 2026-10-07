@@ -281,6 +281,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           updatedAt: lead.updatedAt,
           temperature: readTemperature(lead.metadata),
           leadType: readLeadType(lead.metadata),
+          // F&I: último marco do financiamento ("Crédito pré-aprovado", "Cliente precisa enviar documento"…).
+          financing: (() => { const fi = (lead.metadata as { fi?: { proposalId?: string; code?: string; label?: string; milestone?: string } } | null)?.fi; return fi?.proposalId ? { proposalId: fi.proposalId, code: fi.code ?? null, label: fi.label ?? null, milestone: fi.milestone ?? null } : null })(),
           leadNumber: (lead as { leadNumber?: number | null }).leadNumber ?? null,
           pipelineId: leadPipeline?.id ?? null,
           pipelineName: leadPipeline?.name ?? null,

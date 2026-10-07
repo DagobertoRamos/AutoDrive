@@ -2,7 +2,7 @@
 // /api/settings/financing/settings/[key] — configs genéricas do F&I da loja.
 //   GET : financing.config — retorna a config (ou o default da chave)
 //   PUT : financing.config — valida (por chave) e salva (upsert), auditado
-// Chaves: 'required_documents' | 'permissions'. Tenant-scoped; MASTER bloqueado.
+// Chaves: required_documents | permissions | bank_required_fields | lgpd | site_simulation.
 // =============================================================================
 
 import { NextResponse } from 'next/server'
@@ -53,8 +53,15 @@ export async function PUT(req: Request, { params }: Ctx) {
 
   try {
     const tenantId = tid
+    // Quem decide as permissões do F&I é a direção da loja.
+    if (key === 'permissions' && !['MASTER', 'ADM', 'GERENTE_GERAL'].includes(user.role)) return forbiddenResponse('Só a administração ou a gerência geral altera as permissões do F&I.')
     const spec = FI_SETTING_KEYS[key]
     const value = spec.schema.parse(await req.json())
+    if (key === 'bank_required_fields') {
+      const ids = Object.keys(value as Record<string, unknown>)
+      const owned = ids.length ? await prisma.financeBank.count({ where: { tenantId, id: { in: ids } } }) : 0
+      if (owned !== ids.length) return NextResponse.json({ success: false, error: 'Algum banco não pertence a esta loja.' }, { status: 400 })
+    }
     await prisma.financeTenantSetting.upsert({
       where: { tenantId_key: { tenantId, key } },
       update: { value, updatedById: user.id },

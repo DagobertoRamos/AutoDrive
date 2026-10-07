@@ -30,6 +30,7 @@ import { calculateReturn, validateReturnPercent } from '@/lib/finance/return-cal
 import { resolveReturnSettingsForDate } from '@/lib/finance/return-settings'
 import { registerChargeback, undoChargeback } from '@/lib/finance/fi-chargeback'
 import { markTrackPaid, saveTrack } from '@/lib/finance/fi-contract-track'
+import { reflectFinancingPayment } from '@/lib/finance/fi/orchestrator'
 import { parseDateOnly } from '@/lib/negotiation/date-only'
 
 export const runtime = 'nodejs'
@@ -105,6 +106,8 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     if (updated.status !== p.status) await logDealChild(p.dealId, { id: user.id, name: user.name ?? null, role: user.role }, 'pagamento', `${payLabel(p)} (${statusPt(p.status)})`, `${payLabel(updated)} (${statusPt(updated.status)})`)
     if (action === 'CONFIRMAR' && p.type === 'FINANCIAMENTO') await markTrackPaid(p.deal.tenantId, p.id, (data.paidAt as Date) ?? new Date())
     await syncDealFinanceSafe(p.dealId)
+    // F&I Core: recebimento do banco confirmado/reaberto reflete na ficha.
+    if (p.type === 'FINANCIAMENTO' && updated.status !== p.status) await reflectFinancingPayment(p.id)
     return NextResponse.json({ success: true, data: updated })
   } catch (err) { return handlePrismaError(err) }
 }

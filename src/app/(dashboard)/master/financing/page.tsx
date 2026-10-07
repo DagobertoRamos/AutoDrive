@@ -9,7 +9,7 @@
 
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
-import { Boxes, Landmark, Plug, GitCompareArrows, Webhook, ScrollText, Activity, ToggleRight, Lock } from 'lucide-react'
+import { Boxes, Landmark, Plug, GitCompareArrows, Webhook, Activity, ToggleRight, Lock } from 'lucide-react'
 
 const AREAS = [
   { href: '/master/financing/providers', title: 'Provedores F&I', desc: 'Credere, banco direto e integradores.', icon: Boxes },
@@ -17,7 +17,6 @@ const AREAS = [
   { href: '/master/financing/adapters', title: 'Adaptadores de API', desc: 'Adapters por provedor.', icon: Plug },
   { href: '/master/financing/mappings', title: 'Mapeamento de Campos', desc: 'De/para com a API do banco.', icon: GitCompareArrows },
   { href: '/master/financing/webhooks', title: 'Webhooks', desc: 'Eventos de retorno.', icon: Webhook },
-  { href: '/master/financing/logs', title: 'Logs Técnicos', desc: 'Histórico das integrações.', icon: ScrollText },
   { href: '/master/financing/health', title: 'Saúde das Integrações', desc: 'Status e erros.', icon: Activity },
   { href: '/master/financing/flags', title: 'Feature Flags F&I', desc: 'Ativar/desativar integrações.', icon: ToggleRight },
 ]

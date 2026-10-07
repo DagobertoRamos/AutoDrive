@@ -39,6 +39,10 @@
     {
       "path": "/api/internal/ops/run",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/internal/fi/run",
+      "schedule": "5-59/10 * * * *"
     }
   ]
 }

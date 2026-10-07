@@ -33,7 +33,7 @@ export default function MasterHealthPage() {
     try { const r = await fetch('/api/master/financing/health', { credentials: 'include' }).then((x) => x.json()); setH(r?.data ?? null) }
     catch { setH(null) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (isMaster) load() }, [isMaster, load])
+  useEffect(() => { if (!isMaster) return; const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [isMaster, load])
 
   if (session && !isMaster) {
     return <div className="flex flex-col items-center justify-center gap-4 py-20 text-center"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div><p className="text-lg font-semibold text-gray-800">Área exclusiva do MASTER</p></div>

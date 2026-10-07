@@ -45,7 +45,7 @@ export default function MasterProvidersPage() {
     try { const r = await fetch('/api/master/financing/providers', { credentials: 'include' }).then((x) => x.json()); setItems(r?.data ?? []) }
     catch { setItems([]) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (isMaster) load() }, [isMaster, load])
+  useEffect(() => { if (!isMaster) return; const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [isMaster, load])
 
   const openNew = () => { setEditingId(null); setForm(emptyForm); setError(null); setModal(true) }
   const openEdit = (p: Provider) => {
@@ -90,7 +90,7 @@ export default function MasterProvidersPage() {
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50"><tr>{['Provedor', 'Tipo', 'Capabilities', 'Bancos', 'Status', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+            <thead className="bg-gray-50"><tr>{['Provedor', 'Tipo', 'Recursos', 'Bancos', 'Situação', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 Array.from({ length: 4 }).map((_, i) => (<tr key={i}>{Array.from({ length: 6 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
@@ -128,9 +128,9 @@ export default function MasterProvidersPage() {
               <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Nome <RequiredMark /></label><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex.: Credere" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo</label><select className={inputCls} value={form.kind} onChange={(e) => set('kind', e.target.value as Kind)}>{KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Versão da API</label><input className={inputCls} value={form.apiVersion} onChange={(e) => set('apiVersion', e.target.value)} placeholder="Ex.: 1.0" /></div>
-              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Base URL (homologação)</label><input className={inputCls} value={form.baseUrlHomolog} onChange={(e) => set('baseUrlHomolog', e.target.value)} placeholder="https://homolog.api..." /></div>
-              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Base URL (produção)</label><input className={inputCls} value={form.baseUrlProd} onChange={(e) => set('baseUrlProd', e.target.value)} placeholder="https://api..." /></div>
-              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Capabilities</label>
+              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Endereço da API (homologação)</label><input className={inputCls} value={form.baseUrlHomolog} onChange={(e) => set('baseUrlHomolog', e.target.value)} placeholder="https://homolog.api..." /></div>
+              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Endereço da API (produção)</label><input className={inputCls} value={form.baseUrlProd} onChange={(e) => set('baseUrlProd', e.target.value)} placeholder="https://api..." /></div>
+              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Recursos disponíveis</label>
                 <div className="flex flex-wrap gap-3">{CAPS.map((c) => (<label key={c.key} className="flex items-center gap-1.5 text-sm text-gray-700"><input type="checkbox" checked={form[c.key] as boolean} onChange={(e) => set(c.key, e.target.checked as never)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />{c.label}</label>))}</div>
               </div>
               <label className="col-span-2 flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.active} onChange={(e) => set('active', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Ativo</label>

@@ -9,18 +9,19 @@
 
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
-import { Landmark, KeyRound, ListOrdered, Percent, Package, FileCheck2, ShieldCheck, Lock } from 'lucide-react'
+import { Landmark, KeyRound, ListOrdered, Percent, Package, FileCheck2, ShieldCheck, Lock, ClipboardList } from 'lucide-react'
 
 const CONFIG_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO']
 
 const AREAS = [
-  { href: '/configuracoes/fi/bancos', title: 'Bancos da Loja', desc: 'Bancos ativos, prazo, idade do veículo e regras por banco.', icon: Landmark },
-  { href: '/configuracoes/fi/integracoes', title: 'Credenciais e Integrações', desc: 'Login, token e chaves por banco (criptografados e mascarados).', icon: KeyRound },
-  { href: '/configuracoes/fi/prioridades', title: 'Prioridades de Envio', desc: 'Ordem de envio das fichas aos bancos.', icon: ListOrdered },
-  { href: '/configuracoes/fi/retornos', title: 'Retornos por Banco', desc: '% de retorno, valor fixo e regras por prazo.', icon: Percent },
-  { href: '/configuracoes/fi/produtos', title: 'Produtos Agregados', desc: 'Garantia, seguro, proteção, rastreador.', icon: Package },
-  { href: '/configuracoes/fi/documentos', title: 'Documentos Obrigatórios', desc: 'Documentos exigidos por perfil de proponente.', icon: FileCheck2 },
-  { href: '/configuracoes/fi/permissoes', title: 'Permissões F&I', desc: 'Quem envia ficha, aprova e altera retorno.', icon: ShieldCheck },
+  { href: '/financiamento/bancos', title: 'Bancos', desc: 'Bancos da loja, canal e conexão.', icon: Landmark },
+  { href: '/configuracoes/fi/integracoes', title: 'Credenciais', desc: 'Acesso da loja a cada banco.', icon: KeyRound },
+  { href: '/configuracoes/fi/regras', title: 'Exigências e privacidade', desc: 'Dados por banco, LGPD e simulação do site.', icon: ClipboardList },
+  { href: '/configuracoes/fi/retornos', title: 'Regras comerciais', desc: 'Retorno por banco e prazo.', icon: Percent },
+  { href: '/configuracoes/fi/prioridades', title: 'Prioridade dos bancos', desc: 'Ordem sugerida de envio.', icon: ListOrdered },
+  { href: '/configuracoes/fi/produtos', title: 'Produtos F&I', desc: 'Garantia, seguro, proteção, rastreador.', icon: Package },
+  { href: '/configuracoes/fi/documentos', title: 'Documentos', desc: 'Documentos pedidos por perfil.', icon: FileCheck2 },
+  { href: '/configuracoes/fi/permissoes', title: 'Permissões', desc: 'Quem pode cada ação do F&I.', icon: ShieldCheck },
 ]
 
 export default function FiConfigHub() {
@@ -43,7 +44,7 @@ export default function FiConfigHub() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-gray-900">Configurações de F&amp;I da Loja</h1>
+        <h1 className="text-xl font-bold text-gray-900">Configurações do F&amp;I</h1>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {AREAS.map((a) => (

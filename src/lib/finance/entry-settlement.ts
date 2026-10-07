@@ -9,6 +9,7 @@
 
 import type { FinancialEntry, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { markTrackPaid } from '@/lib/finance/fi-contract-track'
 import { DEBT_SOURCE_PREFIX, PAYMENT_SOURCE_PREFIX, TRADE_SOURCE_PREFIX } from './deal-finance-sync'
 import {
   COST_ITEM_LABEL, DOC_DEBT_TYPES, SERVICE_SUGGESTED_ITEMS, SUGGESTED_ITEMS, chargeResult, isChargedToCustomer, itemsTotal, normalizeItems,
@@ -229,8 +230,18 @@ export async function applyStatusSideEffects(existing: Pick<FinancialEntry, 'sta
     const data = status === 'RECEBIDO' || status === 'PAGO' ? { status: 'CONFIRMADO', paidAt: paidDate ?? new Date() }
       : status === 'CANCELADO' ? { status: 'CANCELADO' }
       : { status: 'PENDENTE', paidAt: null }
-    await prisma.dealPayment.updateMany({ where: { id: existing.source.slice(PAYMENT_SOURCE_PREFIX.length) }, data })
-      .catch((err) => console.error('[entry-settlement] pagamento da negociação', err))
+    const paymentId = existing.source.slice(PAYMENT_SOURCE_PREFIX.length)
+    const done = await prisma.dealPayment.updateMany({ where: { id: paymentId }, data })
+      .catch((err) => { console.error('[entry-settlement] pagamento da negociação', err); return null })
+    // F&I Core: baixa do recebimento do banco reflete no contrato e na ficha.
+    if (done?.count) {
+      const pay = await prisma.dealPayment.findUnique({ where: { id: paymentId }, select: { type: true, tenantId: true, paidAt: true, status: true } })
+      if (pay?.type === 'FINANCIAMENTO') {
+        if (pay.status === 'CONFIRMADO') await markTrackPaid(pay.tenantId, paymentId, pay.paidAt ?? new Date())
+        const { reflectFinancingPayment } = await import('@/lib/finance/fi/orchestrator')
+        await reflectFinancingPayment(paymentId)
+      }
+    }
   }
 }
 

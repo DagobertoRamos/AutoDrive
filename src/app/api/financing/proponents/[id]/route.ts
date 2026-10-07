@@ -81,6 +81,9 @@ export async function DELETE(_req: Request, { params }: Ctx) {
     const existing = await prisma.financeProponent.findUnique({ where: { id } })
     if (!existing) return notFound()
     if (!ownsTenant(user.role, user.tenantId, existing.tenantId)) return forbiddenResponse('Proponente de outro tenant.')
+    // Com fichas (como cliente ou co-comprador) não apaga: o histórico do F&I fica preservado.
+    const used = await prisma.financeProposal.count({ where: { OR: [{ proponentId: id }, { coProponentId: id }] } })
+    if (used) return NextResponse.json({ success: false, error: 'Este cliente tem fichas de financiamento. Não é possível excluir.' }, { status: 409 })
     await prisma.financeProponent.delete({ where: { id } })
     await createSafeAuditLog({ userId: user.id, tenantId: existing.tenantId, action: 'DELETE', entity: 'FinanceProponent', entityId: id, userName: user.name, userRole: user.role })
     return NextResponse.json({ success: true })

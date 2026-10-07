@@ -1,50 +1,61 @@
 // =============================================================================
-// /api/financing/submissions/[id] — atualizar status de uma submissão (F&I).
-//   POST : financing.manage — registra novo status + evento (linha do tempo).
-// Atualização MANUAL e supervisionada. APROVADA reflete na ficha.
+// /api/financing/submissions/[id] — resposta do banco para UMA proposta (tentativa).
+//   POST { action: 'RESPOSTA', status, offer?, reason?, pendingItems? }
+//        registro manual (banco ainda não integrado / confirmação do portal).
+//   POST { action: 'VERIFICAR' } consulta o banco (quando a integração permite)
+//        antes de liberar novo envio de uma proposta sem resposta.
+// Transições validadas pela máquina de estados; repetir a mesma resposta não
+// duplica nada. Aprovar/recusar exige a permissão "Registrar resposta do banco".
 // =============================================================================
 
 import { NextResponse } from 'next/server'
-import { ZodError } from 'zod'
+import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
-import { handlePrismaError } from '@/lib/prisma-errors'
-import { submissionEventSchema } from '@/lib/validators/financing'
-import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
+import { recordManualResponse, verifyAttempt, FiError } from '@/lib/finance/fi/orchestrator'
+import { ATTEMPT_STATUS } from '@/lib/finance/fi/status-core'
 import { isFiAllowed } from '@/lib/finance/fi-permissions'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { fiAuth, fiErrorResponse, findScopedProposal } from '@/lib/finance/fi/route'
 
 type Ctx = { params: Promise<{ id: string }> }
+const money = z.number().min(0).max(100_000_000).nullable().optional()
+const pct = z.number().min(0).max(100).nullable().optional()
+const schema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('VERIFICAR') }),
+  z.object({
+    action: z.literal('RESPOSTA'),
+    status: z.enum(ATTEMPT_STATUS),
+    reason: z.string().max(500).nullable().optional(),
+    externalId: z.string().max(100).nullable().optional(),
+    offer: z.object({
+      approvedAmount: money, downPayment: money, installments: z.number().int().min(1).max(120).nullable().optional(),
+      installmentValue: money, rateMonthly: pct, cetMonthly: pct, cetYearly: z.number().min(0).max(1000).nullable().optional(),
+      totalAmount: money, tacValue: money, expiresAt: z.string().max(30).nullable().optional(),
+    }).nullable().optional(),
+    returnPercent: pct,
+    pendingItems: z.array(z.object({ key: z.string().max(60), label: z.string().min(1).max(120), kind: z.enum(['DOCUMENTO', 'CAMPO', 'OUTRO']) })).max(20).optional(),
+  }),
+])
 
 export async function POST(req: Request, { params }: Ctx) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão.')
-  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
+  const auth = await fiAuth(req, { module: 'financing.manage' })
+  if (!auth.ok) return auth.res
   const { id } = await params
   try {
-    const submission = await prisma.financeProposalSubmission.findUnique({ where: { id } })
-    if (!submission) return NextResponse.json({ success: false, error: 'Submissão não encontrada.' }, { status: 404 })
-    if (!ownsTenant(user.role, user.tenantId, submission.tenantId)) return forbiddenResponse('Submissão de outro tenant.')
-
-    const d = submissionEventSchema.parse(await req.json())
-    // Permissões F&I: aprovar/recusar é restrito a quem a loja autoriza.
-    if ((d.status === 'APROVADA' || d.status === 'RECUSADA') && !(await isFiAllowed(submission.tenantId, 'aprovar', user.role))) {
-      return forbiddenResponse('Seu perfil não pode aprovar/recusar (Permissões F&I da loja).')
+    const sub = await prisma.financeProposalSubmission.findFirst({ where: { id, tenantId: auth.tenantId }, select: { id: true, proposalId: true } })
+    if (!sub || !(await findScopedProposal(auth, sub.proposalId))) return NextResponse.json({ success: false, error: 'Proposta não encontrada.' }, { status: 404 })
+    const d = schema.parse(await req.json())
+    if (d.action === 'VERIFICAR') {
+      const status = await verifyAttempt(id, auth.actor)
+      return NextResponse.json({ success: true, data: { status } })
     }
-    await prisma.financeProposalSubmission.update({ where: { id }, data: { status: d.status } })
-    await prisma.financeProposalEvent.create({
-      data: { tenantId: submission.tenantId, proposalId: submission.proposalId, submissionId: id, type: 'STATUS_CHANGE', status: d.status, message: d.message ?? null, source: 'MANUAL', createdById: user.id },
-    })
-    // Aprovação de um banco reflete na ficha.
-    if (d.status === 'APROVADA' && submission.proposalId) {
-      await prisma.financeProposal.update({ where: { id: submission.proposalId }, data: { status: 'APROVADA' } }).catch(() => {})
+    if (['APROVADA', 'RECUSADA', 'PRE_APROVADA', 'PENDENTE'].includes(d.status) && !(await isFiAllowed(auth.tenantId, 'aprovar', auth.user.role))) {
+      throw new FiError('Seu perfil não pode registrar a resposta do banco.', 403)
     }
-    await createSafeAuditLog({ userId: user.id, tenantId: submission.tenantId, action: `SUBMISSION_${d.status}`, entity: 'FinanceProposalSubmission', entityId: id, userName: user.name, userRole: user.role })
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    if (err instanceof ZodError) return zodErrorResponse(err)
-    return handlePrismaError(err)
-  }
+    if (d.returnPercent != null) {
+      if (!(await isFiAllowed(auth.tenantId, 'verRetorno', auth.user.role))) throw new FiError('Seu perfil não pode informar o retorno.', 403)
+      await prisma.financeProposalSubmission.update({ where: { id }, data: { returnPercent: d.returnPercent } })
+    }
+    const r = await recordManualResponse(id, { status: d.status, reason: d.reason, externalId: d.externalId, offer: d.offer ?? undefined, pendingItems: d.pendingItems }, auth.actor)
+    return NextResponse.json({ success: true, data: r })
+  } catch (err) { return fiErrorResponse(err) }
 }

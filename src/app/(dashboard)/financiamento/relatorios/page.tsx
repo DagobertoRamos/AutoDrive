@@ -14,6 +14,7 @@ import { HelpHint } from '@/components/ui/help-hint'
 import { DEAL_HINTS } from '@/lib/glossary-deals'
 import PeriodFilter from '@/components/reports/PeriodFilter'
 import SummarizeReportButton from '@/components/ai/SummarizeReportButton'
+import { BankPerformance } from '@/components/fi/BankPerformance'
 
 interface Summary { total: number; simulacoes: number; enviadas: number; aprovadas: number; recusadas: number; canceladas: number; taxaAprovacao: number; valorAprovado: number }
 interface StatusRow { status: string; count: number; solicitado: number; aprovado: number }
@@ -24,7 +25,7 @@ interface SubBankRow { banco: string; enviados: number; aprovados: number }
 interface Margin { retornoEstimado: number; valorAprovado: number }
 
 const fmt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const STATUS_LABEL: Record<string, string> = { SIMULACAO: 'Simulação', ENVIADA: 'Enviada', APROVADA: 'Aprovada', RECUSADA: 'Recusada', CANCELADA: 'Cancelada' }
+const STATUS_LABEL: Record<string, string> = { SIMULACAO: 'Rascunho', PREENCHENDO: 'Preenchendo', ENVIADA: 'Enviada', EM_ANALISE: 'Em análise', PRE_APROVADA: 'Pré-aprovada', APROVADA: 'Aprovada', RECUSADA: 'Recusada', EXPIRADA: 'Expirada', CANCELADA: 'Cancelada' }
 const FUNNEL_STAGES: { key: keyof Funnel; label: string; cls: string }[] = [
   { key: 'simulacoes', label: 'Simulações', cls: 'bg-indigo-500' },
   { key: 'fichas', label: 'Fichas', cls: 'bg-blue-500' },
@@ -55,7 +56,7 @@ export default function FinancingReportsPage() {
       setPendingDocs(j?.pendingDocsProposals ?? 0); setMargin(j?.margin ?? null)
     } catch { setS(null); setByStatus([]); setByBank([]); setFunnel(null); setBySeller([]); setBySubBank([]); setPendingDocs(0); setMargin(null) } finally { setLoading(false) }
   }, [from, to])
-  useEffect(() => { load() }, [load])
+  useEffect(() => { const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [load])
 
   const cards = [
     { label: 'Total de fichas', value: String(s?.total ?? 0), cls: 'border-gray-200 bg-white text-gray-900' },
@@ -81,6 +82,7 @@ export default function FinancingReportsPage() {
       </div>
 
       <PeriodFilter from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
+      <BankPerformance from={from || undefined} to={to || undefined} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         {cards.map((c) => (

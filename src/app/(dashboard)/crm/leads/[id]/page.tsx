@@ -13,7 +13,7 @@ import Link from 'next/link'
 import { use, useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import {
-  ArrowLeft, Calendar, Car, CheckCircle2, ChevronRight,
+  ArrowLeft, Banknote, Calendar, Car, CheckCircle2, ChevronRight,
   Clock, FileText, Handshake, Loader2, MessageSquare, MoreVertical,
   Plus, RefreshCw, User, X,
 } from 'lucide-react'
@@ -45,6 +45,7 @@ interface LeadDetail {
   customerId: string | null; vehicleId: string | null; convertedDealId: string | null
   lastContactAt: string | null; createdAt: string; updatedAt: string; temperature: string | null
   pipelineId: string | null; stageId: string | null; leadType: string | null
+  financing?: { proposalId: string; code: string | null; label: string | null; milestone: string | null } | null
 }
 
 interface Workspace {
@@ -1166,6 +1167,16 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
               ))}
             </div>
           </div>
+
+          {/* Financiamento (F&I) — o vendedor vê a novidade sem abrir o F&I */}
+          {lead.financing?.label && (
+            <Link href={`/financiamento/fichas/${lead.financing.proposalId}`} className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset',
+              ['APROVADA', 'PRE_APROVADA', 'BANCO_PAGOU', 'CONTRATO_ASSINADO'].includes(lead.financing.milestone ?? '') ? 'bg-green-50 text-green-700 ring-green-200'
+                : ['RECUSADA', 'CANCELADA'].includes(lead.financing.milestone ?? '') ? 'bg-red-50 text-red-700 ring-red-200'
+                  : lead.financing.milestone === 'DOCUMENTACAO_PENDENTE' ? 'bg-amber-50 text-amber-800 ring-amber-200' : 'bg-blue-50 text-blue-700 ring-blue-200')}>
+              <Banknote size={12} aria-hidden />{lead.financing.label}
+            </Link>
+          )}
 
           {/* Tipo de lead */}
           {(settings.leadTypes.some(t => t.active) || lead.leadType) && (

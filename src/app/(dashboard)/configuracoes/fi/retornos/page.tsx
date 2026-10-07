@@ -53,7 +53,7 @@ export default function FiReturnsPage() {
       setItems(json?.data ?? [])
     } catch { setItems([]) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (allowed) load() }, [allowed, load])
+  useEffect(() => { if (!allowed) return; const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [allowed, load])
 
   useEffect(() => {
     if (!allowed) return

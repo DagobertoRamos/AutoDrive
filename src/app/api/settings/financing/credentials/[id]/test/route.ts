@@ -1,7 +1,7 @@
 // =============================================================================
-// /api/settings/financing/credentials/[id]/test — testar credencial (F&I).
-// Sem adapter real ainda (Fase 5): valida que a chave de cripto lê os segredos
-// (integridade) e registra log técnico + auditoria SEM expor segredo.
+// /api/settings/financing/credentials/[id]/test — testar a credencial com o
+// banco. Usa o mesmo teste real de F&I › Bancos: sem integração oficial, a
+// resposta diz "Banco ainda não integrado" (nada de "OK" simulado).
 // =============================================================================
 
 import { NextResponse } from 'next/server'
@@ -10,9 +10,9 @@ import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAudi
 import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { ownsTenant } from '@/lib/finance/finance-service'
-import { decryptSecrets, isCryptoConfigured } from '@/lib/finance/crypto'
+import { decryptSecretsStrict, isCryptoConfigured, SecretsDecryptError } from '@/lib/finance/crypto'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { testBankConnection } from '@/lib/finance/fi/gateway/test-connection'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -26,29 +26,18 @@ export async function POST(req: Request, { params }: Ctx) {
   const { id } = await params
 
   try {
-    const cred = await prisma.financeCredential.findUnique({ where: { id } })
+    const cred = await prisma.financeCredential.findFirst({ where: { id, tenantId: tid } })
     if (!cred) return NextResponse.json({ success: false, error: 'Credencial não encontrada.' }, { status: 404 })
-    if (!ownsTenant(user.role, tid, cred.tenantId)) return forbiddenResponse('Credencial de outro tenant.')
-    if (!isCryptoConfigured()) return NextResponse.json({ success: false, error: 'Criptografia não configurada (FINANCE_ENCRYPTION_KEY).' }, { status: 503 })
-
-    // Verifica integridade/legibilidade dos segredos (sem expor valores).
-    const secrets = decryptSecrets(cred.secretsEncrypted)
-    const hasAny = Object.values(secrets).some((v) => v && String(v).trim())
-    const status = hasAny ? 'OK' : 'VAZIO'
-
-    // Log técnico (sem segredo) + auditoria.
-    await prisma.financeIntegrationLog.create({
-      data: { tenantId: cred.tenantId, action: 'TEST_CONNECTION', status, message: hasAny ? 'Credencial legível.' : 'Credencial sem segredos preenchidos.' },
-    }).catch(() => {})
-    await createSafeAuditLog({ userId: user.id, tenantId: cred.tenantId, action: 'TEST_CONNECTION', entity: 'FinanceCredential', entityId: id, userName: user.name, userRole: user.role })
-
-    return NextResponse.json({
-      success: hasAny,
-      status,
-      message: hasAny
-        ? 'Credencial legível e íntegra. O teste de conexão REAL com o banco será habilitado com os adaptadores (Fase 5).'
-        : 'A credencial não possui segredos preenchidos.',
-    })
+    if (!isCryptoConfigured()) return NextResponse.json({ success: false, error: 'Criptografia não configurada no servidor.' }, { status: 503 })
+    try { decryptSecretsStrict(cred.secretsEncrypted) } catch (e) {
+      if (e instanceof SecretsDecryptError) return NextResponse.json({ success: false, status: 'ERRO', message: e.message })
+      throw e
+    }
+    const bank = cred.bankId ? await prisma.financeBank.findFirst({ where: { id: cred.bankId, tenantId: tid }, select: { id: true, name: true, adapterKey: true } }) : null
+    if (!bank) return NextResponse.json({ success: false, status: 'ERRO', message: 'O banco desta credencial não existe mais na loja.' })
+    const r = await testBankConnection(tid, bank)
+    await createSafeAuditLog({ userId: user.id, tenantId: tid, action: 'TEST_CONNECTION', entity: 'FinanceCredential', entityId: id, userName: user.name, userRole: user.role, afterData: { ok: r.ok } })
+    return NextResponse.json({ success: r.ok, status: r.ok ? 'OK' : r.state, message: r.message })
   } catch (err) {
     return handlePrismaError(err)
   }

@@ -1,74 +1,69 @@
 // =============================================================================
 // /api/financing/proposals/[id]/documents/[docId]/file — arquivo do documento.
-//   POST   : financing.manage — anexa/substitui o arquivo (multipart/form-data).
-//   DELETE : financing.manage — remove o arquivo (mantém a linha do checklist).
-// Tenant-scoped, auditado. Whitelist de MIME + limite de tamanho.
+//   GET    : abre o arquivo (rota autenticada; nunca URL pública)
+//   POST   : anexa/substitui (multipart, campo "file") — armazenamento privado
+//   DELETE : remove o arquivo (mantém o item na lista)
 // =============================================================================
 
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
-import { handlePrismaError } from '@/lib/prisma-errors'
-import { ownsTenant } from '@/lib/finance/finance-service'
-import { validateDocUpload, saveFinanceDoc, deleteFinanceDoc } from '@/lib/finance/doc-storage'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { createSafeAuditLog } from '@/lib/auth-guards'
+import { attachDocumentFile, DocError, openDocumentFile, removeDocumentFile } from '@/lib/finance/fi/documents'
+import { fiAuth, fiErrorResponse, findScopedProposal } from '@/lib/finance/fi/route'
 
 export const runtime = 'nodejs'
 
 type Ctx = { params: Promise<{ id: string; docId: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Documento não encontrado.' }, { status: 404 })
 
-async function guard(docId: string, proposalId: string, userTenantId: string | null | undefined, role: string) {
-  const doc = await prisma.financeProposalDocument.findUnique({ where: { id: docId } })
-  if (!doc || doc.proposalId !== proposalId) return { error: notFound(), doc: null }
-  if (!ownsTenant(role, userTenantId, doc.tenantId)) return { error: forbiddenResponse('Documento de outro tenant.'), doc: null }
-  return { error: null, doc }
+async function load(req: Request, id: string, docId: string, write: boolean) {
+  const auth = await fiAuth(req, { module: write ? 'financing.manage' : 'financing', cap: 'acessarDocumentos' })
+  if (!auth.ok) return { res: auth.res }
+  if (!(await findScopedProposal(auth, id))) return { res: notFound() }
+  const doc = await prisma.financeProposalDocument.findFirst({ where: { id: docId, proposalId: id, tenantId: auth.tenantId } })
+  if (!doc) return { res: notFound() }
+  return { auth, doc }
+}
+
+export async function GET(req: Request, { params }: Ctx) {
+  const { id, docId } = await params
+  try {
+    const l = await load(req, id, docId, false)
+    if (!l.doc) return l.res
+    const f = await openDocumentFile(l.doc)
+    if (!f) return NextResponse.json({ success: false, error: 'Arquivo não encontrado.' }, { status: 404 })
+    await createSafeAuditLog({ userId: l.auth.user.id, tenantId: l.auth.tenantId, action: 'VIEW', entity: 'FinanceProposalDocument', entityId: docId, userName: l.auth.user.name, userRole: l.auth.user.role })
+    return new NextResponse(f.body as BodyInit, {
+      headers: { 'Content-Type': f.contentType, 'Content-Disposition': `inline; filename="${encodeURIComponent(f.fileName)}"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' },
+    })
+  } catch (err) { return fiErrorResponse(err) }
 }
 
 export async function POST(req: Request, { params }: Ctx) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão.')
-  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const { id, docId } = await params
   try {
-    const g = await guard(docId, id, user.tenantId, user.role)
-    if (g.error) return g.error
-
+    const l = await load(req, id, docId, true)
+    if (!l.doc) return l.res
     const form = await req.formData()
     const file = form.get('file')
-    if (!(file instanceof File)) return NextResponse.json({ success: false, error: 'Arquivo ausente.' }, { status: 400 })
-    const v = validateDocUpload(file.type, file.size)
-    if (!v.ok) return NextResponse.json({ success: false, error: v.error }, { status: 400 })
-
-    const bytes = Buffer.from(await file.arrayBuffer())
-    const saved = await saveFinanceDoc(id, file.name, file.type, bytes)
-    // Substitui arquivo anterior, se houver.
-    if (g.doc.fileUrl) await deleteFinanceDoc(g.doc.fileUrl)
-
-    await prisma.financeProposalDocument.update({ where: { id: docId }, data: { fileUrl: saved.publicUrl, fileName: saved.fileName } })
-    await createSafeAuditLog({ userId: user.id, tenantId: g.doc.tenantId, action: 'UPLOAD', entity: 'FinanceProposalDocument', entityId: docId, userName: user.name, userRole: user.role })
-    return NextResponse.json({ success: true, data: { fileUrl: saved.publicUrl, fileName: saved.fileName } })
+    if (!(file instanceof File)) return NextResponse.json({ success: false, error: 'Escolha o arquivo.' }, { status: 400 })
+    const r = await attachDocumentFile(docId, file, 'INTERNO', l.auth.user.id)
+    await createSafeAuditLog({ userId: l.auth.user.id, tenantId: l.auth.tenantId, action: 'UPLOAD', entity: 'FinanceProposalDocument', entityId: docId, userName: l.auth.user.name, userRole: l.auth.user.role })
+    return NextResponse.json({ success: true, data: r })
   } catch (err) {
-    return handlePrismaError(err)
+    if (err instanceof DocError) return NextResponse.json({ success: false, error: err.message }, { status: err.status })
+    return fiErrorResponse(err)
   }
 }
 
-export async function DELETE(_req: Request, { params }: Ctx) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão.')
-  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
+export async function DELETE(req: Request, { params }: Ctx) {
   const { id, docId } = await params
   try {
-    const g = await guard(docId, id, user.tenantId, user.role)
-    if (g.error) return g.error
-    if (g.doc.fileUrl) await deleteFinanceDoc(g.doc.fileUrl)
-    await prisma.financeProposalDocument.update({ where: { id: docId }, data: { fileUrl: null, fileName: null } })
-    await createSafeAuditLog({ userId: user.id, tenantId: g.doc.tenantId, action: 'UPLOAD_REMOVE', entity: 'FinanceProposalDocument', entityId: docId, userName: user.name, userRole: user.role })
+    const l = await load(req, id, docId, true)
+    if (!l.doc) return l.res
+    if (l.doc.status === 'APROVADO') return NextResponse.json({ success: false, error: 'Documento aprovado: recuse antes de trocar o arquivo.' }, { status: 409 })
+    await removeDocumentFile(docId)
+    await createSafeAuditLog({ userId: l.auth.user.id, tenantId: l.auth.tenantId, action: 'UPLOAD_REMOVE', entity: 'FinanceProposalDocument', entityId: docId, userName: l.auth.user.name, userRole: l.auth.user.role })
     return NextResponse.json({ success: true })
-  } catch (err) {
-    return handlePrismaError(err)
-  }
+  } catch (err) { return fiErrorResponse(err) }
 }

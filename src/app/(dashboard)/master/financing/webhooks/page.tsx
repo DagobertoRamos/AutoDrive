@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Webhook, RefreshCw, CheckCircle2, XCircle, Lock, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { Webhook, RefreshCw, CheckCircle2, Lock, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface EventRow { id: string; provider: string | null; externalId: string | null; signatureValid: boolean | null; processed: boolean; error: string | null; createdAt: string }
@@ -33,7 +33,7 @@ export default function MasterWebhooksPage() {
       if (r?.success) { setEvents(r.data ?? []); setEnabled(!!r.enabled); setSummary(r.summary ?? { total: 0, pending: 0 }) }
     } catch { /* ignore */ } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (isMaster) load() }, [isMaster, load])
+  useEffect(() => { if (!isMaster) return; const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [isMaster, load])
 
   if (session && !isMaster) {
     return (
@@ -71,7 +71,7 @@ export default function MasterWebhooksPage() {
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50"><tr>{['Provedor', 'External ID', 'Assinatura', 'Processado', 'Erro', 'Recebido'].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+            <thead className="bg-gray-50"><tr>{['Canal', 'Id no banco', 'Assinatura', 'Aplicado', 'Erro', 'Recebido'].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 Array.from({ length: 4 }).map((_, i) => (<tr key={i}>{Array.from({ length: 6 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
@@ -81,7 +81,7 @@ export default function MasterWebhooksPage() {
                 <tr key={e.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-800">{e.provider ?? '—'}</td>
                   <td className="px-4 py-3 font-mono text-xs text-gray-600">{e.externalId ?? '—'}</td>
-                  <td className="px-4 py-3">{e.signatureValid ? <CheckCircle2 size={15} className="text-green-600" /> : <XCircle size={15} className="text-red-500" />}</td>
+                  <td className="px-4 py-3">{e.signatureValid ? <CheckCircle2 size={15} className="text-green-600" aria-label="Válida" /> : e.signatureValid === false ? <span className="text-xs text-gray-500">Segredo legado</span> : <span className="text-xs text-gray-400">—</span>}</td>
                   <td className="px-4 py-3">{e.processed ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">sim</span> : <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">não</span>}</td>
                   <td className="px-4 py-3"><span className="block max-w-[220px] truncate text-xs text-gray-500">{e.error ?? '—'}</span></td>
                   <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500">{dt(e.createdAt)}</td>

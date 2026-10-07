@@ -26,6 +26,7 @@ export const PUBLIC_ROUTES = [
   '/termos',
   '/excluir-conta',
   '/s', // site público das lojas (rota de teste /s/<slug>)
+  '/minha-ficha', // portal do cliente do F&I (link seguro com token)
 ] as const
 
 /** Prefixos que o guard nunca deve interceptar (assets, auth do NextAuth, etc.). */

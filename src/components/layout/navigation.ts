@@ -64,8 +64,6 @@ import { HandCoins,
   Tags,
   Banknote,
   LayoutDashboard,
-  CheckCircle2,
-  XCircle,
   Palette,
   Target,
   Lock,
@@ -195,23 +193,22 @@ export const NAV_GROUPS: NavItem[] = [
   },
 
   // ── F&I (Financiamento, Bancos, Retornos, Seguros e Produtos Financeiros) ──────
-  // Rotas mantidas em /financiamento/* (compatibilidade). Bancos permanece aqui na
-  // Fase 1; será realocado p/ Configurações > F&I na Fase 2.
+  // Rotas em /financiamento/* (Aprovadas/Recusadas/Contratos viraram filtros e
+  // redirecionam). Proponentes e Documentos seguem acessíveis pela ficha.
   {
     label: 'F&I',
     icon:  Banknote,
     module: 'financing',
     children: [
-      { label: 'Dashboard F&I', href: '/financiamento/dashboard',   icon: LayoutDashboard, module: 'financing' },
-      { label: 'Proponentes',   href: '/financiamento/proponentes', icon: UserSquare,      module: 'financing' },
-      { label: 'Simulações',    href: '/financiamento/simulacoes',  icon: Calculator,      module: 'financing' },
-      { label: 'Fichas',        href: '/financiamento/fichas',      icon: FileText,        module: 'financing' },
-      { label: 'Aprovadas',     href: '/financiamento/aprovadas',   icon: CheckCircle2,    module: 'financing' },
-      { label: 'Recusadas',     href: '/financiamento/recusadas',   icon: XCircle,         module: 'financing' },
-      { label: 'Contratos',     href: '/financiamento/contratos',   icon: FileSignature,   module: 'financing' },
-      { label: 'Documentos',    href: '/financiamento/documentos',  icon: FileCheck2,      module: 'financing' },
-      { label: 'Bancos',        href: '/financiamento/bancos',      icon: Landmark,        module: 'financing' },
-      { label: 'Relatórios',    href: '/financiamento/relatorios',  icon: BarChart3,       module: 'financing' },
+      { label: 'Visão geral',          href: '/financiamento/dashboard',            icon: LayoutDashboard, module: 'financing' },
+      { label: 'Simular',              href: '/financiamento/simulacoes',           icon: Calculator,      module: 'financing' },
+      { label: 'Fichas',               href: '/financiamento/fichas',               icon: FileText,        module: 'financing' },
+      { label: 'Formalização',         href: '/financiamento/formalizacao',         icon: FileSignature,   module: 'financing' },
+      { label: 'Aguardando pagamento', href: '/financiamento/aguardando-pagamento', icon: Wallet,          module: 'financing' },
+      { label: 'Bancos',               href: '/financiamento/bancos',               icon: Landmark,        module: 'financing' },
+      { label: 'Produtos',             href: '/configuracoes/fi/produtos',          icon: FileCheck2,      module: 'financing.config' },
+      { label: 'Relatórios',           href: '/financiamento/relatorios',           icon: BarChart3,       module: 'financing' },
+      { label: 'Configurações',        href: '/configuracoes/fi',                   icon: Settings,        module: 'financing.config' },
     ],
   },
 

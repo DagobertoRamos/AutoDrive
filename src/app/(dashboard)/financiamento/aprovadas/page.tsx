@@ -1,6 +1,6 @@
-'use client'
-import ProposalsManager from '@/components/financing/ProposalsManager'
+import { redirect } from 'next/navigation'
 
+// Mantido para links antigos: as fichas aprovadas ficam no filtro da lista de Fichas.
 export default function AprovadasPage() {
-  return <ProposalsManager fixedStatus="APROVADA" title="Fichas Aprovadas" subtitle="aprovadas" allowCreate={false} />
+  redirect('/financiamento/fichas?etapa=aprovadas')
 }

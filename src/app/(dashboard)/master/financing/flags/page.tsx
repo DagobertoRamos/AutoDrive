@@ -31,7 +31,7 @@ export default function MasterFlagsPage() {
     try { const r = await fetch('/api/master/financing/flags', { credentials: 'include' }).then((x) => x.json()); setItems(r?.data ?? []) }
     catch { setItems([]) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (isMaster) load() }, [isMaster, load])
+  useEffect(() => { if (!isMaster) return; const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [isMaster, load])
 
   const patch = async (id: string, data: Record<string, unknown>) => {
     await fetch(`/api/master/financing/flags/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) }); await load()
@@ -57,7 +57,7 @@ export default function MasterFlagsPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><ToggleRight size={20} className="text-brand-600" />Feature Flags F&amp;I</h1>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><ToggleRight size={20} className="text-brand-600" />Liberação de recursos do F&amp;I</h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} flag(s)`}</p>
         </div>
         <button onClick={() => { setError(null); setModal(true) }} className="btn-primary text-sm"><Plus size={15} />Nova flag</button>
@@ -76,7 +76,7 @@ export default function MasterFlagsPage() {
                 {f.notes && <p className="text-xs text-gray-500">{f.notes}</p>}
               </div>
               <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                <span>Rollout</span>
+                <span>Liberado para</span>
                 <input type="number" min={0} max={100} value={f.rolloutPct} onChange={(e) => patch(f.id, { rolloutPct: Math.max(0, Math.min(100, Number(e.target.value))) })} className="w-16 rounded-lg border border-gray-300 px-2 py-1 text-sm" />
                 <span>%</span>
               </div>
@@ -98,7 +98,7 @@ export default function MasterFlagsPage() {
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome <RequiredMark /></label><input className={inputCls} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Ex.: Simulação via Credere" /></div>
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.enabled} onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Ativa</label>
-                <div className="flex items-center gap-1.5 text-sm text-gray-600"><span>Rollout</span><input type="number" min={0} max={100} value={form.rolloutPct} onChange={(e) => setForm((f) => ({ ...f, rolloutPct: Number(e.target.value) }))} className="w-16 rounded-lg border border-gray-300 px-2 py-1 text-sm" /><span>%</span></div>
+                <div className="flex items-center gap-1.5 text-sm text-gray-600"><span>Liberado para</span><input type="number" min={0} max={100} value={form.rolloutPct} onChange={(e) => setForm((f) => ({ ...f, rolloutPct: Number(e.target.value) }))} className="w-16 rounded-lg border border-gray-300 px-2 py-1 text-sm" /><span>%</span></div>
               </div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações</label><textarea className={cn(inputCls, 'min-h-[56px] resize-y')} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></div>
               {error && <p className="text-sm text-red-600">{error}</p>}

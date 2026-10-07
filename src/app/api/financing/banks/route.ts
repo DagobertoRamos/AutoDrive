@@ -1,55 +1,42 @@
 // =============================================================================
-// /api/financing/banks — bancos para financiamento. Multi-tenant.
-//   GET  : financing (read; ?active=true)   POST : financing.manage
+// /api/financing/banks — bancos da loja (F&I). Cada loja tem os seus.
+//   GET  : financing (?active=true)
+//   POST : configurarBancos — sem duplicar nome na mesma loja
 // =============================================================================
 
 import { NextResponse } from 'next/server'
-import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { getSessionUser, assertTenantId, tenantWhere, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
-import { handlePrismaError } from '@/lib/prisma-errors'
+import { createSafeAuditLog } from '@/lib/auth-guards'
 import { createBankSchema } from '@/lib/validators/financing'
-import { zodErrorResponse } from '@/lib/finance/finance-service'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { getBankProvider } from '@/lib/finance/fi/gateway/registry'
+import { fiAuth, fiErrorResponse } from '@/lib/finance/fi/route'
 
 export async function GET(req: Request) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'financing')) return forbiddenResponse('Sem acesso ao financiamento.')
-  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
-
+  const auth = await fiAuth(req)
+  if (!auth.ok) return auth.res
   try {
-    const tenantId = assertTenantId(user.tenantId, user.role)
-    const { searchParams } = new URL(req.url)
-    const onlyActive = searchParams.get('active') === 'true'
+    const onlyActive = new URL(req.url).searchParams.get('active') === 'true'
     const data = await prisma.financeBank.findMany({
-      where: tenantWhere(user.role, tenantId, onlyActive ? { active: true } : {}) as never,
+      where: { tenantId: auth.tenantId, ...(onlyActive ? { active: true } : {}) },
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, code: true, active: true, notes: true, _count: { select: { proposals: true } } },
+      select: { id: true, name: true, code: true, active: true, notes: true, adapterKey: true, _count: { select: { proposals: true } } },
     })
-    return NextResponse.json({ success: true, data: data.map((b) => ({ ...b, proposals: b._count.proposals })) })
-  } catch (err) {
-    return handlePrismaError(err)
-  }
+    return NextResponse.json({ success: true, data: data.map(({ _count, ...b }) => ({ ...b, proposals: _count.proposals })) })
+  } catch (err) { return fiErrorResponse(err) }
 }
 
 export async function POST(req: Request) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão para cadastrar bancos.')
-  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
-
+  const auth = await fiAuth(req, { module: 'financing.manage', cap: 'configurarBancos' })
+  if (!auth.ok) return auth.res
   try {
-    const tenantId = assertTenantId(user.tenantId, user.role)
     const d = createBankSchema.parse(await req.json())
+    if (d.adapterKey && !getBankProvider(d.adapterKey)) return NextResponse.json({ success: false, error: 'Canal de integração inválido.' }, { status: 400 })
+    const dup = await prisma.financeBank.findFirst({ where: { tenantId: auth.tenantId, name: { equals: d.name, mode: 'insensitive' } }, select: { id: true } })
+    if (dup) return NextResponse.json({ success: false, error: 'Este banco já está cadastrado na loja.' }, { status: 409 })
     const bank = await prisma.financeBank.create({
-      data: { tenantId, name: d.name, code: d.code ?? null, active: d.active, notes: d.notes ?? null },
+      data: { tenantId: auth.tenantId, name: d.name, code: d.code ?? null, active: d.active, notes: d.notes ?? null, adapterKey: d.adapterKey || null },
     })
-    await createSafeAuditLog({ userId: user.id, tenantId, action: 'CREATE', entity: 'FinanceBank', entityId: bank.id, userName: user.name, userRole: user.role })
+    await createSafeAuditLog({ userId: auth.user.id, tenantId: auth.tenantId, action: 'CREATE', entity: 'FinanceBank', entityId: bank.id, userName: auth.user.name, userRole: auth.user.role })
     return NextResponse.json({ success: true, data: bank }, { status: 201 })
-  } catch (err) {
-    if (err instanceof ZodError) return zodErrorResponse(err)
-    return handlePrismaError(err)
-  }
+  } catch (err) { return fiErrorResponse(err) }
 }
