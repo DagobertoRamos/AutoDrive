@@ -57,7 +57,7 @@ async function tradeInDeal(vehicleId: string) {
 
 /** Lançamento de compra (estoque próprio) ou repasse ao proprietário (consignado) na entrada. */
 export async function createAcquisitionEntry(vehicleId: string, createdById: string | null) {
-  const v = await prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { id: true, tenantId: true, unitId: true, plate: true, brand: true, model: true, stockType: true, purchasePrice: true } })
+  const v = await prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { id: true, tenantId: true, unitId: true, plate: true, brand: true, model: true, stockType: true, purchasePrice: true, partnerStoreId: true, partnerStore: { select: { name: true } } } })
   if (!v || v.purchasePrice == null || Number(v.purchasePrice) <= 0) return
   // Carro da troca: já foi pago com ele mesmo — não vira conta a pagar (entra
   // como entrada na venda; o extrato do carro mostra a compra pela troca).
@@ -71,6 +71,8 @@ export async function createAcquisitionEntry(vehicleId: string, createdById: str
       categoryId: await ensureVehicleCategory(v.tenantId, category, 'DESPESA'),
       description: `${category === 'REPASSE' ? 'Repasse ao proprietário (na venda)' : 'Compra do veículo'} — ${plateLabel(v)}`,
       amount: v.purchasePrice, competenceDate: new Date(), dueDate: category === 'REPASSE' ? null : new Date(), createdById,
+      // Repasse: a quem a loja deve (loja parceira) — conta-corrente do parceiro.
+      ...(category === 'REPASSE' && v.partnerStoreId ? { supplierId: v.partnerStoreId, counterparty: v.partnerStore?.name ?? null } : {}),
     },
   })
 }

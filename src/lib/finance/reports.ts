@@ -17,6 +17,7 @@ import {
 import { loadDealRefundLines } from './deal-refunds'
 import { costOf, loadDealCommissions, type CostEntry, type DealCommission } from './deal-costs'
 import { dealResultsReport } from './deal-result'
+import { partnersReport } from './partners-report'
 import { SALE_DEAL_TYPES, loadAllocated, loadFinanceRefs, monthBounds, type EntryFilters, type FinanceRefs } from './dre'
 import {
   AGING_BUCKETS, addMonths, agingBucket, agingSummary, aggregateProfit, budgetVsActual, buildCategoryTree, daysBetweenSP,
@@ -27,7 +28,7 @@ import {
 export const REPORT_VIEWS = [
   'resultado-centros', 'servicos', 'receitas-fi',
   'despesas-categoria', 'centro-custo', 'fornecedores', 'lucratividade-veiculo', 'lucratividade-vendedor',
-  'lucratividade-unidade', 'comparativo-mensal', 'orcado-realizado', 'aging', 'cancelamentos', 'resultado-negociacao', 'contratos-transito',
+  'lucratividade-unidade', 'comparativo-mensal', 'orcado-realizado', 'aging', 'cancelamentos', 'resultado-negociacao', 'contratos-transito', 'parceiros',
 ] as const
 export type ReportView = (typeof REPORT_VIEWS)[number]
 export const isReportView = (v: string | null): v is ReportView => !!v && (REPORT_VIEWS as readonly string[]).includes(v)
@@ -83,6 +84,7 @@ export async function getReport(p: ReportParams) {
     case 'cancelamentos': return { ...base, ...(await cancellations(p)) }
     case 'resultado-negociacao': return { ...base, ...(await dealResultsReport(p, refs)) }
     case 'contratos-transito': return { ...base, ...(await contractsInTransit(p)) }
+    case 'parceiros': return { ...base, ...(await partnersReport(p)) }
   }
 }
 

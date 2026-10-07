@@ -14,11 +14,12 @@ import { AgingReport, BudgetReport, MonthlyComparisonReport } from './PeriodRepo
 import { CancellationReport } from './CancellationReport'
 import { DealResultReport } from './DealResultReport'
 import { TransitReport } from './TransitReport'
+import { PartnersReport } from './PartnersReport'
 import type { CsvSpec } from './types'
 
 type View =
   | 'resultado-centros' | 'servicos' | 'receitas-fi' | 'despesas-categoria' | 'fornecedores' | 'lucratividade-veiculo' | 'lucratividade-vendedor'
-  | 'lucratividade-unidade' | 'comparativo-mensal' | 'orcado-realizado' | 'aging' | 'cancelamentos' | 'resultado-negociacao' | 'contratos-transito'
+  | 'lucratividade-unidade' | 'comparativo-mensal' | 'orcado-realizado' | 'aging' | 'cancelamentos' | 'resultado-negociacao' | 'contratos-transito' | 'parceiros'
 
 type Filter = 'range' | 'to' | 'regime' | 'costCenter' | 'unit' | 'seller'
 
@@ -36,6 +37,7 @@ const REPORTS: { key: View; label: string; icon: typeof PieChart; filters: Filte
   { key: 'orcado-realizado', label: 'Orçado × realizado', icon: Target, filters: ['range', 'costCenter', 'unit'] },
   { key: 'aging', label: 'Aging', icon: CalendarClock, filters: ['costCenter', 'unit'] },
   { key: 'contratos-transito', label: 'Contratos em trânsito', icon: Landmark, filters: ['unit', 'seller'] },
+  { key: 'parceiros', label: 'Parceiros e consignados', icon: Users, filters: ['unit'] },
   { key: 'cancelamentos', label: 'Cancelamentos e estornos', icon: Ban, filters: ['range', 'unit', 'seller'] },
 ]
 
@@ -129,6 +131,7 @@ export default function ReportsHub() {
       {view === 'cancelamentos' && <CancellationReport key={view} {...props} />}
       {view === 'resultado-negociacao' && <DealResultReport key={view} {...props} />}
       {view === 'contratos-transito' && <TransitReport key={view} {...props} />}
+      {view === 'parceiros' && <PartnersReport key={view} {...props} />}
     </div>
   )
 }
