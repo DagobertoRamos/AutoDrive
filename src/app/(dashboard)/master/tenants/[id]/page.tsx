@@ -452,13 +452,17 @@ export default function TenantDetailPage() {
   // ── Delete tenant ─────────────────────────────────────────────────────────
 
   const handleDelete = async () => {
-    if (!confirm(`EXCLUIR o tenant "${tenant?.name}"?\n\nEsta ação é IRREVERSÍVEL e apaga todos os dados.`)) return
     try {
-      const res = await fetch(`/api/master/tenants/${id}`, { method: 'DELETE' })
-      if (!res.ok) {
-        const d = await res.json()
-        throw new Error(d.error ?? 'Erro ao excluir')
-      }
+      // Prévia: quanto será apagado (e se algo bloquearia).
+      const pre = await fetch(`/api/master/tenants/${id}?dryRun=1`, { method: 'DELETE' })
+      const p = await pre.json().catch(() => ({}))
+      if (!pre.ok) throw new Error(p.error ?? 'Erro ao simular a exclusão')
+      const typed = window.prompt(`EXCLUIR DEFINITIVAMENTE a loja "${tenant?.name}"?\n\nSerão apagados ${p.data.rows} registro(s) — usuários, negociações, estoque, financeiro, documentos — e ${p.data.files} arquivo(s). Não há como desfazer.\n\nDigite o nome da loja para confirmar:`)
+      if (!typed) return
+      const res = await fetch(`/api/master/tenants/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmName: typed }) })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error ?? 'Erro ao excluir')
+      alert(d.message ?? 'Loja excluída.')
       router.replace('/master/tenants')
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erro ao excluir')

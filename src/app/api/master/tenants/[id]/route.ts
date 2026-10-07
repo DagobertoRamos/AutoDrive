@@ -8,6 +8,9 @@ import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { countsRetention, effectivePurgeAt } from '@/lib/tenant-lifecycle/core'
 import { ensureRetention } from '@/lib/tenant-lifecycle/retention'
+import { deleteTenantCompletely } from '@/lib/tenant-lifecycle/delete-now'
+
+export const maxDuration = 300
 
 // ── GET ──────────────────────────────────────────────────────────────────────
 
@@ -132,38 +135,45 @@ export async function PUT(
 
 // ── DELETE ───────────────────────────────────────────────────────────────────
 
+// DELETE ?dryRun=1 → prévia { rows, files }. DELETE { confirmName } → apaga a
+// loja inteira (banco + arquivos), como se nunca tivesse existido.
 export async function DELETE(
   req: NextRequest,
   ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
-  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
+  const params = await Promise.resolve(ctxArg.params)
   const { session, error } = await requireMaster()
   if (error) return error
 
   try {
-    const existing = await prisma.tenant.findUnique({
-      where: { id: params.id },
-      include: { _count: { select: { users: true, deals: true } } },
-    })
+    const existing = await prisma.tenant.findUnique({ where: { id: params.id }, select: { id: true, name: true, cnpj: true } })
+    if (!existing) return NextResponse.json({ success: false, error: 'Loja não encontrada.' }, { status: 404 })
 
-    if (!existing) {
-      return NextResponse.json({ success: false, error: 'Tenant não encontrado.' }, { status: 404 })
+    if (new URL(req.url).searchParams.get('dryRun') === '1') {
+      const prev = await deleteTenantCompletely(params.id, { dryRun: true })
+      if (!prev.ok) return NextResponse.json({ success: false, error: `A exclusão seria bloqueada: ${prev.error}` }, { status: 409 })
+      return NextResponse.json({ success: true, data: { rows: prev.rows, files: prev.files, name: existing.name } })
     }
 
-    if (existing._count.users > 0 || existing._count.deals > 0) {
-      return NextResponse.json(
-        { success: false, error: 'Não é possível excluir um tenant com usuários ou negociações cadastradas.' },
-        { status: 409 },
-      )
+    const body = await req.json().catch(() => ({})) as { confirmName?: string }
+    if ((body.confirmName ?? '').trim().toLowerCase() !== existing.name.trim().toLowerCase()) {
+      return NextResponse.json({ success: false, error: 'Digite o nome da loja para confirmar.' }, { status: 400 })
     }
 
-    await prisma.tenant.delete({ where: { id: params.id } })
+    const r = await deleteTenantCompletely(params.id)
+    if (!r.ok) return NextResponse.json({ success: false, error: `Nada foi apagado: ${r.error}` }, { status: 409 })
 
+    // Registro do MASTER (sem vínculo com a loja, que deixou de existir).
     await logMasterAction(session, 'DELETE_TENANT', 'Tenant', params.id, {
+      tenantId: null,
       beforeData: { name: existing.name },
+      afterData: { rows: r.rows, files: r.files, filesFailed: r.filesFailed },
       req,
-    })
+    }).catch(() => {})
 
-    return NextResponse.json({ success: true, message: 'Tenant excluído com sucesso.' })
+    return NextResponse.json({
+      success: true,
+      message: `Loja ${existing.name} excluída: ${r.rows} registro(s) e ${r.files} arquivo(s) apagados${r.filesFailed ? ` (${r.filesFailed} arquivo(s) já não existiam)` : ''}.`,
+    })
   } catch (err) {
     console.error('[DELETE /api/master/tenants/:id]', err)
     return handlePrismaError(err)
