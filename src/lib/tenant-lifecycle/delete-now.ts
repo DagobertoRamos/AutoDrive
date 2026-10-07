@@ -54,7 +54,7 @@ export async function deleteTenantCompletely(tenantId: string, opts: { dryRun?: 
 
   // 1. Varredura (o mesmo conjunto que será apagado) para achar os arquivos.
   const refs = new Set<string>()
-  const scan = await purgeTenantData(tenantId, { sink: async (_table, rows) => { for (const r of rows) collect(r, refs) } })
+  const scan = await purgeTenantData(tenantId, { sinkTextOnly: true, sink: async (_table, rows) => { for (const r of rows) collect(r, refs) } })
   if (!scan.ok) return { ok: false, error: scan.error, rows: 0, files: 0, filesFailed: 0 }
   if (opts.dryRun) return { ok: true, rows: scan.totalRows, files: refs.size, filesFailed: 0 }
 

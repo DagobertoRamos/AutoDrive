@@ -53,13 +53,13 @@ const row = (list: string[], alias?: string) => (list.length === 1 ? cols(list, 
 
 async function loadCatalog(tx: Tx) {
   const tenantTables = (await tx.$queryRawUnsafe<{ t: string }[]>(
-    `SELECT table_name AS t FROM information_schema.columns
+    `SELECT table_name::text AS t FROM information_schema.columns
       WHERE table_schema = current_schema() AND column_name = 'tenantId'
       ORDER BY table_name`,
   )).map((r) => r.t)
 
   const pkRows = await tx.$queryRawUnsafe<{ t: string; cols: string[] }[]>(
-    `SELECT cl.relname AS t, array_agg(a.attname ORDER BY k.ord) AS cols
+    `SELECT cl.relname::text AS t, array_agg(a.attname::text ORDER BY k.ord) AS cols
        FROM pg_index i
        JOIN pg_class cl ON cl.oid = i.indrelid
        JOIN pg_namespace n ON n.oid = cl.relnamespace
@@ -71,9 +71,9 @@ async function loadCatalog(tx: Tx) {
   const pk = new Map(pkRows.map((r) => [r.t, r.cols]))
 
   const edges = await tx.$queryRawUnsafe<FkEdge[]>(
-    `SELECT cl.relname AS child, p.relname AS parent,
-            array_agg(ca.attname ORDER BY k.ord) AS "childCols",
-            array_agg(pa.attname ORDER BY k.ord) AS "parentCols",
+    `SELECT cl.relname::text AS child, p.relname::text AS parent,
+            array_agg(ca.attname::text ORDER BY k.ord) AS "childCols",
+            array_agg(pa.attname::text ORDER BY k.ord) AS "parentCols",
             bool_and(NOT ca.attnotnull) AS nullable,
             c.confdeltype::text AS "onDelete"
        FROM pg_constraint c
@@ -97,7 +97,7 @@ const isNullifyEdge = (e: FkEdge) => (e.onDelete === 'a' || e.onDelete === 'r') 
 
 type TableSink = (table: string, rows: Record<string, unknown>[]) => Promise<void>
 
-async function runPurge(tx: Tx, tenantId: string, dryRun: boolean, sink?: TableSink): Promise<PurgeResult> {
+async function runPurge(tx: Tx, tenantId: string, dryRun: boolean, sink?: TableSink, sinkTextOnly = false): Promise<PurgeResult> {
   const { tenantTables, pk, edges } = await loadCatalog(tx)
   const TENANTS = 'tenants'
 
@@ -150,8 +150,20 @@ async function runPurge(tx: Tx, tenantId: string, dryRun: boolean, sink?: TableS
 
   // ── Backup: entrega as linhas-alvo de cada tabela e desfaz tudo ──────────
   if (sink) {
+    // Só texto/JSON (convertidos para text): basta para achar referências de
+    // arquivo e evita tipos que o adaptador do banco em produção não lê.
+    const textCols = new Map<string, string[]>()
+    if (sinkTextOnly) {
+      const rows = await tx.$queryRawUnsafe<{ t: string; c: string }[]>(
+        `SELECT table_name::text AS t, column_name::text AS c FROM information_schema.columns
+          WHERE table_schema = current_schema() AND data_type IN ('text', 'character varying', 'json', 'jsonb', 'ARRAY')`,
+      )
+      for (const r of rows) textCols.set(r.t, [...(textCols.get(r.t) ?? []), r.c])
+    }
     for (const t of targets) {
-      const rows = await tx.$queryRawUnsafe<Record<string, unknown>[]>(`SELECT c.* FROM ${q(t)} c WHERE ${inTargets(t, 'c')}`)
+      const select = sinkTextOnly ? (textCols.get(t) ?? []).map((c) => `c.${q(c)}::text AS ${q(c)}`).join(', ') : 'c.*'
+      if (!select) continue
+      const rows = await tx.$queryRawUnsafe<Record<string, unknown>[]>(`SELECT ${select} FROM ${q(t)} c WHERE ${inTargets(t, 'c')}`)
       if (rows.length) await sink(t, rows)
     }
   }
@@ -211,11 +223,11 @@ async function runPurge(tx: Tx, tenantId: string, dryRun: boolean, sink?: TableS
  */
 export async function purgeTenantData(
   tenantId: string,
-  opts: { dryRun?: boolean; sink?: TableSink; timeoutMs?: number } = {},
+  opts: { dryRun?: boolean; sink?: TableSink; sinkTextOnly?: boolean; timeoutMs?: number } = {},
 ): Promise<PurgeResult> {
   const dryRun = opts.dryRun ?? false
   try {
-    return await prisma.$transaction((tx) => runPurge(tx, tenantId, dryRun || !!opts.sink, opts.sink), { timeout: opts.timeoutMs ?? 280_000, maxWait: 20_000 })
+    return await prisma.$transaction((tx) => runPurge(tx, tenantId, dryRun || !!opts.sink, opts.sink, !!opts.sinkTextOnly), { timeout: opts.timeoutMs ?? 280_000, maxWait: 20_000 })
   } catch (err) {
     if (err instanceof DryRunRollback) return err.result
     return {

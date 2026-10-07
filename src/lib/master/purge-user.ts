@@ -24,7 +24,7 @@ async function refsTo(tx: Tx, table: string, cache: Map<string, FkRef[]>): Promi
   const hit = cache.get(table)
   if (hit) return hit
   const rows = await tx.$queryRawUnsafe<{ tbl: string; col: string; refcol: string; nn: boolean }[]>(
-    `select c.conrelid::regclass::text as tbl, a.attname as col, ra.attname as refcol, a.attnotnull as nn
+    `select c.conrelid::regclass::text as tbl, a.attname::text as col, ra.attname::text as refcol, a.attnotnull as nn
        from pg_constraint c
        join pg_attribute a  on a.attrelid  = c.conrelid  and a.attnum  = c.conkey[1]
        join pg_attribute ra on ra.attrelid = c.confrelid and ra.attnum = c.confkey[1]
