@@ -22,6 +22,7 @@ import {
 import { maskPhone } from '@/lib/masks'
 import { isValidPhone } from '@/lib/br-docs/phone'
 import { RequiredMark } from '@/components/ui/field'
+import { isValidCPF } from '@/lib/br-docs/cpf'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -240,6 +241,7 @@ export default function EditarPartnerPage() {
     e.preventDefault()
     setError('')
     if (!form.nomeCompleto.trim()) { setError('Informe o nome completo.'); return }
+    if (!isValidCPF(cpfDisplay)) { setError('CPF inválido.'); return }
     if (form.celular && !isValidPhone(form.celular)) { setError('Celular inválido.'); return }
     if (willCreateUser && !form.email.trim()) { setError('Informe o e-mail.'); return }
 
@@ -249,6 +251,7 @@ export default function EditarPartnerPage() {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
+          cpf:           cpfDisplay.replace(/\D/g, ''),
           nomeCompleto:  form.nomeCompleto.trim(),
           rg:            form.rg.trim()         || null,
           celular:       form.celular.trim()     || null,
@@ -435,13 +438,15 @@ export default function EditarPartnerPage() {
             <User size={14} className="text-brand-600" /> Dados pessoais
           </h2>
 
-          {/* CPF (somente leitura) */}
+          {/* CPF — só o MASTER acessa esta tela; muda também o CPF do login vinculado */}
           <div>
-            <label className={labelCls}>CPF</label>
+            <label className={labelCls}>CPF <RequiredMark /></label>
             <input
-              readOnly
               value={cpfDisplay}
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-mono text-gray-500 cursor-not-allowed"
+              onChange={(e) => setCpfDisplay(maskCPF(e.target.value))}
+              inputMode="numeric"
+              placeholder="000.000.000-00"
+              className={`${inputCls} font-mono`}
             />
           </div>
 

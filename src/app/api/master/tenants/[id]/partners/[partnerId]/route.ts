@@ -15,7 +15,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { normalizeCPF } from '@/lib/br-docs/cpf'
+import { isValidCPF, normalizeCPF } from '@/lib/br-docs/cpf'
 import { normalizePhone } from '@/lib/br-docs/phone'
 import { normalizeCEP } from '@/lib/br-docs/cep'
 import bcrypt from 'bcryptjs'
@@ -44,8 +44,19 @@ export async function PATCH(
     const body = await req.json()
     const {
       nomeCompleto, rg, celular, email, dataNascimento,
-      role, participacao, principal, address,
+      role, participacao, principal, address, cpf: cpfIn,
     } = body
+
+    // ── CPF (só o MASTER chega aqui): valida, evita duplicidade e acompanha o login ──
+    const resultCpf = cpfIn != null && String(cpfIn).trim() ? normalizeCPF(cpfIn) : normalizeCPF(partner.cpf)
+    const cpfChanged = resultCpf !== normalizeCPF(partner.cpf)
+    if (cpfChanged) {
+      if (!isValidCPF(resultCpf)) return NextResponse.json({ success: false, error: 'CPF inválido.' }, { status: 400 })
+      const dupPartner = await prisma.tenantPartner.findFirst({ where: { tenantId: params.id, cpf: resultCpf, id: { not: partner.id } }, select: { nomeCompleto: true } })
+      if (dupPartner) return NextResponse.json({ success: false, error: `CPF já cadastrado para o sócio ${dupPartner.nomeCompleto}.` }, { status: 409 })
+      const dupUser = await prisma.user.findFirst({ where: { cpf: resultCpf, ...(partner.userId ? { id: { not: partner.userId } } : {}) }, select: { email: true } })
+      if (dupUser) return NextResponse.json({ success: false, error: `CPF já usado pelo usuário ${dupUser.email}.` }, { status: 409 })
+    }
 
     // ── Determina estado resultante ────────────────────────────────────────
 
@@ -87,7 +98,7 @@ export async function PATCH(
         )
       }
 
-      const cpf = normalizeCPF(partner.cpf)
+      const cpf = resultCpf
       const existingCpf = await prisma.user.findUnique({ where: { cpf } })
       if (existingCpf) {
         return NextResponse.json(
@@ -128,6 +139,10 @@ export async function PATCH(
       const nameChanged  = nomeCompleto != null && resultName  !== partner.user?.name
       const emailChanged = email        != null && resultEmail !== partner.user?.email
 
+      if (cpfChanged) {
+        await prisma.user.update({ where: { id: partner.userId }, data: { cpf: resultCpf } })
+        userUpdated = true
+      }
       if (nameChanged || emailChanged) {
         if (emailChanged && resultEmail) {
           const conflict = await prisma.user.findFirst({
@@ -157,6 +172,7 @@ export async function PATCH(
     const updated = await prisma.tenantPartner.update({
       where: { id: params.partnerId },
       data: {
+        ...(cpfChanged && { cpf: resultCpf }),
         ...(nomeCompleto    != null && { nomeCompleto:  String(nomeCompleto).trim() }),
         ...(rg              != null && { rg:            String(rg).trim() || null }),
         ...(celular         != null && { celular:       normalizePhone(celular) || null }),
