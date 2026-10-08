@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { CalendarDays, Car, History, ImagePlus, LayoutDashboard, PlugZap, Rocket } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { photoSrc } from '@/lib/partner-photo'
 
 export type Tone = 'neutral' | 'info' | 'progress' | 'success' | 'warning' | 'danger' | 'muted'
 
@@ -81,7 +82,7 @@ export function ChannelMark({ channel, className }: { channel: string; className
 export function Thumb({ src, className }: { src: string | null | undefined; className?: string }) {
   return (
     <div className={cn('shrink-0 overflow-hidden rounded-lg bg-gray-100', className)}>
-      {src ? <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" /> : <div className="flex h-full w-full items-center justify-center text-gray-300"><Car size={18} /></div>}
+      {src ? <img src={photoSrc(src, 320)} alt="" className="h-full w-full object-cover" loading="lazy" /> : <div className="flex h-full w-full items-center justify-center text-gray-300"><Car size={18} /></div>}
     </div>
   )
 }

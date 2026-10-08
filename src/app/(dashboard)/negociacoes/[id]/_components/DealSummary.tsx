@@ -268,7 +268,7 @@ export default function DealSummary({
               <>
                 {vPhoto ? (
                   <div className="relative h-24 w-full shrink-0 overflow-hidden rounded-xl bg-gray-100 sm:w-36">
-                    <VehiclePhotoImg src={vPhoto} alt={vModel ?? 'veículo'} fill className="object-cover" sizes="144px" />
+                    <VehiclePhotoImg src={vPhoto} alt={vModel ?? 'veículo'} fill className="object-cover" sizes="144px" photoWidth={320} />
                   </div>
                 ) : (
                   <div className="flex h-24 w-full shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-400 sm:w-36"><Car size={28} /></div>

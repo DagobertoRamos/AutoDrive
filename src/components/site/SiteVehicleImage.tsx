@@ -3,14 +3,15 @@
 
 // Foto do veículo com fallback para o "Em breve" (porta do VehicleImage).
 import { useEffect, useRef, useState } from 'react'
+import { photoSrc } from '@/lib/partner-photo'
 
 export const EM_BREVE_IMG = '/site/em-breve.svg'
 
-export function SiteVehicleImage({ src, alt, loading = 'lazy', placeholder }: { src: string | null; alt: string; loading?: 'eager' | 'lazy'; placeholder?: string }) {
+export function SiteVehicleImage({ src, alt, loading = 'lazy', placeholder, width = 640 }: { src: string | null; alt: string; loading?: 'eager' | 'lazy'; placeholder?: string; width?: number }) {
   const fallback = placeholder || EM_BREVE_IMG
   const [failed, setFailed] = useState<string | null>(null)
   const img = useRef<HTMLImageElement>(null)
-  const real = src || fallback
+  const real = photoSrc(src, width) || fallback
   useEffect(() => {
     // A imagem pode falhar antes do listener existir durante a hidratação.
     const f = requestAnimationFrame(() => { if (img.current?.complete && img.current.naturalWidth === 0) setFailed(real) })

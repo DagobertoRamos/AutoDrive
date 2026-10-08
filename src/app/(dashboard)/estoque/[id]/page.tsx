@@ -338,7 +338,7 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
             <VehiclePhotoImg
               src={allPhotos[0]?.url}
               alt={`${vehicle.brand} ${vehicle.model}`}
-              fill className="object-cover"
+              fill className="object-cover" photoWidth={320}
             />
           </div>
 
@@ -618,7 +618,7 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
                           i === photoIdx ? 'border-brand-500' : 'border-transparent',
                         ].join(' ')}
                       >
-                        <VehiclePhotoImg src={photo.url} alt={`Thumb ${i + 1}`} fill className="object-cover" />
+                        <VehiclePhotoImg src={photo.url} alt={`Thumb ${i + 1}`} fill className="object-cover" photoWidth={320} />
                       </button>
                     ))}
                   </div>

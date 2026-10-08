@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { discountPct, type PromoState } from '@/lib/site/listing-core'
 import { RequiredMark } from '@/components/ui/field'
+import { photoSrc } from '@/lib/partner-photo'
 
 interface Row {
   id: string; title: string; plate: string | null; cover: string | null; state: 'PUBLICADO' | 'EM_BREVE' | 'HIDDEN'
@@ -114,7 +115,7 @@ export default function SitePromotionsPage() {
             const off = discountPct(p.salePrice, p.promoPrice)
             return (
               <li key={r.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-card">
-                <div className="h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-gray-100">{r.cover ? <img src={r.cover} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-[10px] text-gray-400">sem foto</div>}</div>
+                <div className="h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-gray-100">{r.cover ? <img src={photoSrc(r.cover, 320)} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-[10px] text-gray-400">sem foto</div>}</div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate font-semibold text-gray-900">{r.title}</span>

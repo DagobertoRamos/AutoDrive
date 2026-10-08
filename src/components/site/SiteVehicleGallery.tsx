@@ -4,6 +4,10 @@
 // Galeria do anúncio com lightbox e vídeo (porta do VehicleGallery do dagobertoeasycar).
 import { useCallback, useEffect, useState } from 'react'
 import { EM_BREVE_IMG } from './SiteVehicleImage'
+import { photoSrc } from '@/lib/partner-photo'
+
+// Foto que não carrega (apagada no parceiro) vira o "Em breve".
+const onPhotoError = (e: React.SyntheticEvent<HTMLImageElement>) => { if (!e.currentTarget.src.endsWith(EM_BREVE_IMG)) e.currentTarget.src = EM_BREVE_IMG }
 
 type Media = { type: 'image' | 'video'; url: string }
 
@@ -42,7 +46,7 @@ function Lightbox({ media, start, title, onClose }: { media: Media[]; start: num
         {media.length > 1 && <button className="lightbox-nav prev" onClick={prev} aria-label="Anterior">&#8249;</button>}
         {item.type === 'video'
           ? <div style={{ position: 'relative', width: 'min(900px, 85vw)', aspectRatio: '16/9' }}><VideoPlayer url={item.url} autoplay /></div>
-          : <img src={item.url} alt={`${title} - ${idx + 1}`} />}
+          : <img src={photoSrc(item.url)} alt={`${title} - ${idx + 1}`} onError={onPhotoError} />}
         {media.length > 1 && <button className="lightbox-nav next" onClick={next} aria-label="Próxima">&#8250;</button>}
       </div>
     </div>
@@ -64,7 +68,7 @@ export function SiteVehicleGallery({ photos, title, videoUrl, placeholder }: { p
         <div className={`vehicle-gallery-main${item.type === 'video' ? ' has-video' : ''}`} onClick={() => { if (zoomable) setLightbox(current) }}>
           {item.type === 'video'
             ? <><VideoPlayer url={item.url} /><span className="gallery-video-label">Vídeo</span></>
-            : <img src={item.url} alt={`${title} - foto ${current + 1}`} loading="eager" />}
+            : <img src={photoSrc(item.url, 1280)} alt={`${title} - foto ${current + 1}`} loading="eager" onError={onPhotoError} />}
           {media.length > 1 && (
             <>
               <button className="gallery-nav gallery-prev" aria-label="Foto anterior" onClick={(e) => { e.stopPropagation(); setCurrent((c) => (c - 1 + media.length) % media.length) }}>&#8249;</button>
@@ -78,7 +82,7 @@ export function SiteVehicleGallery({ photos, title, videoUrl, placeholder }: { p
             {media.map((m, i) => (
               <button key={`${m.type}-${m.url}`} className={i === current ? 'active' : ''} onClick={() => setCurrent(i)}
                 aria-label={m.type === 'video' ? 'Abrir vídeo do veículo' : `Abrir foto ${i + 1} do veículo`}>
-                {m.type === 'video' ? <span className="thumb-video">&#9654;</span> : <img src={m.url} alt="" loading="lazy" />}
+                {m.type === 'video' ? <span className="thumb-video">&#9654;</span> : <img src={photoSrc(m.url, 320)} alt="" loading="lazy" onError={onPhotoError} />}
               </button>
             ))}
           </div>

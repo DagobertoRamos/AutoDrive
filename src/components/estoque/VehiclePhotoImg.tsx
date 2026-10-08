@@ -5,10 +5,12 @@
 import { useEffect, useRef, useState } from 'react'
 import Image, { type ImageProps } from 'next/image'
 import { VEHICLE_NO_PHOTO_IMG, isPlaceholderPhoto } from '@/lib/vehicle-placeholder'
+import { photoSrc } from '@/lib/partner-photo'
 
-type Props = Omit<ImageProps, 'src' | 'onError'> & { src: string | null | undefined; onBroken?: (src: string) => void }
+// photoWidth: largura pedida à rota de fotos de parceiro (miniatura = 320).
+type Props = Omit<ImageProps, 'src' | 'onError'> & { src: string | null | undefined; onBroken?: (src: string) => void; photoWidth?: number }
 
-export function VehiclePhotoImg({ src, alt, onBroken, ...rest }: Props) {
+export function VehiclePhotoImg({ src, alt, onBroken, photoWidth, ...rest }: Props) {
   const [failed, setFailed] = useState<string | null>(null)
   const ref = useRef<HTMLImageElement>(null)
   const real = src && !isPlaceholderPhoto(src) ? src : null
@@ -27,7 +29,7 @@ export function VehiclePhotoImg({ src, alt, onBroken, ...rest }: Props) {
     <Image
       ref={ref}
       {...rest}
-      src={ok ? real : VEHICLE_NO_PHOTO_IMG}
+      src={ok ? photoSrc(real, photoWidth) : VEHICLE_NO_PHOTO_IMG}
       alt={ok ? alt : 'Aguardando fotos'}
       unoptimized
       onError={() => { if (real) fail(real) }}

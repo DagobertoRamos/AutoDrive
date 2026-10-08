@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Car, Loader2, Plus, Search, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import { photoSrc } from '@/lib/partner-photo'
 
 export interface LeadVehicle {
   id: string; vehicleId: string | null; brand: string | null; model: string | null; version: string | null
@@ -88,7 +89,7 @@ export function LeadVehicleInterests({ leadId, items, onChange, iconSize = 14 }:
                   className="flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left hover:bg-gray-50 disabled:opacity-50 dark:hover:bg-slate-800">
                   {c.mainPhotoUrl
                     // eslint-disable-next-line @next/next/no-img-element
-                    ? <img src={c.mainPhotoUrl} alt="" className="h-9 w-12 shrink-0 rounded object-cover" />
+                    ? <img src={photoSrc(c.mainPhotoUrl, 320)} alt="" className="h-9 w-12 shrink-0 rounded object-cover" />
                     : <span className="flex h-9 w-12 shrink-0 items-center justify-center rounded bg-gray-100 dark:bg-slate-800"><Car size={14} className="text-gray-400" /></span>}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[12px] font-medium text-gray-900 dark:text-white">{title(c)}</span>

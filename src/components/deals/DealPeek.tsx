@@ -16,6 +16,7 @@ import { AlertCircle, Car, ExternalLink, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { HelpHint } from '@/components/ui/help-hint'
 import { DEAL_HINTS } from '@/lib/glossary-deals'
+import { photoSrc } from '@/lib/partner-photo'
 
 // ── Tipos do payload ──────────────────────────────────────────────────────────
 
@@ -285,7 +286,7 @@ function DealPeekDrawer({ dealId, onClose }: { dealId: string; onClose: () => vo
                       <li key={x.id} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
                         <div className="flex h-11 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gray-100">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          {x.photo ? <img src={x.photo} alt="" className="h-full w-full object-cover" loading="lazy" /> : <Car size={18} className="text-gray-300" />}
+                          {x.photo ? <img src={photoSrc(x.photo, 320)} alt="" className="h-full w-full object-cover" loading="lazy" /> : <Car size={18} className="text-gray-300" />}
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="flex flex-wrap items-center gap-1.5 text-sm">

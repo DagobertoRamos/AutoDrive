@@ -25,6 +25,7 @@ import { BOARD_COLUMNS, COLUMN_INFO, type BoardColumn } from '@/lib/publications
 import type { BoardCard, BoardChannel } from '@/app/api/publications/board/route'
 import { isSocialChannel } from '@/lib/publications/channels'
 import { HelpHint, WithHint } from '@/components/ui/help-hint'
+import { photoSrc } from '@/lib/partner-photo'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const COL_STYLE: Record<BoardColumn, { bar: string; badge: string; icon: LucideIcon }> = {
@@ -258,7 +259,7 @@ function Card({ c, col, tz, can, busy, onView, onResume, onRetry, onDownload, on
   return (
     <article className={cn('rounded-lg border bg-white p-2.5 shadow-sm transition hover:shadow', col === 'atencao' ? 'border-red-200' : 'border-gray-200')}>
       <div className="flex gap-2.5">
-        {c.cover ? <img src={c.cover} alt="" loading="lazy" className="h-11 w-11 shrink-0 rounded-md object-cover" /> : <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-700"><Icon size={18} /></span>}
+        {c.cover ? <img src={photoSrc(c.cover, 320)} alt="" loading="lazy" className="h-11 w-11 shrink-0 rounded-md object-cover" /> : <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-700"><Icon size={18} /></span>}
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold text-gray-900" title={c.title}>{c.title}</p>
           {c.subtitle && <p className="truncate text-[11px] text-gray-500">{c.subtitle}</p>}

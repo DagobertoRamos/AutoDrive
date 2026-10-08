@@ -13,6 +13,7 @@ import Link from 'next/link'
 import { Camera, Eye, EyeOff, ExternalLink, Loader2, Megaphone, Pencil, RefreshCw, Search, Star, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { HelpHint } from '@/components/ui/help-hint'
+import { photoSrc } from '@/lib/partner-photo'
 
 type State = 'PUBLICADO' | 'EM_BREVE' | 'HIDDEN'
 interface Listing { featured: boolean; hidden: boolean; title: string; description: string; options: string[]; videoUrl: string; seoTitle: string; seoDescription: string }
@@ -92,7 +93,7 @@ export default function SiteListingsPage() {
             const st = STATE[r.state]
             return (
               <li key={r.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-card">
-                <div className="h-16 w-24 shrink-0 overflow-hidden rounded-lg bg-gray-100">{r.cover ? <img src={r.cover} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-[10px] text-gray-400">sem foto</div>}</div>
+                <div className="h-16 w-24 shrink-0 overflow-hidden rounded-lg bg-gray-100">{r.cover ? <img src={photoSrc(r.cover, 320)} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-[10px] text-gray-400">sem foto</div>}</div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate font-semibold text-gray-900">{r.listing.title || r.title}</span>

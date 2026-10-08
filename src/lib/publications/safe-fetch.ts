@@ -49,6 +49,9 @@ export const safeLookup: net.LookupFunction = (hostname, options, callback) => {
     const list = (addresses as unknown as dns.LookupAddress[]) ?? []
     const bad = list.find((a) => isPrivateIp(a.address))
     if (!list.length || bad) return (callback as (e: Error | null, a: string, f: number) => void)(new UnsafeUrlError('Endereço interno não é permitido.'), '', 0)
+    // IPv4 primeiro: CDNs de parceiro (ex.: BNDV/Azure Front Door) anunciam IPv6
+    // que não responde, e a conexão ficava pendurada até o timeout.
+    list.sort((x, y) => x.family - y.family)
     if ((options as { all?: boolean }).all) return (callback as unknown as (e: null, a: dns.LookupAddress[]) => void)(null, list)
     ;(callback as (e: null, a: string, f: number) => void)(null, list[0].address, list[0].family)
   })

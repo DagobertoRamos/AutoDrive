@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { createPortal } from 'react-dom'
 import { CalendarDays, CheckCircle2, HandCoins, MessageCircle, X } from 'lucide-react'
 import { HONEYPOT_STYLE, moneyMask, phoneMask, submitSiteLead, todayIso } from './lead-utils'
+import { photoSrc } from '@/lib/partner-photo'
 
 type Intent = 'simulacao' | 'interesse' | 'visita'
 export interface LeadVehicle { id: string; title: string; version: string; price: string; image: string | null }
@@ -53,7 +54,7 @@ function Modal({ intent, vehicle, apiUrl, storeName, whatsappHref, privacyHref, 
       <div className="vlead-dialog" role="dialog" aria-modal="true" aria-labelledby="vlead-title" ref={dialog}>
         <button type="button" className="vlead-close" onClick={onClose} aria-label="Fechar"><X size={20} /></button>
         <div className="vlead-vehicle">
-          {vehicle.image && <img src={vehicle.image} alt="" />}
+          {vehicle.image && <img src={photoSrc(vehicle.image, 320)} alt="" />}
           <div><small>Veículo de interesse</small><strong>{vehicle.title}</strong><span>{vehicle.version}</span><b>{vehicle.price}</b></div>
         </div>
         {state === 'done' ? (
