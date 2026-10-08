@@ -13,13 +13,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   CheckCircle2, ChevronLeft, ChevronRight, Clock, Filter, Loader2,
   Phone, Plus, RefreshCw, Search, Sliders, X, XCircle,
-  BellRing,
+  BellRing, Trash2,
 } from 'lucide-react'
 import { CRM_STAGE_OPTIONS, crmPriorityLabel, crmPriorityTone } from '@/lib/crm/shared'
 import { useCrmSettings } from '@/hooks/useCrmSettings'
 import { leadTypeOf, sourceLabelOf, temperatureOf } from '@/lib/crm/settings-core'
 import { cn } from '@/lib/utils'
 import { NewLeadModal } from '@/components/crm/NewLeadModal'
+import { DeleteLeadModal } from '@/components/crm/DeleteLeadModal'
 import { WithHint } from '@/components/ui/help-hint'
 import { opsText } from '@/lib/glossary-ops'
 
@@ -39,6 +40,7 @@ interface CrmCtx {
   userId: string; userName: string | null; unitId: string | null
   sellers: { id: string; name: string | null; role: string }[]
   units: { id: string; name: string }[]
+  canDelete?: boolean
 }
 
 const PRIORITY_OPTIONS = [
@@ -97,6 +99,8 @@ export default function CrmLeadsPage() {
 
   // Cadastro de lead (janela)
   const [showNew, setShowNew] = useState(false)
+  // Exclusão (soft delete) — só aparece p/ quem tem crm.lead.delete.
+  const [deleting, setDeleting] = useState<LeadRow | null>(null)
 
   const debTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleSearch = (v: string) => {
@@ -177,6 +181,13 @@ export default function CrmLeadsPage() {
         </div>
       </div>
 
+      {deleting && (
+        <DeleteLeadModal
+          lead={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => { setDeleting(null); void load(page) }}
+        />
+      )}
       {showNew && (
         <NewLeadModal
           settings={settings}
@@ -497,6 +508,13 @@ export default function CrmLeadsPage() {
                             className="rounded-md border border-red-200 bg-red-50 p-1 text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
                             <XCircle size={13} />
                           </button>
+                          {ctx?.canDelete && (
+                            <button onClick={() => setDeleting(row)}
+                              title="Excluir lead"
+                              className="rounded-md border border-gray-200 bg-white p-1 text-gray-500 hover:border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-white/10 dark:bg-slate-800 dark:text-gray-400 dark:hover:bg-red-950 dark:hover:text-red-300">
+                              <Trash2 size={13} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
