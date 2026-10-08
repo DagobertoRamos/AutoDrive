@@ -13,6 +13,7 @@ import { distributeLeadById } from '@/lib/marketing/distribution'
 import { fireAutomations } from '@/lib/crm/automations'
 import { resolveIdentity, type DedupMatch } from '@/lib/crm/dedup'
 import { assignLeadNumber } from '@/lib/crm/lead-number'
+import { addManualInterest, addStockInterest } from '@/lib/crm/lead-vehicles'
 import { isMaterialized, landingStage, loadPipelines, loadPlacements, pipelineLeadWhere, resolveLeadPipeline, resolveLeadStage, savePlacement } from '@/lib/crm/pipelines'
 
 // F2 alerta: registra candidatos à mesclagem p/ OUTROS leads (não bloqueia).
@@ -24,6 +25,56 @@ async function flagMergeCandidates(tenantId: string, leadId: string, matches: De
       create: { id: `${leadId}_${m.leadId}`, tenantId, leadId, matchType: 'SOFT', matchedLeadId: m.leadId, reason: m.reason, status: 'PENDING' },
       update: {},
     }).catch(() => {})
+  }
+}
+
+interface TradeIn { plate: string | null; brand: string | null; model: string; year: number | null; km: number | null }
+
+function parseTradeIn(v: unknown): TradeIn | null {
+  if (!v || typeof v !== 'object') return null
+  const t = v as Record<string, unknown>
+  const model = String(t.model ?? '').trim().slice(0, 80)
+  if (!model) return null
+  const year = Number(t.year), km = Number(t.km)
+  return {
+    plate: String(t.plate ?? '').trim().toUpperCase().slice(0, 10) || null,
+    brand: String(t.brand ?? '').trim().slice(0, 40) || null,
+    model,
+    year: Number.isInteger(year) && year > 1900 && year < 2100 ? year : null,
+    km: Number.isFinite(km) && km >= 0 && t.km !== '' && t.km != null ? Math.round(km) : null,
+  }
+}
+
+// Alimenta o lead recém-criado: veículo de interesse, veículo na troca e
+// observações do atendimento (timeline). Tolerante — não derruba a criação.
+async function feedNewLead(
+  tenantId: string, leadId: string, user: { id: string; name: string | null },
+  d: { vehicleId: string | null; interestModel: string; interestBrand: string | null; interestYear: number; tradeIn: TradeIn | null; notes: string | null },
+): Promise<void> {
+  try {
+    if (d.vehicleId) await addStockInterest(tenantId, leadId, d.vehicleId, user.id)
+    else if (d.interestModel) {
+      const year = Number.isInteger(d.interestYear) && d.interestYear > 1900 && d.interestYear < 2100 ? d.interestYear : null
+      await addManualInterest(tenantId, leadId, { brand: d.interestBrand, model: d.interestModel, year }, user.id)
+    }
+  } catch { /* interesse é complementar */ }
+  const notes: string[] = []
+  if (d.tradeIn) {
+    const t = d.tradeIn
+    await prisma.crmLeadVehicle.create({ data: {
+      tenantId, leadId, vehicleId: null, brand: t.brand, model: t.model, year: t.year, plate: t.plate,
+      role: 'TROCA', interest: 'PRIMARY', status: 'INTERESTED', isPrimary: false, addedByUserId: user.id,
+      notes: t.km != null ? `${t.km.toLocaleString('pt-BR')} km` : null,
+    }}).catch(() => {})
+    notes.push(`Veículo na troca: ${[t.brand, t.model, t.year, t.plate && `placa ${t.plate}`, t.km != null && `${t.km.toLocaleString('pt-BR')} km`].filter(Boolean).join(' · ')}`)
+  }
+  if (d.notes) notes.push(d.notes)
+  if (notes.length) {
+    await prisma.crmLeadInteraction.create({ data: {
+      tenantId, leadId, type: 'NOTE', summary: notes.join('\n\n'),
+      discussedVehicle: d.tradeIn ? [d.tradeIn.brand, d.tradeIn.model].filter(Boolean).join(' ') : null,
+      authorId: user.id, authorName: user.name, occurredAt: new Date(),
+    }}).catch(() => {})
   }
 }
 
@@ -254,10 +305,19 @@ export async function POST(req: Request) {
     let leadType: string | null = body.leadType ? String(body.leadType) : null
     if (leadType && !settings.leadTypes.some((t) => t.id === leadType && t.active)) leadType = null
     const vehicleId = body.vehicleId ? String(body.vehicleId) : null
+    // Veículo de interesse fora do estoque (só modelo) e veículo na troca.
+    const iv = (body.interestVehicle && typeof body.interestVehicle === 'object' ? body.interestVehicle : {}) as Record<string, unknown>
+    const interestModel = String(iv.model ?? '').trim().slice(0, 80)
+    const interestBrand = String(iv.brand ?? '').trim().slice(0, 40) || null
+    const interestYear = Number(iv.year)
+    const tradeIn = parseTradeIn(body.tradeIn)
     // Campos obrigatórios da loja (Fase B) — só no cadastro manual; integrações
     // (que mandam externalLeadId) não podem ser barradas por regra de tela.
+    // E-mail é sempre opcional na criação manual; veículo de interesse aceita
+    // um modelo fora do estoque.
     if (!externalLeadId) {
-      const missing = missingLeadFields(settings.requiredFields.onCreate, { name, phone, email, leadType, vehicleId, assignedToUserId: explicitAssigned ?? user.id })
+      const required = settings.requiredFields.onCreate.filter((f) => f !== 'email')
+      const missing = missingLeadFields(required, { name, phone, email, leadType, vehicleId: vehicleId ?? (interestModel || null), assignedToUserId: explicitAssigned ?? user.id })
       if (missing.length) {
         return NextResponse.json({ success: false, error: `Preencha: ${fieldLabels(missing)}.`, missingFields: missing }, { status: 400 })
       }
@@ -318,6 +378,7 @@ export async function POST(req: Request) {
           ...(canTransfer && explicitAssigned ? { assignedToUserId } : {}),
         },
       })
+      await feedNewLead(tenantId, updated.id, user, { vehicleId, interestModel, interestBrand, interestYear, tradeIn, notes })
       await createSafeAuditLog({ userId: user.id, tenantId, action: 'CRM_LEAD_DEDUP', entity: 'MarketingLead', entityId: updated.id, userName: user.name, userRole: user.role })
       await flagMergeCandidates(tenantId, updated.id, identity.softMatches)
       return NextResponse.json({ success: true, data: { id: updated.id, deduplicated: true, customerReused: !!identity.customerId } })
@@ -338,9 +399,10 @@ export async function POST(req: Request) {
         createdById: user.id,
         // Reusa contato existente (identidade) se houver — não cria pessoa duplicada.
         ...(identity.customerId ? { customerId: identity.customerId } : {}),
-        metadata: { origin: 'CRM_MANUAL', ...(externalLeadId ? { externalLeadId } : {}), ...(cpf ? { cpf } : {}), ...(leadType ? { leadType } : {}) },
+        metadata: { origin: 'CRM_MANUAL', ...(externalLeadId ? { externalLeadId } : {}), ...(cpf ? { cpf } : {}), ...(leadType ? { leadType } : {}), ...(tradeIn ? { tradeIn: { ...tradeIn } } : {}) } as Prisma.InputJsonObject,
       },
     })
+    await feedNewLead(tenantId, lead.id, user, { vehicleId, interestModel, interestBrand, interestYear, tradeIn, notes })
 
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'CREATE', entity: 'MarketingLead', entityId: lead.id, userName: user.name, userRole: user.role })
     // Atribui número público ao lead (tolerante — não bloqueia a criação).

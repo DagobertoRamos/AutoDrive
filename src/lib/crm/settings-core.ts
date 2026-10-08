@@ -69,6 +69,14 @@ export const SYSTEM_SOURCES: { code: string; label: string }[] = [
   { code: 'FILA_ATENDIMENTO', label: 'Fila de atendimento' },
   { code: 'CLIENTE_NA_LOJA', label: 'Cliente na loja' },
   { code: 'SITE', label: 'Site da loja' },
+  // Canais de atendimento direto (cadastro manual do vendedor).
+  { code: 'LIGACAO', label: 'Ligação telefônica' },
+  { code: 'CARTEIRA', label: 'Carteira do vendedor' },
+  { code: 'CLIENTE_LOJA', label: 'Cliente da loja (recompra)' },
+  { code: 'INDICACAO', label: 'Indicação' },
+  { code: 'FEIRAO', label: 'Feirão / evento' },
+  { code: 'PLACA_FACHADA', label: 'Fachada / placa / panfleto' },
+  { code: 'POS_VENDA', label: 'Pós-venda / oficina' },
   // Canais de captação (redes, anúncios, portais) — ver channels-core.
   ...CHANNEL_SOURCES,
 ]

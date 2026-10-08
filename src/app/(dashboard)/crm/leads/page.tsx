@@ -19,8 +19,7 @@ import { CRM_STAGE_OPTIONS, crmPriorityLabel, crmPriorityTone } from '@/lib/crm/
 import { useCrmSettings } from '@/hooks/useCrmSettings'
 import { leadTypeOf, sourceLabelOf, temperatureOf } from '@/lib/crm/settings-core'
 import { cn } from '@/lib/utils'
-import { RequiredMark } from '@/components/ui/field'
-import { isValidPhone, maskPhoneInput } from '@/lib/br-docs/phone'
+import { NewLeadModal } from '@/components/crm/NewLeadModal'
 import { WithHint } from '@/components/ui/help-hint'
 import { opsText } from '@/lib/glossary-ops'
 
@@ -96,14 +95,8 @@ export default function CrmLeadsPage() {
   const [fUnit, setFUnit]         = useState('')
   const [panelOpen, setPanelOpen] = useState(false)
 
-  // Criação rápida
+  // Cadastro de lead (janela)
   const [showNew, setShowNew] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [newPhone, setNewPhone] = useState('')
-  const [newSource, setNewSource] = useState('MANUAL')
-  const [newType, setNewType] = useState('')
-  const [newErr, setNewErr] = useState<string | null>(null)
-  const [saving, setSaving]   = useState(false)
 
   const debTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleSearch = (v: string) => {
@@ -153,27 +146,6 @@ export default function CrmLeadsPage() {
     void load(page)
   }
 
-  const typeRequired = settings.requiredFields.onCreate.includes('leadType') && settings.leadTypes.some(t => t.active)
-  const createLead = async () => {
-    if (!newName.trim() || !isValidPhone(newPhone) || !newSource || (typeRequired && !newType)) {
-      setNewErr('Preencha os campos obrigatórios.')
-      return
-    }
-    setSaving(true); setNewErr(null)
-    try {
-      const res = await fetch('/api/crm/leads', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ name: newName.trim(), phone: newPhone, source: newSource || 'MANUAL', leadType: newType || undefined }),
-      })
-      if (!res.ok) {
-        const j = await res.json().catch(() => null) as { error?: string } | null
-        setNewErr(j?.error ?? 'Não foi possível criar o lead.')
-        return
-      }
-      setNewName(''); setNewPhone(''); setNewType(''); setShowNew(false); setPage(1); void load(1)
-    } finally { setSaving(false) }
-  }
-
   const scope = ctx?.scope ?? 'own'
   const canFilterSeller = scope !== 'own'
   const canFilterUnit   = scope === 'all'
@@ -199,51 +171,20 @@ export default function CrmLeadsPage() {
           <button onClick={() => void load(page)} disabled={loading} className="btn-secondary text-xs">
             <RefreshCw size={12} className={cn(loading && 'animate-spin')} />Atualizar
           </button>
-          <button onClick={() => setShowNew(v => !v)} className="btn-primary text-xs">
+          <button onClick={() => setShowNew(true)} className="btn-primary text-xs">
             <Plus size={13} />Novo lead
           </button>
         </div>
       </div>
 
-      {/* Criação rápida */}
       {showNew && (
-        <div className="flex flex-wrap items-end gap-2 rounded-xl border border-brand-100 bg-brand-50/60 px-4 py-3 dark:border-brand-900/50 dark:bg-brand-950/40">
-          <div className="flex-1 min-w-[160px]">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Nome <RequiredMark /></label>
-            <input value={newName} onChange={e => setNewName(e.target.value)}
-              placeholder="Nome do cliente"
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-800 dark:text-white" />
-          </div>
-          <div className="flex-1 min-w-[140px]">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Telefone <RequiredMark /></label>
-            <input type="tel" inputMode="tel" value={newPhone} onChange={e => setNewPhone(maskPhoneInput(e.target.value))}
-              onKeyDown={e => e.key === 'Enter' && void createLead()}
-              placeholder="(11) 99999-9999"
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-800 dark:text-white" />
-          </div>
-          <div className="min-w-[140px]">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Origem <RequiredMark /></label>
-            <select value={newSource} onChange={e => setNewSource(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-800 dark:text-white">
-              {settings.sources.filter(o => o.active || o.code === 'MANUAL').map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
-            </select>
-          </div>
-          {settings.leadTypes.some(t => t.active) && (
-            <div className="min-w-[140px]">
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Tipo{typeRequired && <> <RequiredMark /></>}</label>
-              <select value={newType} onChange={e => setNewType(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-800 dark:text-white">
-                <option value="">{typeRequired ? '— selecione —' : 'Sem tipo'}</option>
-                {settings.leadTypes.filter(t => t.active).map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-              </select>
-            </div>
-          )}
-          <button onClick={() => void createLead()} disabled={saving} className="btn-primary text-sm">
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}Criar
-          </button>
-          <button onClick={() => setShowNew(false)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"><X size={15} /></button>
-          {newErr && <p className="basis-full text-xs text-red-600 dark:text-red-400">{newErr}</p>}
-        </div>
+        <NewLeadModal
+          settings={settings}
+          sellers={ctx?.sellers ?? []}
+          canAssign={canFilterSeller}
+          onClose={() => setShowNew(false)}
+          onCreated={() => { setShowNew(false); setPage(1); void load(1) }}
+        />
       )}
 
       {/* ── Área de busca + filtros ── */}
