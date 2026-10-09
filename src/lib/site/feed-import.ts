@@ -19,9 +19,10 @@ import {
   mergeLegacy, parseFeed, planFeedSync, relinkByPlate, samePhotos,
   type FeedExtras, type FeedOrigin, type FeedVehicle, type LegacyVehicle,
 } from './feed-import-core'
-import { normalizeOrigin } from '@/lib/stock/origin-core'
+import { normalizeOrigin, partnerRefFromName } from '@/lib/stock/origin-core'
 import { ensurePartnerStoreByName } from '@/lib/stock/partner-stores'
 import { realPhotoUrls } from '@/lib/vehicle-placeholder'
+import { SITE_VISIBLE_STOCK } from './listing-core'
 
 // Status definidos no SaaS que a importação nunca sobrescreve.
 const KEEP_STOCK = ['VENDIDO', 'EM_NEGOCIACAO', 'RESERVADO']
@@ -64,12 +65,96 @@ async function loadState(tenantId: string): Promise<ImportState> {
   try { const s = JSON.parse(row?.value ?? '{}'); return { map: s.map ?? {}, slugs: s.slugs ?? {}, origins: s.origins ?? {}, removed: s.removed ?? {}, last: s.last } } catch { return { map: {}, slugs: {}, origins: {}, removed: {} } }
 }
 
-async function saveState(tenantId: string, state: ImportState) {
-  const value = JSON.stringify(state)
-  const key = stateKey(tenantId)
+async function saveSetting(tenantId: string, key: string, data: unknown, description: string) {
+  const value = JSON.stringify(data)
   const existing = await prisma.systemSetting.findFirst({ where: { key }, select: { id: true } })
   if (existing) await prisma.systemSetting.update({ where: { id: existing.id }, data: { value } })
-  else await prisma.systemSetting.create({ data: { key, value, tenantId, group: 'site', description: 'Importação de estoque do site (feed)' } })
+  else await prisma.systemSetting.create({ data: { key, value, tenantId, group: 'site', description } })
+}
+
+const saveState = (tenantId: string, state: ImportState) => saveSetting(tenantId, stateKey(tenantId), state, 'Importação de estoque do site (feed)')
+
+// ── Parceiros pausados (Site › Configurações) ────────────────────────────────
+// Carro de parceiro pausado não entra nem atualiza; os que estavam no estoque
+// saem do site e dos anúncios. Fica em chave própria (não no estado da
+// importação) para o cron, que grava o estado no fim, não desfazer a pausa.
+// parked: veículos que a PAUSA desativou — voltam sozinhos ao reativar o parceiro.
+interface PartnerBlocks { blocked: Record<string, { name: string; at: string }>; parked: Record<string, true> }
+
+const partnersKey = (tenantId: string) => `t:${tenantId}:site:feedpartners:v1`
+
+async function loadPartnerBlocks(tenantId: string): Promise<PartnerBlocks> {
+  const row = await prisma.systemSetting.findFirst({ where: { key: partnersKey(tenantId) }, select: { value: true } })
+  try { const s = JSON.parse(row?.value ?? '{}'); return { blocked: s.blocked ?? {}, parked: s.parked ?? {} } } catch { return { blocked: {}, parked: {} } }
+}
+
+/** Lê, altera e grava na hora (sem segurar cópia velha). */
+async function updatePartnerBlocks(tenantId: string, fn: (b: PartnerBlocks) => void) {
+  const b = await loadPartnerBlocks(tenantId)
+  fn(b)
+  await saveSetting(tenantId, partnersKey(tenantId), b, 'Parceiros pausados na importação do site')
+}
+
+const originRef = (o: FeedOrigin | null | undefined) => (o?.partnerName?.trim() ? partnerRefFromName(o.partnerName) : null)
+
+// Em negociação/vendido no SaaS a pausa não mexe.
+const IN_SALE = ['VENDIDO', 'EM_NEGOCIACAO']
+
+export function feedImportSourceFor(tenantId: string): FeedImportSource | null {
+  return feedImportSources().find((s) => s.tenantId === tenantId) ?? null
+}
+
+export interface FeedPartner { ref: string; name: string; city: string | null; onSite: number; total: number; blocked: boolean; blockedAt: string | null }
+
+/** Parceiros que chegam pelo feed, com quantos carros estão no site. */
+export async function listFeedPartners(tenantId: string): Promise<FeedPartner[]> {
+  const [state, blocks] = await Promise.all([loadState(tenantId), loadPartnerBlocks(tenantId)])
+  const byVehicle = Object.entries(state.origins).flatMap(([id, o]) => { const ref = originRef(o); return ref ? [{ id, ref, o }] : [] })
+  const vehicles = byVehicle.length
+    ? await prisma.vehicle.findMany({ where: { tenantId, id: { in: byVehicle.map((x) => x.id) } }, select: { id: true, active: true, stockStatus: true } })
+    : []
+  const vById = new Map(vehicles.map((v) => [v.id, v]))
+  const out = new Map<string, FeedPartner>()
+  for (const { id, ref, o } of byVehicle) {
+    const v = vById.get(id)
+    if (!v) continue
+    const p = out.get(ref) ?? { ref, name: o.partnerName!.trim(), city: o.partnerCity ?? null, onSite: 0, total: 0, blocked: false, blockedAt: null }
+    p.total++
+    if (v.active && (SITE_VISIBLE_STOCK as readonly string[]).includes(v.stockStatus ?? '')) p.onSite++
+    out.set(ref, p)
+  }
+  for (const [ref, b] of Object.entries(blocks.blocked)) {
+    const p = out.get(ref) ?? { ref, name: b.name, city: null, onSite: 0, total: 0, blocked: false, blockedAt: null }
+    out.set(ref, { ...p, blocked: true, blockedAt: b.at })
+  }
+  return [...out.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+}
+
+/**
+ * Pausa: desativa na hora os carros do parceiro (fora os em negociação/vendidos)
+ * e devolve os ids para retirar os anúncios. Reativar: só tira a pausa — a
+ * próxima importação traz os carros de volta (e os anúncios retirados).
+ */
+export async function setFeedPartnerBlocked(tenantId: string, ref: string, block: boolean): Promise<{ deactivated: string[] }> {
+  if (!block) {
+    await updatePartnerBlocks(tenantId, (b) => { delete b.blocked[ref] })
+    return { deactivated: [] }
+  }
+  const state = await loadState(tenantId)
+  const mine = Object.entries(state.origins).filter(([, o]) => originRef(o) === ref)
+  const name = mine[0]?.[1].partnerName?.trim()
+  const prev = (await loadPartnerBlocks(tenantId)).blocked[ref]
+  if (!name && !prev) throw new Error('Parceiro não encontrado.')
+  const rows = mine.length
+    ? await prisma.vehicle.findMany({ where: { tenantId, id: { in: mine.map(([id]) => id) }, active: true, stockStatus: { notIn: IN_SALE as never[] } }, select: { id: true } })
+    : []
+  const ids = rows.map((r) => r.id)
+  if (ids.length) await prisma.vehicle.updateMany({ where: { tenantId, id: { in: ids } }, data: { active: false, exitDate: new Date() } })
+  await updatePartnerBlocks(tenantId, (b) => {
+    b.blocked[ref] = { name: name ?? prev!.name, at: prev?.at ?? new Date().toISOString() }
+    for (const id of ids) b.parked[id] = true
+  })
+  return { deactivated: ids }
 }
 
 /**
@@ -192,7 +277,13 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
     let legacyError: string | undefined
     try { legacy = await fetchLegacy(parsed.map((i) => i.extId)) } catch (e) { legacyError = e instanceof Error ? e.message : String(e) }
     await syncLegacyPartners(src.tenantId).catch((e) => console.error('[feed-import] parceiros do site antigo', e instanceof Error ? e.message : e))
-    const items: Item[] = parsed.map((i) => mergeLegacy(i, legacy.get(i.extId)))
+    const blocks = await loadPartnerBlocks(src.tenantId)
+    // Sem o banco do site antigo o item vem sem parceiro: usa a origem já gravada do carro.
+    const isBlocked = (i: Item) => { const ref = originRef(i.extras.origin ?? state.origins[state.map[i.extId] ?? '']); return !!ref && !!blocks.blocked[ref] }
+    const merged: Item[] = parsed.map((i) => mergeLegacy(i, legacy.get(i.extId)))
+    // Parceiro pausado: os carros dele ficam fora (não criam, não atualizam, saem do site).
+    const items = merged.filter((i) => !isBlocked(i))
+    const blockedExt = merged.filter(isBlocked).map((i) => i.extId)
     const enrichInfo = { enriched: items.filter((i) => legacy.has(i.extId)).length, ...(legacyError ? { legacyError } : {}) }
 
     const known = Object.values(state.map)
@@ -206,6 +297,9 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
     const activeIds = new Set(existing.filter((v) => v.active).map((v) => v.id))
 
     const plan = planFeedSync(items, state.map, activeIds)
+    // Carro de parceiro pausado em negociação/vendido no SaaS não é desativado.
+    const inSale = new Set(blockedExt.map((ext) => state.map[ext]).filter((id) => id && IN_SALE.includes(byId.get(id)?.stockStatus ?? '')))
+    if (inSale.size) plan.remove = plan.remove.filter((id) => !inSale.has(id))
     if (plan.aborted) {
       result = { ...base, ok: false, feed: items.length, aborted: plan.aborted, ...enrichInfo }
     } else {
@@ -243,7 +337,7 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
         const locked = cur?.siteListing?.photosLocked === true
         const { mainPhotoUrl, ...data } = vehicleData(item)
         // Só reativa o que a importação desativou; apagado/vendido no SaaS fica como está.
-        const revive = !!cur && !cur.active && state.removed[vehicleId] === true
+        const revive = !!cur && !cur.active && (state.removed[vehicleId] === true || blocks.parked[vehicleId] === true)
         const reviveData = revive
           ? { active: true, exitDate: null, ...(KEEP_STOCK.includes(cur.stockStatus ?? '') ? {} : { stockStatus: item.extras.reserved ? 'RESERVADO' as const : 'DISPONIVEL' as const }) }
           : {}
@@ -264,6 +358,8 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
         await prisma.vehicle.updateMany({ where: { id: { in: plan.remove }, tenantId: src.tenantId }, data: { active: false, exitDate: new Date() } })
         for (const id of plan.remove) state.removed[id] = true
       }
+      const unparked = revived.map((r) => r.id).filter((id) => blocks.parked[id])
+      if (unparked.length) await updatePartnerBlocks(src.tenantId, (b) => { for (const id of unparked) delete b.parked[id] })
       // Saiu do feed e voltou: os anúncios retirados pela saída voltam ao ar (site incluso).
       if (revived.length) await import('@/lib/publications/service').then((m) => m.resumeAfterRestock(src.tenantId, revived)).catch((e) => console.error('[feed-import] reativar anúncios', e instanceof Error ? e.message : e))
       result = { ...base, ok: true, feed: items.length, created, updated, removed: plan.remove.length, aborted: null, ...enrichInfo }

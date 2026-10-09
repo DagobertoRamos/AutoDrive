@@ -15,6 +15,7 @@ import { RequiredMark } from '@/components/ui/field'
 import { BrandingSection } from './BrandingSection'
 import { ComingSoonImageField } from './ComingSoonImageField'
 import { DomainsSection } from './DomainsSection'
+import { FeedPartnersSection } from './FeedPartnersSection'
 import { LayoutSection } from './LayoutSection'
 import { HelpHint } from '@/components/ui/help-hint'
 
@@ -150,6 +151,8 @@ export default function SiteConfigPage() {
       </Section>
 
       <LayoutSection cfg={cfg} dis={dis} onChange={set} />
+
+      <FeedPartnersSection canManage={data.canManage} />
 
       <Section title="Nome e frase">
         <div className="grid gap-3 md:grid-cols-2">
