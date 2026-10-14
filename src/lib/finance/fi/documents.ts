@@ -11,6 +11,7 @@
 import { prisma } from '@/lib/prisma'
 import { deletePrivateFile, effectiveMime, readPrivateFile, savePrivateFile, validatePrivateFile } from '@/lib/storage/private-files'
 import { addTimeline, notifyWatchers, reflectOnCrm } from './events'
+import { fiDocDrivePath } from '@/lib/storage/drive-files'
 import { resolveBank } from './gateway/resolve'
 
 export const DOC_STATUS_META: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'danger' | 'warning' }> = {
@@ -37,7 +38,9 @@ export async function attachDocumentFile(docId: string, file: File, source: 'INT
   if (err) throw new DocError(err)
   if (mime.includes('xml')) throw new DocError('Envie foto ou PDF do documento.')
   const bytes = Buffer.from(await file.arrayBuffer())
-  const saved = await savePrivateFile(`fi/${doc.tenantId}/${doc.proposalId}`, file.name, mime, bytes)
+  const saved = await savePrivateFile(`fi/${doc.tenantId}/${doc.proposalId}`, file.name, mime, bytes, {
+    tenantId: doc.tenantId, label: doc.type, path: async () => (await fiDocDrivePath(doc.id)).path,
+  })
   const days = await retentionDays(doc.tenantId)
   const previous = doc.storageKey
   await prisma.financeProposalDocument.update({

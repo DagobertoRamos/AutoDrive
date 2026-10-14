@@ -12,7 +12,8 @@ import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { checkDocumentAccess, canDeleteDocuments } from '@/lib/documents/attachment-access'
-import { isDocEntityType, normalizeDocType, documentView, MAX_DOCS_PER_ENTITY } from '@/lib/documents/attachment-types'
+import { isDocEntityType, normalizeDocType, documentView, MAX_DOCS_PER_ENTITY, DOC_TYPE_LABEL } from '@/lib/documents/attachment-types'
+import { docAttachmentDrivePath } from '@/lib/storage/drive-files'
 import { effectiveMime, savePrivateFile, validatePrivateFile } from '@/lib/storage/private-files'
 
 export const runtime = 'nodejs'
@@ -70,7 +71,9 @@ export async function POST(req: Request) {
 
     const docType = normalizeDocType(form.get('docType'))
     const folder = `docs/${acc.tenantId ?? 'global'}/${entityType.toLowerCase()}/${entityId}`
-    const saved = await savePrivateFile(folder, file.name, mime, Buffer.from(await file.arrayBuffer()))
+    const saved = await savePrivateFile(folder, file.name, mime, Buffer.from(await file.arrayBuffer()), {
+      path: () => docAttachmentDrivePath(acc.tenantId ?? null, entityType, entityId), tenantId: acc.tenantId, label: DOC_TYPE_LABEL[docType] ?? null,
+    })
     const row = await prisma.documentAttachment.create({
       data: { tenantId: acc.tenantId, entityType, entityId, docType, name: saved.name, storageKey: saved.key, mimeType: mime, size: file.size, createdById: user.id },
     })

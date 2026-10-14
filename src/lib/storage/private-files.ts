@@ -3,11 +3,16 @@
 // produção, disco (public/uploads/…) no dev — mesmo backend dos anexos da
 // negociação. A chave guardada no banco é `blob://…` ou `/uploads/…`; a
 // abertura passa sempre por uma rota autenticada.
+// Google Drive conectado + `drive` informado: o conteúdo vai para o Drive e a
+// chave continua `blob://…` (lib/storage/drive-keys liga a chave ao arquivo).
 // =============================================================================
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { BLOB_PREFIX, dealStorageBackend } from '@/lib/negotiation/storage'
+import { driveEnabled } from './drive'
+import { deleteKeyFromDrive, driveKeyLookup, putKeyOnDrive, readKeyFromDrive } from './drive-keys'
+import { driveFileName } from './drive-files'
 
 export const MAX_PRIVATE_FILE_BYTES = 4 * 1024 * 1024 // corpo da requisição na Vercel ≈ 4,5 MB
 
@@ -36,11 +41,28 @@ export function validatePrivateFile(mime: string, size: number): string | null {
 export const sanitizeFileName = (name: string) =>
   path.basename(name || 'arquivo').replace(/[^\w\d.\-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 120) || 'arquivo'
 
+/** Onde o arquivo mora no Drive (resolvido só se o Drive estiver conectado). */
+export interface PrivateFileDrive {
+  path: () => Promise<string[]>
+  tenantId?: string | null
+  /** Prefixo do nome no Drive (ex.: tipo do documento). */
+  label?: string | null
+}
+
 /** Grava em `<folder>/<aleatório>_<nome>`; `folder` sem barras nas pontas (ex.: `finance/<tenant>/<id>`). */
-export async function savePrivateFile(folder: string, filename: string, mime: string, bytes: Buffer): Promise<{ key: string; name: string }> {
+export async function savePrivateFile(folder: string, filename: string, mime: string, bytes: Buffer, drive?: PrivateFileDrive): Promise<{ key: string; name: string }> {
   const name = sanitizeFileName(filename)
   const safeFolder = folder.split('/').map((p) => p.replace(/[^\w\d-]+/g, '_')).filter(Boolean).join('/')
   const rel = `${safeFolder}/${randomBytes(8).toString('hex')}_${name}`
+  if (drive && await driveEnabled()) {
+    try {
+      const key = `${BLOB_PREFIX}${rel}`
+      await putKeyOnDrive({ key, path: await drive.path(), fileName: driveFileName(drive.label, name), mimeType: mime, bytes, tenantId: drive.tenantId })
+      return { key, name }
+    } catch (e) {
+      console.error('[private-files] Drive falhou — usando o armazenamento padrão:', e instanceof Error ? e.message : e)
+    }
+  }
   if (dealStorageBackend() === 'blob') {
     const { put } = await import('@vercel/blob')
     const { blobAuth } = await import('@/lib/publications/social/blob-token')
@@ -56,6 +78,11 @@ export async function savePrivateFile(folder: string, filename: string, mime: st
 export async function readPrivateFile(key: string): Promise<{ body: ReadableStream<Uint8Array> | Buffer; contentType: string } | null> {
   if (!key || key.includes('..')) return null
   if (key.startsWith(BLOB_PREFIX)) {
+    const onDrive = await driveKeyLookup(key)
+    if (onDrive) {
+      const f = await readKeyFromDrive(onDrive)
+      return { body: f.bytes, contentType: f.contentType }
+    }
     const { get } = await import('@vercel/blob')
     const { blobAuth } = await import('@/lib/publications/social/blob-token')
     const r = await get(key.slice(BLOB_PREFIX.length), { access: 'private', ...blobAuth() })
@@ -71,6 +98,7 @@ export async function readPrivateFile(key: string): Promise<{ body: ReadableStre
 export async function deletePrivateFile(key: string): Promise<void> {
   if (!key || key.includes('..')) return
   if (key.startsWith(BLOB_PREFIX)) {
+    if (await deleteKeyFromDrive(key)) return
     try {
       const { del } = await import('@vercel/blob')
       const { blobAuth } = await import('@/lib/publications/social/blob-token')

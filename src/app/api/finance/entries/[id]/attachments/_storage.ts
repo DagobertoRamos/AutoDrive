@@ -6,6 +6,7 @@
 import {
   MAX_PRIVATE_FILE_BYTES, validatePrivateFile, savePrivateFile, readPrivateFile, deletePrivateFile,
 } from '@/lib/storage/private-files'
+import { financeEntryDrivePath } from '@/lib/storage/drive-files'
 
 export const MAX_ATTACHMENT_BYTES = MAX_PRIVATE_FILE_BYTES
 export const validateAttachment = validatePrivateFile
@@ -13,7 +14,10 @@ export const readAttachmentFile = readPrivateFile
 export const deleteAttachmentFile = deletePrivateFile
 
 export function saveAttachmentFile(tenantId: string, entryId: string, filename: string, mime: string, bytes: Buffer): Promise<{ key: string; name: string }> {
-  return savePrivateFile(`finance/${tenantId}/${entryId}`, filename, mime, bytes)
+  return savePrivateFile(`finance/${tenantId}/${entryId}`, filename, mime, bytes, {
+    tenantId,
+    path: async () => (await financeEntryDrivePath(entryId)).path,
+  })
 }
 
 /** Antes de apagar lançamentos: remove os arquivos dos anexos (as linhas caem em cascata). */

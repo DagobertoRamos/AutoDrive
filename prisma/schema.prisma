@@ -7083,3 +7083,18 @@ model VehicleDataQuery {
   @@index([providerId, externalId])
   @@map("vehicle_data_queries")
 }
+
+/// Arquivo privado cujo conteúdo está no Google Drive (lib/storage/drive-keys).
+/// `key` = chave lógica que o sistema já guarda nos anexos (blob://...).
+/// pending = comprovante enviado antes de a negociação existir (pasta provisória).
+model DriveFile {
+  key         String   @id
+  driveFileId String
+  tenantId    String?
+  mimeType    String?
+  pending     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId])
+  @@map("drive_files")
+}

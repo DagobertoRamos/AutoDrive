@@ -179,7 +179,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   const v = validateDealUpload(file.type, file.size)
   if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 })
   try {
-    const saved = await saveDealAttachment(p.dealId, file.name, file.type, Buffer.from(await file.arrayBuffer()))
+    const saved = await saveDealAttachment(p.dealId, file.name, file.type, Buffer.from(await file.arrayBuffer()), { category: 'COMPROVANTE_PAGAMENTO' })
     const att = await prisma.dealAttachment.create({
       data: { dealId: p.dealId, tenantId: p.deal.tenantId, category: 'COMPROVANTE_PAGAMENTO', fileName: saved.fileName, fileType: saved.fileType, mimeType: saved.mimeType, fileSize: saved.fileSize, storageKey: saved.storageKey, publicUrl: saved.publicUrl, paymentId, uploadedById: user.id, uploadedByName: user.name ?? null },
       select: { id: true, fileName: true, publicUrl: true, fileType: true },

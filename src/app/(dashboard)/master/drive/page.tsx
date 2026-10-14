@@ -18,7 +18,7 @@ interface DriveInfo {
   account: string
   connectedAt: string
   redirectUri: string
-  pending: { evaluationFiles: number; vehicleFiles: number } | null
+  pending: { evaluationFiles: number; vehicleFiles: number; privateFiles: number; pendingReceipts: number } | null
 }
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
@@ -86,7 +86,7 @@ function DriveSettings() {
   async function migrate() {
     const d = await post('/api/master/drive/migrate', 'migrate')
     if (d) {
-      const left = d.pending.evaluationFiles + d.pending.vehicleFiles
+      const left = d.pending.evaluationFiles + d.pending.vehicleFiles + d.pending.privateFiles + d.pending.pendingReceipts
       setMsg({ type: d.failed ? 'error' : 'ok', text: `${d.migrated} arquivo(s) levados ao Drive${d.failed ? `, ${d.failed} com erro (${d.errors[0] ?? ''})` : ''}. ${left ? `Faltam ${left} — clique de novo para continuar.` : 'Nada mais no banco.'}` })
       await load()
     }
@@ -98,7 +98,7 @@ function DriveSettings() {
     if (d) { setMsg({ type: 'ok', text: 'Google Drive desconectado.' }); await load() }
   }
 
-  const pendingTotal = info?.pending ? info.pending.evaluationFiles + info.pending.vehicleFiles : 0
+  const pendingTotal = info?.pending ? info.pending.evaluationFiles + info.pending.vehicleFiles + info.pending.privateFiles + info.pending.pendingReceipts : 0
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
@@ -155,9 +155,9 @@ function DriveSettings() {
             <section className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Arquivos ainda no banco</p>
+                  <p className="text-sm font-medium text-gray-900">Arquivos ainda fora do Drive</p>
                   <p className="text-sm text-gray-500">
-                    {info.pending ? `${info.pending.evaluationFiles} de avaliações · ${info.pending.vehicleFiles} de veículos` : '—'}
+                    {info.pending ? `${info.pending.evaluationFiles} de avaliações · ${info.pending.vehicleFiles} de veículos · ${info.pending.privateFiles} de negociações/F&I/financeiro${info.pending.pendingReceipts ? ` · ${info.pending.pendingReceipts} comprovante(s) p/ organizar` : ""}` : "—"}
                     {' '}· a cada 6 h o sistema leva o que faltar.
                   </p>
                 </div>
@@ -201,7 +201,9 @@ function DriveSettings() {
             <p className="font-mono text-xs leading-6">
               AutoDrive / &lt;Loja&gt; / Avaliações / &lt;MM-AAAA&gt; / &lt;Marca Modelo - PLACA&gt;<br />
               AutoDrive / &lt;Loja&gt; / Documentos dos veículos / &lt;MM-AAAA&gt; / &lt;Marca Modelo - PLACA&gt;<br />
-              AutoDrive / &lt;Loja&gt; / Documentos pessoais / &lt;MM-AAAA&gt; / &lt;Nome - Marca Modelo - PLACA&gt;
+              AutoDrive / &lt;Loja&gt; / Documentos pessoais / &lt;MM-AAAA&gt; / &lt;Nome - Marca Modelo - PLACA&gt;<br />
+              AutoDrive / &lt;Loja&gt; / Negociações / &lt;MM-AAAA&gt; / &lt;Cliente - Marca Modelo - PLACA&gt;<br />
+              AutoDrive / &lt;Loja&gt; / Financeiro / &lt;MM-AAAA&gt;
             </p>
           </section>
         </>

@@ -117,7 +117,7 @@ export async function POST(
 
   try {
     const bytes = Buffer.from(await file.arrayBuffer())
-    const saved = await saveDealAttachment(dealId, file.name, file.type, bytes)
+    const saved = await saveDealAttachment(dealId, file.name, file.type, bytes, { category: String(category ?? '') })
 
     const att = await prisma.dealAttachment.create({
       data: {

@@ -25,6 +25,9 @@ describe('drive-core', () => {
     expect(drivePath({ ...base, area: 'EVALUATION' })).toEqual(['AutoDrive Veiculos', 'Avaliações', '10-2026', 'Fiat Argo - ABC1D23'])
     expect(drivePath({ ...base, area: 'VEHICLE_DOCS' })).toEqual(['AutoDrive Veiculos', 'Documentos dos veículos', '10-2026', 'Fiat Argo - ABC1D23'])
     expect(drivePath({ ...base, area: 'PERSONAL_DOCS', personName: 'Maria' })).toEqual(['AutoDrive Veiculos', 'Documentos pessoais', '10-2026', 'Maria - Fiat Argo - ABC1D23'])
+    expect(drivePath({ ...base, area: 'NEGOTIATIONS', personName: 'José' })).toEqual(['AutoDrive Veiculos', 'Negociações', '10-2026', 'José - Fiat Argo - ABC1D23'])
+    expect(drivePath({ ...base, area: 'FINANCE' })).toEqual(['AutoDrive Veiculos', 'Financeiro', '10-2026'])
+    expect(drivePath({ ...base, area: 'NEGOTIATIONS', leaf: 'Comprovantes aguardando vínculo' })).toEqual(['AutoDrive Veiculos', 'Negociações', '10-2026', 'Comprovantes aguardando vínculo'])
   })
 
   it('escapa a busca do Drive', () => {

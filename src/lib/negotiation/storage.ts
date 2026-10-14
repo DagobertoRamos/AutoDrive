@@ -111,8 +111,42 @@ async function saveBlob(pathname: string, filename: string, mime: string, bytes:
   return { storageKey, publicUrl: fileUrl(storageKey), fileType: ALLOWED_MIME[mime.toLowerCase()] ?? 'other', mimeType: mime, fileSize: bytes.length, fileName: sanitizeFilename(filename) }
 }
 
-export async function saveDealAttachment(dealId: string, filename: string, mime: string, bytes: Buffer): Promise<SavedDealAttachment> {
-  if (dealStorageBackend() === 'blob') return saveBlob(`deals/${dealId}/${shortId()}_${sanitizeFilename(filename)}`, filename, mime, bytes)
+// ── Google Drive (preferido quando conectado) ───────────────────────────────
+// A chave continua `blob://deals/...` (links e checagem de acesso iguais); a
+// tabela drive_files diz que o conteúdo está no Drive.
+
+async function saveDrive(
+  pathname: string, filename: string, mime: string, bytes: Buffer,
+  where: () => Promise<{ path: string[]; tenantId: string | null }>, label: string | null, pending = false,
+): Promise<SavedDealAttachment | null> {
+  const { driveEnabled } = await import('@/lib/storage/drive')
+  if (!(await driveEnabled())) return null
+  try {
+    const { putKeyOnDrive } = await import('@/lib/storage/drive-keys')
+    const { driveFileName } = await import('@/lib/storage/drive-files')
+    const storageKey = `${BLOB_PREFIX}${pathname}`
+    const w = await where()
+    await putKeyOnDrive({ key: storageKey, path: w.path, fileName: driveFileName(label, sanitizeFilename(filename)), mimeType: mime, bytes, tenantId: w.tenantId, pending })
+    return { storageKey, publicUrl: fileUrl(storageKey), fileType: ALLOWED_MIME[mime.toLowerCase()] ?? 'other', mimeType: mime, fileSize: bytes.length, fileName: sanitizeFilename(filename) }
+  } catch (e) {
+    console.error('[deal-storage] Drive falhou — usando o armazenamento padrão:', e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
+/** Rótulo do arquivo no Drive por categoria do anexo. */
+export const DEAL_CATEGORY_LABEL: Record<string, string> = {
+  COMPROVANTE_PAGAMENTO: 'Comprovante de pagamento', COMPROVANTE_QUITACAO: 'Comprovante de quitação', COMPROVANTE_DEBITO: 'Comprovante de débito',
+  COMPROVANTE_TROCO: 'Comprovante de troco', CONTRATO_ASSINADO: 'Contrato assinado', PROCURACAO_ASSINADA: 'Procuração assinada',
+  NFE: 'NF-e', RECIBO: 'Recibo', OUTRO: 'Documento',
+}
+
+export async function saveDealAttachment(dealId: string, filename: string, mime: string, bytes: Buffer, opts: { category?: string | null } = {}): Promise<SavedDealAttachment> {
+  const pathname = `deals/${dealId}/${shortId()}_${sanitizeFilename(filename)}`
+  const label = opts.category ? DEAL_CATEGORY_LABEL[opts.category] ?? null : null
+  const onDrive = await saveDrive(pathname, filename, mime, bytes, async () => (await import('@/lib/storage/drive-files')).dealDrivePath(dealId), label)
+  if (onDrive) return onDrive
+  if (dealStorageBackend() === 'blob') return saveBlob(pathname, filename, mime, bytes)
   return saveLocal(dealId, filename, mime, bytes)
 }
 
@@ -121,13 +155,23 @@ export const pendingFolder = (tenantId: string) => `deals/pending/${tenantId}/`
 
 /** Comprovante enviado no modal de pagamento, antes de salvar a negociação. Vinculado ao salvar. */
 export async function savePendingReceipt(tenantId: string, filename: string, mime: string, bytes: Buffer): Promise<SavedDealAttachment> {
-  if (dealStorageBackend() === 'blob') return saveBlob(`${pendingFolder(tenantId)}${shortId()}_${sanitizeFilename(filename)}`, filename, mime, bytes)
+  const pathname = `${pendingFolder(tenantId)}${shortId()}_${sanitizeFilename(filename)}`
+  const where = async () => ({ path: await (await import('@/lib/storage/drive-files')).pendingReceiptDrivePath(tenantId), tenantId })
+  const onDrive = await saveDrive(pathname, filename, mime, bytes, where, 'Comprovante', true)
+  if (onDrive) return onDrive
+  if (dealStorageBackend() === 'blob') return saveBlob(pathname, filename, mime, bytes)
   return saveLocal(`pending/${tenantId}`, filename, mime, bytes)
 }
 
 /** Lê o arquivo (só para o backend blob; o local é servido direto de /uploads). */
 export async function readDealFile(storageKey: string): Promise<{ stream: ReadableStream<Uint8Array>; contentType: string } | null> {
   if (!storageKey.startsWith(BLOB_PREFIX)) return null
+  const { driveKeyLookup, readKeyFromDrive, bufferStream } = await import('@/lib/storage/drive-keys')
+  const onDrive = await driveKeyLookup(storageKey)
+  if (onDrive) {
+    const f = await readKeyFromDrive(onDrive)
+    return { stream: bufferStream(f.bytes), contentType: f.contentType }
+  }
   const { get } = await import('@vercel/blob')
   const { blobAuth } = await import('@/lib/publications/social/blob-token')
   const r = await get(storageKey.slice(BLOB_PREFIX.length), { access: 'private', ...blobAuth() })
@@ -138,6 +182,8 @@ export async function readDealFile(storageKey: string): Promise<{ stream: Readab
 export async function deleteDealAttachment(storageKey: string): Promise<void> {
   if (!storageKey) return
   if (storageKey.startsWith(BLOB_PREFIX)) {
+    const { deleteKeyFromDrive } = await import('@/lib/storage/drive-keys')
+    if (await deleteKeyFromDrive(storageKey)) return
     try {
       const { del } = await import('@vercel/blob')
       const { blobAuth } = await import('@/lib/publications/social/blob-token')

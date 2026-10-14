@@ -247,6 +247,17 @@ export async function trashOnDrive(fileId: string): Promise<void> {
   await drive.files.update({ fileId, requestBody: { trashed: true } }).catch((e) => { if (!isNotFound(e)) throw e })
 }
 
+/** Move o arquivo para a pasta do caminho (ex.: comprovante provisório → pasta da negociação). */
+export async function moveOnDrive(fileId: string, path: string[]): Promise<void> {
+  const drive = await driveClient()
+  if (!drive) throw new Error('Google Drive não conectado.')
+  const target = await ensureFolderPath(drive, path)
+  const cur = await drive.files.get({ fileId, fields: 'parents' })
+  const from = (cur.data.parents ?? []).filter((p) => p !== target).join(',')
+  if (!from && (cur.data.parents ?? []).includes(target)) return
+  await drive.files.update({ fileId, addParents: target, removeParents: from || undefined, fields: 'id' })
+}
+
 /** Teste da conexão: garante a pasta raiz e devolve o link dela. */
 export async function testDrive(): Promise<{ folderId: string; link: string }> {
   const drive = await driveClient()
