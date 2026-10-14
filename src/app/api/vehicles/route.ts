@@ -263,7 +263,7 @@ export async function GET(req: NextRequest) {
     // Origem dos carros importados do site antigo (loja parceira, código interno...).
     const originsByTenant = new Map<string, Record<string, FeedOrigin>>()
     for (const tid of new Set(vehiclesAny.map((v) => v.tenantId as string | null).filter((t): t is string => !!t))) {
-      originsByTenant.set(tid, await feedOrigins(tid))
+      originsByTenant.set(tid, await feedOrigins(tid, vehiclesAny.filter((v) => v.tenantId === tid).map((v) => v.id as string)))
     }
 
     // Computa hasOpenNegotiation com info de vendedor e unidade da negociação

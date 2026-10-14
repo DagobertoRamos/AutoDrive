@@ -394,12 +394,39 @@ export async function applyFeedOrigin(tenantId: string, vehicleId: string, origi
   }
 }
 
-/** Origem de cada veículo importado (vehicleId → loja parceira, código, link...). Vazio se a loja não importa feed. */
-export async function feedOrigins(tenantId: string | null | undefined): Promise<Record<string, FeedOrigin>> {
+// O estado tem centenas de KB e a transferência do banco é cobrada: as leituras
+// abaixo extraem no PRÓPRIO banco (jsonb) só o pedaço necessário, em vez de
+// trazer o registro inteiro a cada listagem/anúncio.
+
+/** Lê um trecho do estado (`value::jsonb #> path`) — null se não houver. */
+async function statePart(tenantId: string, path: string[]): Promise<unknown> {
+  const rows = await prisma.$queryRaw<{ part: string | null }[]>`
+    SELECT (value::jsonb #> ${path}::text[])::text AS part
+    FROM system_settings WHERE key = ${stateKey(tenantId)} LIMIT 1`
+  const part = rows[0]?.part
+  return part ? JSON.parse(part) : null
+}
+
+/**
+ * Origem dos veículos importados (vehicleId → loja parceira, código, link...).
+ * Com `vehicleIds`, traz só esses (o normal); sem, traz todos. Vazio se a loja não importa feed.
+ */
+export async function feedOrigins(tenantId: string | null | undefined, vehicleIds?: string[]): Promise<Record<string, FeedOrigin>> {
   if (!tenantId) return {}
-  const row = await prisma.systemSetting.findFirst({ where: { key: stateKey(tenantId) }, select: { value: true } }).catch(() => null)
-  if (!row) return {}
-  try { return JSON.parse(row.value).origins ?? {} } catch { return {} }
+  try {
+    if (!vehicleIds) return ((await statePart(tenantId, ['origins'])) as Record<string, FeedOrigin> | null) ?? {}
+    if (!vehicleIds.length) return {}
+    const rows = await prisma.$queryRaw<{ id: string; origin: string }[]>`
+      SELECT o.key::text AS id, o.value::text AS origin
+      FROM system_settings s, jsonb_each(s.value::jsonb -> 'origins') o
+      WHERE s.key = ${stateKey(tenantId)} AND o.key = ANY(${vehicleIds}::text[])`
+    return Object.fromEntries(rows.map((r) => [r.id, JSON.parse(r.origin) as FeedOrigin]))
+  } catch { return {} }
+}
+
+/** Resumo da última importação (sem trazer o estado inteiro). */
+export async function feedImportLast(tenantId: string): Promise<FeedImportResult | null> {
+  try { return ((await statePart(tenantId, ['last'])) as FeedImportResult | null) ?? null } catch { return null }
 }
 
 /** Painel admin do site de origem (enquanto ele existir), p/ /admin no domínio da loja. */
@@ -410,7 +437,8 @@ export function legacyAdminOrigin(tenantId: string): string | null {
 
 /** Link antigo do site de origem → id do veículo no SaaS (null se não houver importação/vínculo). */
 export async function legacyVehicleId(tenantId: string, slug: string): Promise<string | null> {
-  const row = await prisma.systemSetting.findFirst({ where: { key: stateKey(tenantId) }, select: { value: true } }).catch(() => null)
-  if (!row) return null
-  try { return (JSON.parse(row.value).slugs ?? {})[decodeURIComponent(slug).toLowerCase()] ?? null } catch { return null }
+  try {
+    const id = await statePart(tenantId, ['slugs', decodeURIComponent(slug).toLowerCase()])
+    return typeof id === 'string' ? id : null
+  } catch { return null }
 }

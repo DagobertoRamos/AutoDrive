@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { studioQueue, PHOTO_STATUS, type PhotoStatusName } from '@/lib/integrations/photo-studio'
 import { studioErrorResponse, tenantFromToken } from '@/lib/integrations/photo-studio-http'
+import { feedImportLast } from '@/lib/site/feed-import'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,10 +32,9 @@ export async function GET(req: Request) {
     const loja = await prisma.tenant.findUnique({ where: { id: tenant }, select: { name: true } }).catch(() => null)
     // Última importação do site de origem: sem ela completando (placa, loja
     // parceira, opcionais), o carro chega "sem placa" e na pasta "autodrive".
-    const imp = await prisma.systemSetting.findFirst({ where: { key: `t:${tenant}:site:feedimport:v1` }, select: { value: true } }).catch(() => null)
+    const last = await feedImportLast(tenant)
     let importacao: Record<string, unknown> | null = null
     try {
-      const last = imp ? JSON.parse(imp.value).last : null
       if (last) importacao = { em: last.at, ok: last.ok, carrosNoFeed: last.feed, completadosPeloSiteAntigo: last.enriched ?? 0, erroSiteAntigo: last.legacyError ?? (!last.enriched && !process.env.SITE_FEED_LEGACY_DB ? 'SITE_FEED_LEGACY_DB não configurado no AutoDrive' : null) }
     } catch { /* estado ilegível: segue sem */ }
     return NextResponse.json({ success: true, loja: loja?.name ?? null, importacao, ...data })

@@ -58,7 +58,7 @@ export async function studioQueue(tenantId: string, opts: { limit: number; statu
     take: Math.min(opts.limit * 3, 900), // folga: alguns saem por só terem arte da loja
   })
 
-  const origins = await feedOrigins(tenantId)
+  const origins = await feedOrigins(tenantId, rows.map((r) => r.id))
   let semFotoPropria = 0
   let artesIgnoradas = 0
   let jaTratadosNaOrigem = 0

@@ -27,16 +27,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ site: st
   } catch (e) {
     generated = { ok: false, error: (e as Error).message?.slice(0, 200) ?? 'erro' }
   }
-  const snapRow = await prisma.systemSetting.findFirst({ where: { key: snapKey(tenantId) }, select: { value: true } }).catch(() => null)
-  let snap: { csv: string; exported: number; at: string } | null = null
-  try { snap = snapRow ? JSON.parse(snapRow.value) : null } catch { snap = null }
+  // Só o resumo do último feed bom: o CSV (centenas de KB) vem do banco apenas
+  // quando for mesmo servido — transferência do banco é cobrada.
+  const snapRows = await prisma.$queryRaw<{ exported: string | null; at: string | null }[]>`
+    SELECT value::jsonb ->> 'exported' AS exported, value::jsonb ->> 'at' AS at
+    FROM system_settings WHERE key = ${snapKey(tenantId)} LIMIT 1`.catch(() => [])
+  const snap = snapRows[0]?.at ? { exported: Number(snapRows[0].exported) || 0, at: snapRows[0].at } : null
   const visibleStock = await prisma.vehicle.count({ where: { tenantId, active: true, stockStatus: { in: [...SITE_VISIBLE_STOCK] } } }).catch(() => null)
   const decision = decideFeed({ generated, lastGood: snap ? { exported: snap.exported, at: new Date(snap.at) } : null, visibleStock })
 
   const headers = {
     'Content-Type': 'text/csv; charset=utf-8',
     'Content-Disposition': `inline; filename="catalogo-${resolved.config.slug}.csv"`,
-    'Cache-Control': 'public, max-age=900',
+    // s-maxage: a CDN da Vercel guarda 15 min (a Meta e robôs não regeram o feed a cada busca).
+    'Cache-Control': 'public, max-age=900, s-maxage=900',
     'X-Robots-Tag': 'noindex',
     'X-Feed-Decision': decision.serve,
   }
@@ -46,7 +50,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ site: st
   }
   if (decision.serve === 'LAST_GOOD' && snap) {
     console.warn('[catalogo-meta] servindo último feed bom', tenantId, decision.reason)
-    return new Response(snap.csv, { headers })
+    const row = await prisma.$queryRaw<{ csv: string | null }[]>`
+      SELECT value::jsonb ->> 'csv' AS csv FROM system_settings WHERE key = ${snapKey(tenantId)} LIMIT 1`.catch(() => [])
+    if (row[0]?.csv) return new Response(row[0].csv, { headers })
+    return new Response('Feed temporariamente indisponível.', { status: 503, headers: { 'Retry-After': '900', 'Cache-Control': 'no-store' } })
   }
   if (generated.ok && generated.exported > 0) {
     const value = JSON.stringify({ csv, exported: generated.exported, at: new Date().toISOString() })

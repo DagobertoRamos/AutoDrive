@@ -89,7 +89,7 @@ export async function GET(
     const openDeal = vehicleAny.dealVehicles?.[0]
     const data = {
       ...vehicleAny,
-      origin: mergeOrigin((await feedOrigins(vehicleAny.tenantId))[vehicleAny.id] ?? null, vehicleAny),
+      origin: mergeOrigin((await feedOrigins(vehicleAny.tenantId, [vehicleAny.id]))[vehicleAny.id] ?? null, vehicleAny),
       hasOpenNegotiation: !!openDeal,
       openNegotiationId:  openDeal?.dealId ?? null,
     }
