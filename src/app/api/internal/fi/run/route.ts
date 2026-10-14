@@ -1,5 +1,5 @@
 // =============================================================================
-// GET|POST /api/internal/fi/run — rotina do F&I (cron a cada 10 min): propostas
+// GET|POST /api/internal/fi/run — rotina do F&I (cron a cada 6 h): propostas
 // sem resposta, aprovações vencidas e retenção de documentos.
 // Header: Authorization: Bearer <CRON_SECRET>  ou  x-cron-secret: <CRON_SECRET>
 // =============================================================================

@@ -15,7 +15,7 @@ name: "Pendências: lembretes e arquivo automático"
 
 on:
   schedule:
-    - cron: '0 * * * *' # toda hora cheia (UTC)
+    - cron: '15 */6 * * *' # a cada 6 h (economia de banco, 2026-10-14)
   workflow_dispatch: {} # permite disparar manualmente pela aba Actions
 
 jobs:

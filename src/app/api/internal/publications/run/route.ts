@@ -1,6 +1,6 @@
 // =============================================================================
 // GET|POST /api/internal/publications/run — processa a fila de publicações.
-// Cron da Vercel (a cada minuto) + ?reconcile=1 (a cada 15 min): conferência
+// Cron da Vercel (a cada 6 h) + ?reconcile=1 (a cada 6 h, meia hora depois): conferência
 // com os canais, venda × anúncios e sincronização de conteúdo.
 // Header: Authorization: Bearer <CRON_SECRET>  ou  x-cron-secret: <CRON_SECRET>
 // =============================================================================

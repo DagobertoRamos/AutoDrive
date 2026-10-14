@@ -5,6 +5,7 @@
 // =============================================================================
 
 import type { Prisma } from '@prisma/client'
+import { revalidateTag, unstable_cache } from 'next/cache'
 import { prisma } from '@/lib/prisma'
 import { effectiveOrigin, type OriginType } from '@/lib/stock/origin-core'
 import { classifyVideo } from '@/lib/publications/social/video-core'
@@ -78,27 +79,32 @@ function baseWhere(tenantId: string): Prisma.VehicleWhereInput {
   }
 }
 
-// ── Vitrine em memória ──────────────────────────────────────────────────────
+// ── Vitrine em cache ────────────────────────────────────────────────────────
 // Toda página do site (e cada robô de busca) precisava do estoque inteiro com
 // fotos — ~0,5 MB do banco por página, e a transferência do banco é cobrada.
-// Agora o estoque visível de cada loja é lido no máximo 1x por minuto por
-// instância (consultas simultâneas compartilham a mesma leitura); listagem,
-// marcas, filtros e anúncio saem daqui. Mudança no estoque aparece em até 1 min.
-const CATALOG_TTL_MS = 60_000
+// O estoque visível de cada loja fica no cache de dados do Next (compartilhado
+// entre as instâncias da Vercel) e é relido do banco a cada 6 h — decisão de
+// 2026-10-14 p/ economizar. Listagem, marcas, filtros e anúncio saem daqui.
+// Atualização antecipada: refreshSiteVehicles() (fim da importação de estoque
+// e "Salvar" das configurações do site).
+const SITE_REFRESH_S = 6 * 60 * 60
 
 interface CatalogEntry { v: SiteVehicle; createdAt: number; rawBrand: string | null }
 
-const catalogCache = new Map<string, { at: number; data: Promise<CatalogEntry[]> }>()
+const siteVehiclesTag = (tenantId: string) => `site-vehicles:${tenantId}`
+
+async function loadCatalog(tenantId: string): Promise<CatalogEntry[]> {
+  const rows = await prisma.vehicle.findMany({ where: baseWhere(tenantId), select: SELECT, orderBy: { createdAt: 'desc' }, take: 2000 })
+  return rows.map((r) => ({ v: toSiteVehicle(r), createdAt: r.createdAt.getTime(), rawBrand: r.brand }))
+}
 
 function catalog(tenantId: string): Promise<CatalogEntry[]> {
-  const hit = catalogCache.get(tenantId)
-  if (hit && Date.now() - hit.at < CATALOG_TTL_MS) return hit.data
-  const data = prisma.vehicle
-    .findMany({ where: baseWhere(tenantId), select: SELECT, orderBy: { createdAt: 'desc' }, take: 2000 })
-    .then((rows) => rows.map((r) => ({ v: toSiteVehicle(r), createdAt: r.createdAt.getTime(), rawBrand: r.brand })))
-  catalogCache.set(tenantId, { at: Date.now(), data })
-  data.catch(() => { if (catalogCache.get(tenantId)?.data === data) catalogCache.delete(tenantId) })
-  return data
+  return unstable_cache(() => loadCatalog(tenantId), ['site-catalog-v1', tenantId], { revalidate: SITE_REFRESH_S, tags: [siteVehiclesTag(tenantId)] })()
+}
+
+/** Força o site da loja a reler o estoque na próxima visita. */
+export function refreshSiteVehicles(tenantId: string) {
+  try { revalidateTag(siteVehiclesTag(tenantId), { expire: 0 }) } catch (e) { console.warn('[site] atualizar vitrine', e instanceof Error ? e.message : e) }
 }
 
 const eqi = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()

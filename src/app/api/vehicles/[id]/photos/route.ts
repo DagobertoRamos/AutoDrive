@@ -14,6 +14,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { assetIdFromUrl, ImageRejected, storeTenantImage } from '@/lib/site/assets'
+import { refreshSiteVehicles } from '@/lib/site/vehicles'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -78,6 +79,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     }
     await normalizeMain(vehicle.id)
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'UPLOAD_PHOTOS', entity: 'Vehicle', entityId: vehicle.id, userName: user.name, userRole: user.role, afterData: { added: files.length - rejected.length, rejected } })
+    refreshSiteVehicles(tenantId)
     return NextResponse.json({ success: true, data: await photoList(vehicle.id), rejected }, { status: 201 })
   } catch (err) {
     return handlePrismaError(err)
@@ -106,6 +108,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       ])
     }
     await normalizeMain(vehicle.id)
+    if (vehicle.tenantId) refreshSiteVehicles(vehicle.tenantId)
     return NextResponse.json({ success: true, data: await photoList(vehicle.id) })
   } catch (err) {
     return handlePrismaError(err)
@@ -125,6 +128,7 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     if (assetId) await prisma.siteAsset.deleteMany({ where: { id: assetId, tenantId: vehicle.tenantId ?? '', kind: 'VEHICLE_PHOTO' } })
     await normalizeMain(vehicle.id)
     await createSafeAuditLog({ userId: user.id, tenantId: vehicle.tenantId, action: 'DELETE_PHOTO', entity: 'Vehicle', entityId: vehicle.id, userName: user.name, userRole: user.role })
+    if (vehicle.tenantId) refreshSiteVehicles(vehicle.tenantId)
     return NextResponse.json({ success: true, data: await photoList(vehicle.id) })
   } catch (err) {
     return handlePrismaError(err)

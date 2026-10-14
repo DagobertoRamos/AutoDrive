@@ -15,6 +15,7 @@ import { loadSiteConfig, saveSiteConfig, SiteConfigError, SITE_SERVICES } from '
 import { SITE_VISIBLE_STOCK } from '@/lib/site/listing-core'
 import { pruneUnusedBanners } from '@/lib/site/assets'
 import { realPhotoUrls } from '@/lib/vehicle-placeholder'
+import { refreshSiteVehicles } from '@/lib/site/vehicles'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,6 +62,8 @@ export async function PUT(req: Request) {
     // Banners, depoimentos e catálogo têm tela própria (PATCH): se não vierem, ficam como estão.
     const saved = await saveSiteConfig(tenantId, { banners: before.banners, testimonials: before.testimonials, catalog: before.catalog, emails: before.emails, ...body, domains: before.domains }, user.id)
     await pruneUnusedBanners(tenantId, saved.banners.items.map((b) => b.imageUrl))
+    // O estoque do site fica em cache por 6 h: salvar as configurações atualiza na hora.
+    refreshSiteVehicles(tenantId)
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'UPDATE', entity: 'SiteConfig', entityId: tenantId, userName: user.name, userRole: user.role, beforeData: before, afterData: saved })
     return NextResponse.json({ success: true, data: saved })
   } catch (err) {

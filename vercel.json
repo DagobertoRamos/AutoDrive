@@ -11,7 +11,7 @@
     },
     {
       "path": "/api/internal/site/feed-import/run",
-      "schedule": "20 * * * *"
+      "schedule": "20 */6 * * *"
     },
     {
       "path": "/api/internal/master/tenant-retention/run",
@@ -19,15 +19,15 @@
     },
     {
       "path": "/api/internal/publications/run",
-      "schedule": "* * * * *"
+      "schedule": "0 */6 * * *"
     },
     {
       "path": "/api/internal/publications/run?reconcile=1",
-      "schedule": "*/15 * * * *"
+      "schedule": "30 */6 * * *"
     },
     {
       "path": "/api/internal/stock/services-overdue/run",
-      "schedule": "10 * * * *"
+      "schedule": "10 */6 * * *"
     },
     {
       "path": "/api/internal/finance/recurrences/run",
@@ -39,11 +39,11 @@
     },
     {
       "path": "/api/internal/ops/run",
-      "schedule": "*/10 * * * *"
+      "schedule": "40 */6 * * *"
     },
     {
       "path": "/api/internal/fi/run",
-      "schedule": "5-59/10 * * * *"
+      "schedule": "50 */6 * * *"
     }
   ]
 }

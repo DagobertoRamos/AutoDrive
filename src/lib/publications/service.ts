@@ -28,6 +28,7 @@ import { validatePayload, type Issue } from './validate-core'
 import { getConnector } from './connectors'
 import { realPhotoUrls } from '@/lib/vehicle-placeholder'
 import { SITE_VISIBLE_STOCK } from '@/lib/site/listing-core'
+import { refreshSiteVehicles } from '@/lib/site/vehicles'
 
 type Tx = Prisma.TransactionClient
 export interface Actor { id: string | null; name: string | null; role?: string | null }
@@ -549,6 +550,7 @@ export function notifySaleCancelled(tenantId: string | null | undefined, vehicle
   if (!tenantId) return
   const ids = [...new Set(vehicleIds.filter((x): x is string => !!x))]
   if (!ids.length) return
+  refreshSiteVehicles(tenantId) // o site (cache de 6 h) reflete venda/edição na hora
   const work = async () => {
     let touched = 0
     for (const id of ids) touched += await resumeAfterSaleCancelled(tenantId, id, actor ?? SYSTEM_ACTOR).catch((e) => { console.error('[publications] venda cancelada', id, e); return 0 })
@@ -565,6 +567,7 @@ export function notifyStockChanged(tenantId: string | null | undefined, vehicleI
   if (!tenantId) return
   const ids = [...new Set(vehicleIds.filter((x): x is string => !!x))]
   if (!ids.length) return
+  refreshSiteVehicles(tenantId) // o site (cache de 6 h) reflete venda/edição na hora
   const work = async () => {
     let touched = 0
     for (const id of ids) {

@@ -22,6 +22,7 @@ import {
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { refreshSiteVehicles } from '@/lib/site/vehicles'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -291,6 +292,7 @@ export async function PATCH(
       userRole: user.role,
     })
 
+    if (updated.tenantId) refreshSiteVehicles(updated.tenantId)
     return NextResponse.json({ success: true, data: updated, activated: activatedNow })
   } catch (err) {
     return handlePrismaError(err)

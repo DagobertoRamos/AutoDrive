@@ -1,6 +1,6 @@
 // =============================================================================
 // GET|POST /api/internal/stock/services-overdue/run
-// Cron (Vercel, de hora em hora): serviços de preparação em andamento com a
+// Cron (Vercel, a cada 6 h): serviços de preparação em andamento com a
 // previsão de entrega vencida → avisa a preparação e os gestores (1x por prazo).
 // Header: Authorization: Bearer <CRON_SECRET>  ou  x-cron-secret: <CRON_SECRET>
 // =============================================================================

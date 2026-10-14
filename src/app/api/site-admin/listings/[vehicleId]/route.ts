@@ -7,6 +7,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
 import { sanitizeListingInput } from '@/lib/site/listing-input'
+import { refreshSiteVehicles } from '@/lib/site/vehicles'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,6 +31,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ vehicleI
       update: v,
     })
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'UPDATE', entity: 'SiteListing', entityId: vehicleId, userName: user.name, userRole: user.role, afterData: v })
+    refreshSiteVehicles(tenantId)
     return NextResponse.json({ success: true, data: listing })
   } catch (err) {
     return handlePrismaError(err)
