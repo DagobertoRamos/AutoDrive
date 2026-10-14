@@ -18,6 +18,8 @@ import { promises as fs }   from 'node:fs'
 import path                 from 'node:path'
 import { randomBytes }      from 'node:crypto'
 import { prisma }          from '@/lib/prisma'
+import { driveEnabled, trashOnDrive } from '@/lib/storage/drive'
+import { driveFileName, evaluationDrivePath, uploadToDrive } from '@/lib/storage/drive-files'
 
 const MAX_BYTES = Number(process.env.EVAL_UPLOAD_MAX_BYTES ?? 20 * 1024 * 1024) // 20 MB
 
@@ -149,9 +151,46 @@ async function saveDb(
   }
 }
 
+// ── Backend: GOOGLE DRIVE (preferido quando a conta está conectada) ─────────
+//
+// O registro em evaluation_files continua (mesmo id → mesmo link), mas sem os
+// bytes: o conteúdo vai para AutoDrive/<Loja>/Avaliações/<MM-AAAA>/<Veículo -
+// PLACA> (CNH e afins → Documentos pessoais). A transferência do banco é cobrada.
+
+async function saveDrive(
+  evalId: string,
+  filename: string,
+  mime: string,
+  bytes: Buffer,
+  category?: string | null,
+): Promise<SavedAttachment> {
+  const safe = sanitizeFilename(filename)
+  const { path: folder, tenantId } = await evaluationDrivePath(evalId, category)
+  const driveFileId = await uploadToDrive(folder, driveFileName(category, safe), mime, bytes)
+  try {
+    const rec = await prisma.evaluationFile.create({
+      data: { evaluationId: evalId, tenantId, fileName: safe, mimeType: mime, fileSize: bytes.length, driveFileId },
+      select: { id: true },
+    })
+    return {
+      storageKey: `${DB_STORAGE_PREFIX}${rec.id}`,
+      publicUrl:  `/api/evaluations/files/${rec.id}`,
+      fileType:   ALLOWED_MIME[mime.toLowerCase()] ?? 'other',
+      mimeType:   mime,
+      fileSize:   bytes.length,
+      fileName:   safe,
+    }
+  } catch (err) {
+    await trashOnDrive(driveFileId).catch(() => undefined)
+    throw err
+  }
+}
+
 async function deleteDb(storageKey: string): Promise<void> {
   const id = storageKey.slice(DB_STORAGE_PREFIX.length)
   if (!id) return
+  const rec = await prisma.evaluationFile.findUnique({ where: { id }, select: { driveFileId: true } }).catch(() => null)
+  if (rec?.driveFileId) await trashOnDrive(rec.driveFileId).catch((e) => console.warn('[storage] lixeira do Drive', e instanceof Error ? e.message : e))
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (prisma as any).evaluationFile.delete({ where: { id } }).catch(() => { /* já removido */ })
 }
@@ -190,7 +229,18 @@ export async function saveAttachment(
   filename: string,
   mime: string,
   bytes: Buffer,
+  opts: { category?: string | null } = {},
 ): Promise<SavedAttachment> {
+  // Drive conectado: vai para lá. Falhou? Grava no banco como antes (a migração
+  // leva para o Drive depois) — nunca perde o arquivo.
+  if (process.env.EVAL_STORAGE_BACKEND !== 'local' && await driveEnabled()) {
+    try {
+      return await saveDrive(evalId, filename, mime, bytes, opts.category)
+    } catch (err) {
+      console.error('[storage] Drive falhou — gravando no banco:', err instanceof Error ? err.message : err)
+      return saveDb(evalId, filename, mime, bytes)
+    }
+  }
   const backend = activeStorageBackend()
   if (backend === 'db') return saveDb(evalId, filename, mime, bytes)
   if (backend === 'local') {

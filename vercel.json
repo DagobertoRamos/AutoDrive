@@ -42,6 +42,10 @@
       "schedule": "40 */6 * * *"
     },
     {
+      "path": "/api/internal/storage/drive-migrate/run",
+      "schedule": "45 */6 * * *"
+    },
+    {
       "path": "/api/internal/fi/run",
       "schedule": "50 */6 * * *"
     }

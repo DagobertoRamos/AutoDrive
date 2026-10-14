@@ -5,6 +5,7 @@ import { getSessionUser, assertTenantId, tenantWhere, unauthorizedResponse, forb
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
 import { syncIntake } from '@/lib/stock/intake'
+import { deleteVehicleFile } from '@/lib/stock/vehicle-files'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +18,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     const { id, fileId } = await ctx.params
     const f = await prisma.vehicleFile.findFirst({ where: { id: fileId, vehicleId: id, vehicle: { ...tenantWhere(user.role, tenantId) } }, select: { id: true, kind: true, fileName: true, tenantId: true } })
     if (!f) return NextResponse.json({ success: false, error: 'Arquivo não encontrado.' }, { status: 404 })
-    await prisma.vehicleFile.delete({ where: { id: f.id } })
+    await deleteVehicleFile(f.id)
     await createSafeAuditLog({ userId: user.id, tenantId: f.tenantId, action: 'DELETE', entity: 'VehicleFile', entityId: f.id, userName: user.name, userRole: user.role, beforeData: f })
     if (f.kind === 'LAUDO_CAUTELAR') await syncIntake(id, { id: user.id, name: user.name, role: user.role })
     return NextResponse.json({ success: true })

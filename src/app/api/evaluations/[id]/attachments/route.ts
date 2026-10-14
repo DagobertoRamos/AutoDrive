@@ -115,7 +115,7 @@ export async function POST(
     // continua pendente no checklist, em vez de "sumir" silenciosamente.
     let saved: Awaited<ReturnType<typeof saveAttachment>>
     try {
-      saved = await saveAttachment(evaluationId, file.name, mime, bytes)
+      saved = await saveAttachment(evaluationId, file.name, mime, bytes, { category: rawCategory })
     } catch (storageErr) {
       const msg = storageErr instanceof Error ? storageErr.message : String(storageErr)
       console.error('[attachments POST] falha de storage:', msg)

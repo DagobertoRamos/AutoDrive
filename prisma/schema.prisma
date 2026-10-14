@@ -862,7 +862,8 @@ model VehicleFile {
   fileName       String
   mimeType       String
   fileSize       Int
-  data           Bytes
+  data           Bytes?   // null quando o conteúdo está no Google Drive
+  driveFileId    String?  // arquivo no Drive (lib/storage/drive)
   uploadedById   String?
   uploadedByName String?
   createdAt      DateTime @default(now())
@@ -3777,7 +3778,8 @@ model EvaluationFile {
   fileName     String
   mimeType     String
   fileSize     Int
-  data         Bytes
+  data         Bytes?   // null quando o conteúdo está no Google Drive
+  driveFileId  String?  // arquivo no Drive (lib/storage/drive)
   createdAt    DateTime @default(now())
 
   @@index([evaluationId])
