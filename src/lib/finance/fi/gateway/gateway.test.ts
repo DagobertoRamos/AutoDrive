@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createHmac } from 'node:crypto'
 import { CONNECTION_META, connectionState, currentFiEnvironment, getBankProvider, listBankProviders } from './registry'
-import { PanAdapter } from './banks'
+import { SantanderAdapter } from './banks'
 import { isSandboxAllowed, priceInstallment } from './sandbox'
 import { BankGatewayError } from './types'
 
@@ -9,10 +9,10 @@ const ctx = { tenantId: 't1', environment: 'HOMOLOGACAO' as const, credentials: 
 
 describe('gateway de bancos', () => {
   it('bancos sem API oficial respondem "Banco ainda não integrado" (sem integração falsa)', async () => {
-    const pan = new PanAdapter()
-    expect(pan.official).toBe(false)
-    expect(pan.isIntegrated(ctx)).toBe(false)
-    await expect(pan.submitProposal({ personType: 'PF', data: {} }, { vehicleValue: 1, downPayment: 0, amount: 1, installments: 12 }, ctx))
+    const santander = new SantanderAdapter()
+    expect(santander.official).toBe(false)
+    expect(santander.isIntegrated(ctx)).toBe(false)
+    await expect(santander.submitProposal({ personType: 'PF', data: {} }, { vehicleValue: 1, downPayment: 0, amount: 1, installments: 12 }, ctx))
       .rejects.toMatchObject({ code: 'NAO_INTEGRADO', message: 'Banco ainda não integrado.' })
   })
   it('todos os conectores previstos existem atrás da mesma interface', () => {
@@ -31,8 +31,8 @@ describe('gateway de bancos', () => {
     expect(CONNECTION_META.NAO_INTEGRADO.label).toBe('Banco ainda não integrado')
   })
   it('conector oficial: credencial vencida, ilegível ou ausente', () => {
-    const official = { ...getBankProvider('pan')!, official: true } as never
-    const base = { adapterKey: 'pan', provider: official, hasCredential: true, credentialReadable: true, credentialExpiresAt: null, integrated: true }
+    const official = { ...getBankProvider('santander')!, official: true } as never
+    const base = { adapterKey: 'santander', provider: official, hasCredential: true, credentialReadable: true, credentialExpiresAt: null, integrated: true }
     expect(connectionState(base)).toBe('CONECTADO')
     expect(connectionState({ ...base, hasCredential: false })).toBe('CONFIGURACAO_NECESSARIA')
     expect(connectionState({ ...base, credentialReadable: false })).toBe('CREDENCIAL_INVALIDA')
@@ -49,7 +49,7 @@ describe('gateway de bancos', () => {
     expect(listBankProviders().some((p) => p.key === 'teste')).toBe(true) // NODE_ENV=test
   })
   it('assinatura de webhook HMAC (rejeita adulteração)', () => {
-    const bv = new PanAdapter()
+    const bv = new SantanderAdapter()
     const body = JSON.stringify({ status: 'aprovada' })
     const sig = createHmac('sha256', 'segredo-123').update(body).digest('hex')
     expect(bv.verifyWebhook(body, { 'x-signature': sig }, 'segredo-123')).toBe(true)

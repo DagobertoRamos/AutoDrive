@@ -39,6 +39,22 @@ export const CREDENTIAL_SPECS: Record<string, CredentialSpec> = {
       { key: 'urlBase', label: 'URL da API (produção)', optional: true, help: 'Informada pelo BV na liberação de produção. Em homologação fica em branco.' },
     ],
   },
+  pan: {
+    intro: 'Dados entregues pelo PAN ao liberar a OpenAPI Veículos para a loja (pedido em bancopanprd@service-now.com com o aval do gerente comercial). Homologação e produção têm chaves diferentes.',
+    fields: [
+      { key: 'apiKey', label: 'ApiKey', help: 'Chave da aplicação enviada pelo time de OpenAPI do PAN.' },
+      { key: 'secretKey', label: 'SecretKey', secret: true, help: 'Segredo enviado junto com a ApiKey.' },
+      { key: 'usuarioIntegracao', label: 'Usuário de integração', help: 'Usuário NPV de integração da loja (ex.: 00000000001_000001).' },
+      { key: 'senhaIntegracao', label: 'Senha de integração', secret: true },
+      { key: 'idLoja', label: 'Código da loja no PAN', help: 'Código da loja (idLoja) no PAN.' },
+      { key: 'cnpjLoja', label: 'CNPJ da loja', help: 'CNPJ cadastrado no PAN. Usado para achar o produto de financiamento da loja.' },
+      { key: 'cpfAgenteCertificado', label: 'CPF do agente certificado', help: 'CPF do vendedor/F&I certificado que assina as propostas no PAN.' },
+      { key: 'codigoOperador', label: 'Código do operador', optional: true, help: 'Em branco, usa o operador com o CPF do agente certificado (ou o primeiro habilitado).' },
+      { key: 'codigoProduto', label: 'Código do produto', optional: true, help: 'Só se o PAN tiver mais de um produto para a loja.' },
+      { key: 'tipoIdLoja', label: 'Tipo do código da loja', optional: true, help: 'Só se o PAN pedir (campo tipoIdLoja da simulação).' },
+      { key: 'urlBase', label: 'URL da API', optional: true, help: 'Em branco usa a URL oficial do ambiente (homologação ou produção).' },
+    ],
+  },
 }
 
 export const credentialSpecFor = (adapterKey: string | null | undefined): CredentialSpec | null =>
