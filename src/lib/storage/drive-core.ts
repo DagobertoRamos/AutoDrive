@@ -7,6 +7,8 @@
 //   Documentos pessoais/<MM-AAAA>/<Nome - Marca Modelo - PLACA>/
 //   Negociações/<MM-AAAA>/<Cliente - Marca Modelo - PLACA>/
 //   Financeiro/<MM-AAAA>/
+//   Fotos do estoque/<MM-AAAA>/<Marca Modelo - PLACA>/   (acervo: o site segue servindo do sistema)
+//   Site/<Logos|Banners|Imagens>/                        (acervo)
 // =============================================================================
 
 export const DRIVE_ROOT_FOLDER = 'AutoDrive'
@@ -14,7 +16,7 @@ export const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder'
 /** drive.file: o app só enxerga o que ele mesmo criou no Drive da conta. */
 export const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.file', 'openid', 'email']
 
-export type DriveArea = 'EVALUATION' | 'VEHICLE_DOCS' | 'PERSONAL_DOCS' | 'NEGOTIATIONS' | 'FINANCE'
+export type DriveArea = 'EVALUATION' | 'VEHICLE_DOCS' | 'PERSONAL_DOCS' | 'NEGOTIATIONS' | 'FINANCE' | 'STOCK_PHOTOS' | 'SITE'
 
 export const DRIVE_AREA_FOLDER: Record<DriveArea, string> = {
   EVALUATION: 'Avaliações',
@@ -22,6 +24,8 @@ export const DRIVE_AREA_FOLDER: Record<DriveArea, string> = {
   PERSONAL_DOCS: 'Documentos pessoais',
   NEGOTIATIONS: 'Negociações',
   FINANCE: 'Financeiro',
+  STOCK_PHOTOS: 'Fotos do estoque',
+  SITE: 'Site',
 }
 
 /** Comprovante enviado antes de a negociação existir (sai daqui quando é vinculado). */
@@ -70,6 +74,8 @@ export interface DrivePathInput {
 
 /** Caminho de pastas a partir da pasta raiz "AutoDrive" (ela não entra na lista). */
 export function drivePath(i: DrivePathInput): string[] {
+  // Site: sem mês (logos e banners são poucos e duram anos).
+  if (i.area === 'SITE') return [driveSafeName(i.store, 'Loja'), DRIVE_AREA_FOLDER.SITE, driveSafeName(i.leaf, 'Imagens')]
   const base = [driveSafeName(i.store, 'Loja'), DRIVE_AREA_FOLDER[i.area], driveMonthFolder(i.date)]
   if (i.leaf) return [...base, driveSafeName(i.leaf)]
   if (i.area === 'FINANCE') return base

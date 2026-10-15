@@ -14,6 +14,9 @@ export async function storeTenantImage(tenantId: string, kind: string, bytes: Ui
     data: { tenantId, kind, mimeType: info.mime, fileSize: bytes.length, width: info.width, height: info.height, sha256, data: Buffer.from(bytes) },
     select: { id: true },
   })
+  // Acervo no Google Drive (fotos do estoque, logos, banners): copia depois da
+  // resposta; o site continua servindo daqui (cache da CDN).
+  void import('@/lib/storage/drive-assets').then((m) => m.scheduleAssetArchive(asset.id, kind)).catch(() => undefined)
   return { id: asset.id, url: siteAssetUrl(asset.id), width: info.width, height: info.height }
 }
 

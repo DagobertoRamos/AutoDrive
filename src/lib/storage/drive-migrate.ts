@@ -12,11 +12,12 @@ import {
   uploadToDrive, vehicleDrivePath,
 } from './drive-files'
 import { putKeyOnDrive } from './drive-keys'
+import { archiveAssetToDrive, assetsToArchive, assetsToArchiveCount } from './drive-assets'
 import { DEAL_CATEGORY_LABEL } from '@/lib/negotiation/storage'
 import { DOC_TYPE_LABEL, type DocType } from '@/lib/documents/attachment-types'
 import { VEHICLE_FILE_LABEL, type VehicleFileKind } from '@/lib/stock/vehicle-files'
 
-export interface DrivePending { evaluationFiles: number; vehicleFiles: number; privateFiles: number; pendingReceipts: number }
+export interface DrivePending { evaluationFiles: number; vehicleFiles: number; privateFiles: number; pendingReceipts: number; images: number }
 
 // Arquivos privados (chave blob://) que ainda estão no armazenamento da Vercel.
 async function privatePendingCount(): Promise<number> {
@@ -38,13 +39,14 @@ async function linkedPendingReceipts(take: number) {
 }
 
 export async function drivePending(): Promise<DrivePending> {
-  const [e, v, p, r] = await Promise.all([
+  const [e, v, p, r, i] = await Promise.all([
     prisma.evaluationFile.count({ where: { driveFileId: null, NOT: { data: null } } }),
     prisma.vehicleFile.count({ where: { driveFileId: null, NOT: { data: null } } }),
     privatePendingCount(),
     linkedPendingReceipts(1000).then((x) => x.length),
+    assetsToArchiveCount(),
   ])
-  return { evaluationFiles: e, vehicleFiles: v, privateFiles: p, pendingReceipts: r }
+  return { evaluationFiles: e, vehicleFiles: v, privateFiles: p, pendingReceipts: r, images: i }
 }
 
 export interface DriveMigrateResult { migrated: number; failed: number; errors: string[]; pending: DrivePending; stoppedByTime: boolean }
@@ -59,7 +61,7 @@ async function readBytes(table: 'evaluation_files' | 'vehicle_files', id: string
 export async function migrateToDrive(opts: { deadlineMs?: number; max?: number } = {}): Promise<DriveMigrateResult> {
   const deadline = Date.now() + (opts.deadlineMs ?? 240_000)
   const max = opts.max ?? 500
-  const out: DriveMigrateResult = { migrated: 0, failed: 0, errors: [], pending: { evaluationFiles: 0, vehicleFiles: 0, privateFiles: 0, pendingReceipts: 0 }, stoppedByTime: false }
+  const out: DriveMigrateResult = { migrated: 0, failed: 0, errors: [], pending: { evaluationFiles: 0, vehicleFiles: 0, privateFiles: 0, pendingReceipts: 0, images: 0 }, stoppedByTime: false }
   if (!(await driveEnabled())) throw new Error('Google Drive não conectado.')
   const fail = (what: string, e: unknown) => { out.failed++; if (out.errors.length < 10) out.errors.push(`${what}: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200)) }
   const timeUp = () => { if (Date.now() > deadline) { out.stoppedByTime = true; return true } return false }
@@ -100,6 +102,14 @@ export async function migrateToDrive(opts: { deadlineMs?: number; max?: number }
   // Arquivos privados (Vercel Blob) → Drive. A chave não muda; só some do Blob
   // depois que o Drive confirmou e o vínculo foi gravado.
   if (!timeUp()) await migratePrivateFiles(out, max, timeUp, fail)
+
+  // Acervo: cópia das fotos do estoque e imagens do site.
+  if (!timeUp()) {
+    for (const id of await assetsToArchive(max)) {
+      if (timeUp() || out.migrated + out.failed >= max) break
+      try { if (await archiveAssetToDrive(id)) out.migrated++ } catch (e) { fail(`imagem ${id}`, e) }
+    }
+  }
 
   // Comprovantes provisórios já vinculados → pasta da negociação.
   if (!timeUp()) {
