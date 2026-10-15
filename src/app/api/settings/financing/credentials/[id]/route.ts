@@ -15,6 +15,7 @@ import { updateCredentialSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { encryptSecrets, decryptSecretsStrict, maskSecret, isCryptoConfigured, SecretsDecryptError } from '@/lib/finance/crypto'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { EXTRA_CREDENTIAL_KEYS } from '@/lib/finance/fi/gateway/credential-specs'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Credencial não encontrada.' }, { status: 404 })
@@ -28,7 +29,19 @@ function buildHints(d: Record<string, string | null | undefined>, expiresAt?: st
   if (d.senha) h.senha = maskSecret(d.senha)
   if (d.token) h.token = maskSecret(d.token)
   if (d.clientSecret) h.clientSecret = maskSecret(d.clientSecret)
+  for (const k of EXTRA_CREDENTIAL_KEYS) {
+    const v = d[k]
+    if (!v) continue
+    h[k] = k === 'certPfx' ? 'arquivo enviado' : /senha|secret/i.test(k) ? maskSecret(v) : v.slice(0, 60)
+  }
   return h
+}
+
+/** Só as chaves conhecidas dos conectores; vazio = não mexe. */
+function pickExtra(extra: Record<string, string> | null | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(extra ?? {})) if (EXTRA_CREDENTIAL_KEYS.has(k) && typeof v === 'string' && v.trim()) out[k] = v.trim()
+  return out
 }
 
 export async function PATCH(req: Request, { params }: Ctx) {
@@ -63,6 +76,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
       const v = (d as Record<string, string | null | undefined>)[k]
       if (v !== undefined && v !== null && v !== '') merged[k] = v
     }
+    Object.assign(merged, pickExtra(d.extra))
     const data: Record<string, unknown> = { updatedById: user.id, secretsEncrypted: encryptSecrets(merged), maskedHints: buildHints(merged, d.expiresAt !== undefined ? d.expiresAt : ((existing.maskedHints as Record<string, string> | null)?.expiresAt ?? null)) as never }
     if (d.bankId) data.bankId = d.bankId
     if (d.environment) data.environment = d.environment

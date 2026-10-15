@@ -1,6 +1,6 @@
 // =============================================================================
-// Conectores por banco. HOJE nenhum tem implementação oficial homologada —
-// todos respondem "Banco ainda não integrado" e a ficha segue em
+// Conectores por banco. O BV tem conector oficial (bv.ts). Os demais ainda
+// não têm API pública utilizável — respondem "Banco ainda não integrado" e a ficha segue em
 // acompanhamento manual (o operador registra a resposta do banco).
 //
 // Para integrar um banco: implementar os métodos com a API OFICIAL contratada,
@@ -11,7 +11,7 @@
 import { NotIntegratedBank } from './base'
 import type { BankChannel } from './types'
 
-export class BVAdapter extends NotIntegratedBank { readonly key = 'bv'; readonly name = 'Banco BV' }
+export { BVAdapter } from './bv'
 export class PanAdapter extends NotIntegratedBank { readonly key = 'pan'; readonly name = 'Banco PAN' }
 export class SantanderAdapter extends NotIntegratedBank { readonly key = 'santander'; readonly name = 'Santander' }
 export class ItauAdapter extends NotIntegratedBank { readonly key = 'itau'; readonly name = 'Itaú' }

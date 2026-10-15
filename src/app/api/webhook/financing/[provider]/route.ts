@@ -3,7 +3,11 @@
 // PÚBLICO (sem sessão), protegido por:
 //   • assinatura HMAC-SHA256 do corpo bruto (header x-signature) com a chave da
 //     plataforma FINANCE_WEBHOOK_SECRET — ou o header legado x-webhook-secret.
+//     Com ?l=<loja>, a chave é a DA LOJA (derivada; ver gateway/webhook-keys) e
+//     só propostas daquela loja são tocadas. Cada conector valida do seu jeito
+//     (BV: <assinatura> no header SOAP).
 //     Segredo na URL (?secret=) NÃO é mais aceito (vaza em logs).
+//   • corpo JSON ou XML (o conector recebe o texto bruto quando não é JSON).
 //   • deduplicação: (provider, eventId) único — evento repetido responde 200 e
 //     não muda nada. Sem eventId, usa o hash do corpo.
 //   • escopo: a proposta é procurada só entre bancos ligados a ESTE canal; id
@@ -20,6 +24,7 @@ import { secretsMatch, extractWebhookFields, mapProviderStatus } from '@/lib/fin
 import { getBankProvider } from '@/lib/finance/fi/gateway/registry'
 import type { WebhookEvent } from '@/lib/finance/fi/gateway/types'
 import { advancePostApproval, applyDecision, FiError } from '@/lib/finance/fi/orchestrator'
+import { tenantWebhookKey } from '@/lib/finance/fi/gateway/webhook-keys'
 
 type Ctx = { params: Promise<{ provider: string }> }
 const SYSTEM_ACTOR = { id: 'sistema', name: 'Banco (webhook)', role: 'MASTER' }
@@ -37,14 +42,20 @@ function genericEvents(payload: unknown, raw: string, headers: Headers): Webhook
   }]
 }
 
+const SOAP_ACK = '<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><ok>true</ok></soapenv:Body></soapenv:Envelope>'
+
 export async function POST(req: Request, { params }: Ctx) {
-  const secret = process.env.FINANCE_WEBHOOK_SECRET
-  if (!secret || secret.trim().length < 16) {
+  const platformSecret = process.env.FINANCE_WEBHOOK_SECRET
+  if (!platformSecret || platformSecret.trim().length < 16) {
     return NextResponse.json({ success: false, error: 'Receptor desativado.' }, { status: 503 })
   }
   const { provider: key } = await params
   const provider = getBankProvider(key)
   if (!provider) return NextResponse.json({ success: false, error: 'Canal desconhecido.' }, { status: 404 })
+
+  const tenantScope = new URL(req.url).searchParams.get('l')?.trim() || null
+  if (tenantScope && !/^[a-z0-9_-]{8,40}$/i.test(tenantScope)) return NextResponse.json({ success: false, error: 'Loja inválida.' }, { status: 400 })
+  const secret = tenantScope ? tenantWebhookKey(platformSecret, tenantScope, provider.key) : platformSecret
 
   const raw = await req.text()
   if (raw.length > 512_000) return NextResponse.json({ success: false, error: 'Payload grande demais.' }, { status: 413 })
@@ -55,10 +66,14 @@ export async function POST(req: Request, { params }: Ctx) {
   if (!signed && !legacy) return NextResponse.json({ success: false, error: 'Não autorizado.' }, { status: 401 })
 
   let payload: unknown
-  try { payload = JSON.parse(raw) } catch { return NextResponse.json({ success: false, error: 'Payload inválido.' }, { status: 400 }) }
+  let xml = false
+  try { payload = JSON.parse(raw) } catch {
+    if (!/^\s*</.test(raw)) return NextResponse.json({ success: false, error: 'Payload inválido.' }, { status: 400 })
+    payload = raw; xml = true
+  }
 
   const parsed = provider.parseWebhook(payload)
-  const events = parsed.length ? parsed : genericEvents(payload, raw, req.headers)
+  const events = parsed.length ? parsed : xml ? [] : genericEvents(payload, raw, req.headers)
   const results: { eventId: string | null; processed: boolean; duplicate?: boolean; error?: string | null }[] = []
 
   for (const ev of events.slice(0, 50)) {
@@ -66,7 +81,7 @@ export async function POST(req: Request, { params }: Ctx) {
     // Proposta só entre os bancos que usam ESTE canal.
     const matches = ev.externalId
       ? await prisma.financeProposalSubmission.findMany({
-          where: { externalId: ev.externalId, bankId: { in: (await prisma.financeBank.findMany({ where: { adapterKey: provider.key }, select: { id: true } })).map((b) => b.id) } },
+          where: { externalId: ev.externalId, ...(tenantScope ? { tenantId: tenantScope } : {}), bankId: { in: (await prisma.financeBank.findMany({ where: { adapterKey: provider.key, ...(tenantScope ? { tenantId: tenantScope } : {}) }, select: { id: true } })).map((b) => b.id) } },
           select: { id: true, tenantId: true, proposalId: true }, take: 2,
         })
       : []
@@ -106,5 +121,6 @@ export async function POST(req: Request, { params }: Ctx) {
     results.push({ eventId, processed: !error, error })
   }
   // 200 sempre que autenticado: o banco não entra em reenvio infinito; erros ficam nos Logs técnicos.
+  if (xml) return new NextResponse(SOAP_ACK, { status: 200, headers: { 'Content-Type': 'text/xml; charset=utf-8' } })
   return NextResponse.json({ success: true, results })
 }

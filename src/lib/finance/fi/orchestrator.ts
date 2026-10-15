@@ -116,6 +116,26 @@ function termsFrom(p: { vehicleValue: Prisma.Decimal | null; downPayment: Prisma
   return { vehicleValue, downPayment, amount, installments: p.installments, vehicle: p.vehicle ? { description: p.vehicle } : null }
 }
 
+const VEHICLE_CATEGORY = { CAR: 'AUTOMOVEL', MOTORCYCLE: 'MOTO', TRUCK: 'PESADO' } as const
+
+/** Termos + dados do veículo do estoque e UF da loja (para bancos que precificam pelo veículo). */
+async function termsWithVehicle(p: Parameters<typeof termsFrom>[0] & { vehicleId: string | null; tenantId: string }): Promise<ProposalTerms> {
+  const terms = termsFrom(p)
+  const [v, t] = await Promise.all([
+    p.vehicleId ? prisma.vehicle.findFirst({ where: { id: p.vehicleId, tenantId: p.tenantId }, select: { plate: true, brand: true, model: true, year: true, modelYear: true, km: true, fipeCode: true, fipeValue: true, vehicleType: true, conditionType: true } }) : null,
+    prisma.tenant.findUnique({ where: { id: p.tenantId }, select: { state: true } }),
+  ])
+  if (v) {
+    terms.vehicle = {
+      ...terms.vehicle, plate: v.plate, brand: v.brand, model: v.model, year: v.year, modelYear: v.modelYear ?? v.year, km: v.km,
+      fipeCode: v.fipeCode, fipeValue: n(v.fipeValue), zeroKm: v.conditionType === 'ZERO_KM',
+      category: v.vehicleType ? VEHICLE_CATEGORY[v.vehicleType] : 'AUTOMOVEL',
+    }
+  }
+  terms.storeUf = t?.state?.trim().toUpperCase().slice(0, 2) || null
+  return terms
+}
+
 async function loadFull(proposalId: string) {
   const p = await prisma.financeProposal.findUnique({ where: { id: proposalId }, include: { proponent: true, coProponent: true } })
   if (!p) throw new FiError('Ficha não encontrada.', 404)
@@ -271,7 +291,7 @@ export async function dispatchAttempt(submissionId: string, timeoutMs = BANK_TIM
   const ctx = { ...r.ctx, idempotencyKey: a.idempotencyKey ?? undefined }
   try {
     const applicant = applicantFrom(p.proponent as unknown as Record<string, unknown>, p.coProponent as unknown as Record<string, unknown> | null)
-    const terms = termsFrom(p)
+    const terms = await termsWithVehicle(p)
     const decision = meta.previousExternalId && r.provider.capabilities.update
       ? await withTimeout(r.provider.updateProposal(meta.previousExternalId, terms, ctx), timeoutMs)
       : await withTimeout(r.provider.submitProposal(applicant, terms, ctx), timeoutMs)

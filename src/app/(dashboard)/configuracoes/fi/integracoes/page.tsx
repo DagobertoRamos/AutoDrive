@@ -10,24 +10,34 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, Pencil, Trash2, X, Save, KeyRound, Lock, ShieldAlert, Plug } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Save, KeyRound, Lock, ShieldAlert, Plug, Copy, Webhook } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { HelpHint } from '@/components/ui/help-hint'
 import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { RequiredMark } from '@/components/ui/field'
+import { credentialSpecFor } from '@/lib/finance/fi/gateway/credential-specs'
 
 const CONFIG_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO']
 
 type Env = 'HOMOLOGACAO' | 'PRODUCAO'
 type Hints = Record<string, string>
-interface Row { id: string; bankId: string | null; bankName: string; environment: Env; label: string | null; maskedHints: Hints | null; updatedAt: string }
-interface Bank { id: string; name: string }
+interface WebhookInfo { url: string | null; key: string | null; missing: string | null }
+interface Row { id: string; bankId: string | null; bankName: string; environment: Env; label: string | null; maskedHints: Hints | null; updatedAt: string; webhook?: WebhookInfo | null }
+interface Bank { id: string; name: string; adapterKey: string | null }
 interface Form { bankId: string; environment: Env; label: string; usuario: string; senha: string; token: string; clientId: string; clientSecret: string; storeCode: string; expiresAt: string }
 const emptyForm: Form = { bankId: '', environment: 'HOMOLOGACAO', label: '', usuario: '', senha: '', token: '', clientId: '', clientSecret: '', storeCode: '', expiresAt: '' }
 
+/** Lê o arquivo no navegador e devolve base64 (sem o prefixo data:). */
+const fileToBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+  const r = new FileReader()
+  r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''))
+  r.onerror = () => reject(r.error)
+  r.readAsDataURL(file)
+})
+
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const date = (s: string) => new Date(s).toLocaleDateString('pt-BR')
-const HINT_LABEL: Record<string, string> = { usuario: 'Usuário', senha: 'Senha', token: 'Chave de acesso', clientId: 'Identificador da aplicação', clientSecret: 'Segredo da aplicação', storeCode: 'Código da loja no banco', expiresAt: 'Validade' }
+const HINT_LABEL: Record<string, string> = { usuario: 'Usuário', senha: 'Senha', token: 'Chave de acesso', clientId: 'Identificador da aplicação', clientSecret: 'Segredo da aplicação', storeCode: 'Código da loja no banco', expiresAt: 'Validade', certPfx: 'Certificado', certSenha: 'Senha do certificado', codigoParceiro: 'Parceiro', canal: 'Canal', canalMoto: 'Canal motos', loginUsuario: 'Login', urlBase: 'URL' }
 
 export default function FiCredentialsPage() {
   const { data: session } = useSession()
@@ -41,6 +51,7 @@ export default function FiCredentialsPage() {
   const [modal, setModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<Form>(emptyForm)
+  const [extra, setExtra] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [testing, setTesting] = useState<string | null>(null)
@@ -64,21 +75,28 @@ export default function FiCredentialsPage() {
     (async () => {
       try {
         const b = await fetch('/api/financing/banks?active=true', { credentials: 'include' }).then((r) => r.json())
-        setBanks((b?.data ?? []).map((x: { id: string; name: string }) => ({ id: x.id, name: x.name })))
+        setBanks((b?.data ?? []).map((x: { id: string; name: string; adapterKey?: string | null }) => ({ id: x.id, name: x.name, adapterKey: x.adapterKey ?? null })))
       } catch { /* sem bancos */ }
     })()
   }, [allowed])
 
-  const openNew = () => { setEditingId(null); setForm(emptyForm); setError(null); setModal(true) }
+  const openNew = () => { setEditingId(null); setForm(emptyForm); setExtra({}); setError(null); setModal(true) }
+  const spec = credentialSpecFor(banks.find((b) => b.id === form.bankId)?.adapterKey)
+  const copy = (text: string) => { void navigator.clipboard?.writeText(text); setToast({ ok: true, msg: 'Copiado.' }) }
   // Edição: segredos SEMPRE em branco (nunca recebemos texto puro). Em branco = manter.
   const openEdit = (r: Row) => {
     setEditingId(r.id)
     setForm({ ...emptyForm, bankId: r.bankId ?? '', environment: r.environment, label: r.label ?? '', expiresAt: (r.maskedHints as Record<string, string> | null)?.expiresAt ?? '' })
+    setExtra({})
     setError(null); setModal(true)
   }
 
   const save = async () => {
     if (!form.bankId) { setError('Selecione o banco.'); return }
+    if (spec && !editingId) {
+      const miss = spec.fields.filter((f) => !f.optional && !(f.key === 'clientId' || f.key === 'clientSecret' ? form[f.key] : extra[f.key])?.trim())
+      if (miss.length) { setError(`Preencha: ${miss.map((f) => f.label).join(', ')}.`); return }
+    }
     setSaving(true); setError(null)
     try {
       // Em edição, só enviamos segredos preenchidos (em branco = manter o atual).
@@ -88,6 +106,8 @@ export default function FiCredentialsPage() {
         const v = form[k]?.trim()
         if (editingId) { if (v) payload[k] = v } else { payload[k] = v || null }
       }
+      const ex = Object.fromEntries(Object.entries(extra).filter(([, v]) => v.trim()))
+      if (Object.keys(ex).length) payload.extra = ex
       const url = editingId ? `/api/settings/financing/credentials/${editingId}` : '/api/settings/financing/credentials'
       const res = await fetch(url, { method: editingId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) })
       const json = await res.json()
@@ -158,7 +178,20 @@ export default function FiCredentialsPage() {
               ) : (
                 items.map((r) => (
                   <tr key={r.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{r.bankName}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">
+                      {r.bankName}
+                      {r.webhook && (
+                        <div className="mt-1 space-y-0.5 text-[11px] font-normal text-gray-500">
+                          <div className="flex items-center gap-1"><Webhook size={12} />Cadastre no banco:</div>
+                          {r.webhook.missing ? <div className="text-amber-600">{r.webhook.missing}</div> : (
+                            <>
+                              <button type="button" onClick={() => copy(r.webhook!.url!)} className="flex max-w-[260px] items-center gap-1 truncate font-mono hover:text-brand-600" title="Copiar URL"><Copy size={11} className="shrink-0" />{r.webhook.url}</button>
+                              <button type="button" onClick={() => copy(r.webhook!.key!)} className="flex items-center gap-1 font-mono hover:text-brand-600" title="Copiar chave"><Copy size={11} className="shrink-0" />Chave: {r.webhook.key}</button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', r.environment === 'PRODUCAO' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700')}>{r.environment === 'PRODUCAO' ? 'Produção' : 'Homologação'}</span></td>
                     <td className="px-4 py-3 text-gray-600">{r.label || '—'}</td>
                     <td className="px-4 py-3">
@@ -191,12 +224,35 @@ export default function FiCredentialsPage() {
 
               <div className="col-span-2 mt-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400"><span>Segredos</span><span className="h-px flex-1 bg-gray-100" /></div>
 
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Usuário</label><input className={inputCls} value={form.usuario} onChange={(e) => set('usuario', e.target.value)} autoComplete="off" /></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Senha</label><input type="password" className={inputCls} value={form.senha} onChange={(e) => set('senha', e.target.value)} autoComplete="new-password" placeholder={editingId ? '•••••••• (manter)' : ''} /></div>
-              <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Identificador da aplicação<HelpHint text="Código da aplicação da loja no portal de desenvolvedores do banco (chamado de Client ID pelo banco)." size={12} /></label><input className={inputCls} value={form.clientId} onChange={(e) => set('clientId', e.target.value)} autoComplete="off" /></div>
-              <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Segredo da aplicação<HelpHint text="Senha da aplicação fornecida pelo banco junto com o identificador (Client Secret). Fica cifrada." size={12} /></label><input type="password" className={inputCls} value={form.clientSecret} onChange={(e) => set('clientSecret', e.target.value)} autoComplete="new-password" placeholder={editingId ? '•••••••• (manter)' : ''} /></div>
-              <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Chave de acesso<HelpHint text="Token fornecido pelo banco ou agregador para acessar a API. Fica cifrado." size={12} /></label><input type="password" className={inputCls} value={form.token} onChange={(e) => set('token', e.target.value)} autoComplete="new-password" placeholder={editingId ? '•••••••• (manter)' : ''} /></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Código da loja no banco</label><input className={inputCls} value={form.storeCode} onChange={(e) => set('storeCode', e.target.value)} autoComplete="off" /></div>
+              {spec ? (
+                <>
+                  <p className="col-span-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">{spec.intro}</p>
+                  {spec.fields.map((f) => {
+                    const direct = f.key === 'clientId' || f.key === 'clientSecret'
+                    const value = direct ? form[f.key as 'clientId' | 'clientSecret'] : (extra[f.key] ?? '')
+                    const onChange = (v: string) => (direct ? set(f.key as 'clientId' | 'clientSecret', v) : setExtra((x) => ({ ...x, [f.key]: v })))
+                    return (
+                      <div key={f.key} className={f.file || f.key === 'urlBase' ? 'col-span-2' : ''}>
+                        <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">{f.label}{!f.optional && !editingId && <RequiredMark />}{f.help && <HelpHint text={f.help} size={12} />}</label>
+                        {f.file ? (
+                          <input type="file" accept={f.file.accept} className={inputCls} onChange={async (e) => { const file = e.target.files?.[0]; if (file) onChange(await fileToBase64(file)) }} />
+                        ) : (
+                          <input type={f.secret ? 'password' : 'text'} className={inputCls} value={value} onChange={(e) => onChange(e.target.value)} autoComplete={f.secret ? 'new-password' : 'off'} placeholder={editingId ? '(em branco = manter)' : ''} />
+                        )}
+                      </div>
+                    )
+                  })}
+                </>
+              ) : (
+                <>
+                <div><label className="mb-1 block text-xs font-medium text-gray-700">Usuário</label><input className={inputCls} value={form.usuario} onChange={(e) => set('usuario', e.target.value)} autoComplete="off" /></div>
+                <div><label className="mb-1 block text-xs font-medium text-gray-700">Senha</label><input type="password" className={inputCls} value={form.senha} onChange={(e) => set('senha', e.target.value)} autoComplete="new-password" placeholder={editingId ? '•••••••• (manter)' : ''} /></div>
+                <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Identificador da aplicação<HelpHint text="Código da aplicação da loja no portal de desenvolvedores do banco (chamado de Client ID pelo banco)." size={12} /></label><input className={inputCls} value={form.clientId} onChange={(e) => set('clientId', e.target.value)} autoComplete="off" /></div>
+                <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Segredo da aplicação<HelpHint text="Senha da aplicação fornecida pelo banco junto com o identificador (Client Secret). Fica cifrada." size={12} /></label><input type="password" className={inputCls} value={form.clientSecret} onChange={(e) => set('clientSecret', e.target.value)} autoComplete="new-password" placeholder={editingId ? '•••••••• (manter)' : ''} /></div>
+                <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Chave de acesso<HelpHint text="Token fornecido pelo banco ou agregador para acessar a API. Fica cifrado." size={12} /></label><input type="password" className={inputCls} value={form.token} onChange={(e) => set('token', e.target.value)} autoComplete="new-password" placeholder={editingId ? '•••••••• (manter)' : ''} /></div>
+                <div><label className="mb-1 block text-xs font-medium text-gray-700">Código da loja no banco</label><input className={inputCls} value={form.storeCode} onChange={(e) => set('storeCode', e.target.value)} autoComplete="off" /></div>
+                </>
+              )}
               <div><label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-700">Validade da credencial<HelpHint text="Data em que o acesso vence, quando o banco informa. O F&I avisa quando vencer." size={12} /></label><input type="date" className={inputCls} value={form.expiresAt} onChange={(e) => set('expiresAt', e.target.value)} /></div>
 
               {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}

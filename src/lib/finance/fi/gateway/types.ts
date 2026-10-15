@@ -59,7 +59,13 @@ export interface ProposalTerms {
   downPayment: number | null
   amount: number | null
   installments: number | null
-  vehicle?: { description?: string | null; plate?: string | null; year?: number | null; fipeCode?: string | null } | null
+  vehicle?: {
+    description?: string | null; plate?: string | null; year?: number | null; fipeCode?: string | null
+    modelYear?: number | null; fipeValue?: number | null; km?: number | null; brand?: string | null; model?: string | null
+    zeroKm?: boolean | null; uf?: string | null; category?: 'AUTOMOVEL' | 'MOTO' | 'PESADO' | null
+  } | null
+  /** UF da loja (endereço do cadastro), quando o banco precisa. */
+  storeUf?: string | null
   products?: { name: string; value: number }[]
 }
 

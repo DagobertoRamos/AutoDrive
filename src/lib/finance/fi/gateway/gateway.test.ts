@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createHmac } from 'node:crypto'
 import { CONNECTION_META, connectionState, currentFiEnvironment, getBankProvider, listBankProviders } from './registry'
-import { BVAdapter } from './banks'
+import { PanAdapter } from './banks'
 import { isSandboxAllowed, priceInstallment } from './sandbox'
 import { BankGatewayError } from './types'
 
@@ -9,10 +9,10 @@ const ctx = { tenantId: 't1', environment: 'HOMOLOGACAO' as const, credentials: 
 
 describe('gateway de bancos', () => {
   it('bancos sem API oficial respondem "Banco ainda não integrado" (sem integração falsa)', async () => {
-    const bv = new BVAdapter()
-    expect(bv.official).toBe(false)
-    expect(bv.isIntegrated(ctx)).toBe(false)
-    await expect(bv.submitProposal({ personType: 'PF', data: {} }, { vehicleValue: 1, downPayment: 0, amount: 1, installments: 12 }, ctx))
+    const pan = new PanAdapter()
+    expect(pan.official).toBe(false)
+    expect(pan.isIntegrated(ctx)).toBe(false)
+    await expect(pan.submitProposal({ personType: 'PF', data: {} }, { vehicleValue: 1, downPayment: 0, amount: 1, installments: 12 }, ctx))
       .rejects.toMatchObject({ code: 'NAO_INTEGRADO', message: 'Banco ainda não integrado.' })
   })
   it('todos os conectores previstos existem atrás da mesma interface', () => {
@@ -23,8 +23,8 @@ describe('gateway de bancos', () => {
     expect(getBankProvider(null)).toBeNull()
   })
   it('estado de conexão é honesto', () => {
-    const bv = getBankProvider('bv')!
-    const base = { adapterKey: 'bv', provider: bv, hasCredential: true, credentialReadable: true, credentialExpiresAt: null, integrated: false }
+    const santander = getBankProvider('santander')!
+    const base = { adapterKey: 'santander', provider: santander, hasCredential: true, credentialReadable: true, credentialExpiresAt: null, integrated: false }
     expect(connectionState({ ...base, adapterKey: null, provider: null })).toBe('NAO_CONECTADO')
     // Credencial cadastrada não transforma banco sem API oficial em "Conectado".
     expect(connectionState(base)).toBe('NAO_INTEGRADO')
@@ -49,7 +49,7 @@ describe('gateway de bancos', () => {
     expect(listBankProviders().some((p) => p.key === 'teste')).toBe(true) // NODE_ENV=test
   })
   it('assinatura de webhook HMAC (rejeita adulteração)', () => {
-    const bv = new BVAdapter()
+    const bv = new PanAdapter()
     const body = JSON.stringify({ status: 'aprovada' })
     const sig = createHmac('sha256', 'segredo-123').update(body).digest('hex')
     expect(bv.verifyWebhook(body, { 'x-signature': sig }, 'segredo-123')).toBe(true)

@@ -117,6 +117,8 @@ export const createCredentialSchema = z.object({
   storeCode:    optStr,
   // Validade informada pelo banco (para avisar "Credencial vencida"). AAAA-MM-DD.
   expiresAt:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.').nullish(),
+  // Campos próprios do conector (ex.: BV: certificado .pfx em base64, códigos de parceiro/canal).
+  extra:        z.record(z.string().max(64), z.string().max(40_000, 'Arquivo grande demais.')).nullish(),
 })
 export const updateCredentialSchema = createCredentialSchema.partial()
 

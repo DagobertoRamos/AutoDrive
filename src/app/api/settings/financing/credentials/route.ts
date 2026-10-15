@@ -16,6 +16,8 @@ import { createCredentialSchema } from '@/lib/validators/financing'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { encryptSecrets, maskSecret, isCryptoConfigured } from '@/lib/finance/crypto'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { EXTRA_CREDENTIAL_KEYS, credentialSpecFor } from '@/lib/finance/fi/gateway/credential-specs'
+import { tenantWebhookKey, tenantWebhookUrl } from '@/lib/finance/fi/gateway/webhook-keys'
 
 // Monta os hints de exibição: usuário/clientId/storeCode visíveis; segredos mascarados.
 function buildHints(d: Record<string, string | null | undefined>, expiresAt?: string | null) {
@@ -27,7 +29,19 @@ function buildHints(d: Record<string, string | null | undefined>, expiresAt?: st
   if (d.senha) h.senha = maskSecret(d.senha)
   if (d.token) h.token = maskSecret(d.token)
   if (d.clientSecret) h.clientSecret = maskSecret(d.clientSecret)
+  for (const k of EXTRA_CREDENTIAL_KEYS) {
+    const v = d[k]
+    if (!v) continue
+    h[k] = k === 'certPfx' ? 'arquivo enviado' : /senha|secret/i.test(k) ? maskSecret(v) : v.slice(0, 60)
+  }
   return h
+}
+
+/** Só as chaves conhecidas dos conectores; vazio = não mexe. */
+function pickExtra(extra: Record<string, string> | null | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(extra ?? {})) if (EXTRA_CREDENTIAL_KEYS.has(k) && typeof v === 'string' && v.trim()) out[k] = v.trim()
+  return out
 }
 
 export async function GET(req: Request) {
@@ -47,12 +61,21 @@ export async function GET(req: Request) {
       select: { id: true, bankId: true, environment: true, label: true, maskedHints: true, updatedAt: true },
     })
     const bankIds = [...new Set(rows.map((r) => r.bankId).filter(Boolean))] as string[]
-    const banks = bankIds.length ? await prisma.financeBank.findMany({ where: { id: { in: bankIds } }, select: { id: true, name: true } }) : []
+    const banks = bankIds.length ? await prisma.financeBank.findMany({ where: { id: { in: bankIds } }, select: { id: true, name: true, adapterKey: true } }) : []
     const bankMap = Object.fromEntries(banks.map((b) => [b.id, b.name]))
+    // URL + chave de webhook DA LOJA para os bancos que avisam por webhook (a loja cadastra no banco).
+    const platformSecret = process.env.FINANCE_WEBHOOK_SECRET?.trim()
+    const origin = (process.env.NEXTAUTH_URL || new URL(req.url).origin).replace(/\/+$/, '')
+    const webhookFor = (bankId: string | null) => {
+      const key = banks.find((b) => b.id === bankId)?.adapterKey
+      if (!key || !credentialSpecFor(key)?.webhook) return null
+      if (!platformSecret || platformSecret.length < 16) return { url: null, key: null, missing: 'Receptor de webhooks desligado: defina FINANCE_WEBHOOK_SECRET no ambiente.' }
+      return { url: tenantWebhookUrl(origin, key, tenantId), key: tenantWebhookKey(platformSecret, tenantId, key), missing: null }
+    }
     return NextResponse.json({
       success: true,
       cryptoReady: isCryptoConfigured(),
-      data: rows.map((r) => ({ ...r, bankName: r.bankId ? (bankMap[r.bankId] ?? '—') : '—' })),
+      data: rows.map((r) => ({ ...r, bankName: r.bankId ? (bankMap[r.bankId] ?? '—') : '—', webhook: webhookFor(r.bankId) })),
     })
   } catch (err) {
     return handlePrismaError(err)
@@ -76,7 +99,7 @@ export async function POST(req: Request) {
     if (!bank) return NextResponse.json({ success: false, error: 'Banco inválido para esta loja.' }, { status: 400 })
     const dup = await prisma.financeCredential.findFirst({ where: { tenantId, bankId: d.bankId, environment: d.environment }, select: { id: true } })
     if (dup) return NextResponse.json({ success: false, error: 'Já existe credencial deste banco neste ambiente. Edite a existente.' }, { status: 409 })
-    const secrets = { usuario: d.usuario ?? '', senha: d.senha ?? '', token: d.token ?? '', clientId: d.clientId ?? '', clientSecret: d.clientSecret ?? '', storeCode: d.storeCode ?? '' }
+    const secrets: Record<string, string> = { usuario: d.usuario ?? '', senha: d.senha ?? '', token: d.token ?? '', clientId: d.clientId ?? '', clientSecret: d.clientSecret ?? '', storeCode: d.storeCode ?? '', ...pickExtra(d.extra) }
     const cred = await prisma.financeCredential.create({
       data: {
         tenantId, bankId: d.bankId, environment: d.environment, label: d.label ?? null,
