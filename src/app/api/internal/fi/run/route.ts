@@ -5,6 +5,7 @@
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server'
+import { timingSafeEqual } from 'node:crypto'
 import { runFiJobs } from '@/lib/finance/fi/jobs'
 
 export const dynamic = 'force-dynamic'
@@ -13,7 +14,8 @@ export const maxDuration = 120
 function authorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
   if (!secret) return false
-  return req.headers.get('authorization') === `Bearer ${secret}` || req.headers.get('x-cron-secret') === secret
+  const same = (v: string | null) => { if (!v) return false; const a = Buffer.from(v); const b = Buffer.from(secret); return a.length === b.length && timingSafeEqual(a, b) }
+  return same(req.headers.get('authorization')?.replace(/^Bearer /, '') ?? null) || same(req.headers.get('x-cron-secret'))
 }
 
 async function handle(req: NextRequest) {

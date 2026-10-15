@@ -12,7 +12,7 @@ import { CadastroForm, portalEndpoints } from '@/components/fi/CadastroForm'
 
 interface Doc { id: string; type: string; status: string; label: string; canUpload: boolean }
 interface View {
-  store: string; code: string | null; customerFirstName: string; vehicle: string | null; headline: string; detail: string | null
+  store: string; code: string | null; customerFirstName: string; vehicle: string | null; headline: string; detail: string | null; signUrl?: string | null
   step: string; documents: Doc[]; expiresAt: string | null
   simulation: null | { status: string; headline: string; detail: string; at: string; pending: number; quotes: { bank: string; installments: number; installmentValue: number; rateMonthly: number | null }[] }
   banks: { bank: string; status: string; label: string; installments: number | null; installmentValue: number | null }[]
@@ -67,6 +67,7 @@ export default function MinhaFichaPage() {
         <p className="text-xs text-gray-500">{view.code ? `Ficha ${view.code}` : 'Sua ficha'}{view.vehicle ? ` · ${view.vehicle}` : ''}</p>
         <h1 className="mt-1 text-xl font-bold text-gray-900">{view.customerFirstName ? `${view.customerFirstName}, ` : ''}{view.headline.charAt(0).toLowerCase() + view.headline.slice(1)}</h1>
         {view.detail && <p className="mt-1 text-sm text-gray-600">{view.detail}</p>}
+        {view.signUrl && <a href={view.signUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center justify-center rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700">Assinar o contrato</a>}
         {view.step !== 'ENCERRADO' && (
           <ol className="mt-4 flex items-center gap-2 text-[11px] text-gray-500">
             {STEPS.map((s, i) => (

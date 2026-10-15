@@ -5,6 +5,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { customerMessage, readResult } from './site-auto-core'
+import { formalizationLinkOf } from './bank-actions'
 
 export interface PortalView {
   store: string
@@ -13,6 +14,8 @@ export interface PortalView {
   vehicle: string | null
   headline: string
   detail: string | null
+  /** Link do banco para enviar documentos e assinar (formalização digital), quando gerado. */
+  signUrl: string | null
   step: 'PREPARANDO' | 'ANALISE' | 'DOCUMENTOS' | 'APROVADO' | 'ASSINATURA' | 'CONTRATO_ASSINADO' | 'CONCLUIDO' | 'ENCERRADO'
   documents: { id: string; type: string; status: string; label: string; canUpload: boolean }[]
   offer: null | { bank: string; amount: number | null; downPayment: number | null; installments: number | null; installmentValue: number | null; rateMonthly: number | null; cetMonthly: number | null; cetYearly: number | null; total: number | null }
@@ -48,13 +51,14 @@ export async function buildPortalView(proposalId: string): Promise<PortalView> {
   ])
   const pendingDocs = docs.filter((d) => d.status === 'PENDENTE' || d.status === 'REPROVADO')
   const name = (p.proponent.personType === 'PJ' ? p.proponent.razaoSocial : p.proponent.nomeCompleto) ?? ''
+  const signLink = formalizationLinkOf(p.originMeta)
   let step: PortalView['step'] = 'PREPARANDO'
   let headline = 'Estamos preparando a sua ficha de financiamento.'
   let detail: string | null = null
   if (p.status === 'CANCELADA' || p.status === 'EXPIRADA') { step = 'ENCERRADO'; headline = 'Esta ficha foi encerrada.'; detail = 'Fale com a loja para continuar.' }
   else if (p.fundingStatus === 'PAGO') { step = 'CONCLUIDO'; headline = 'Financiamento concluído.'; detail = 'O banco já realizou o pagamento.' }
   else if (p.formalizationStatus === 'ASSINADA' || p.formalizationStatus === 'CONCLUIDA') { step = 'CONTRATO_ASSINADO'; headline = 'Contrato assinado.'; detail = 'Agora é com o banco: avisamos quando o pagamento for concluído.' }
-  else if (p.formalizationStatus === 'AGUARDANDO_ASSINATURA') { step = 'ASSINATURA'; headline = 'Falta a sua assinatura no contrato.'; detail = 'A loja vai orientar como assinar.' }
+  else if (p.formalizationStatus === 'AGUARDANDO_ASSINATURA') { step = 'ASSINATURA'; headline = 'Falta a sua assinatura no contrato.'; detail = signLink ? 'Assine pelo botão abaixo, no ambiente seguro do banco.' : 'A loja vai orientar como assinar.' }
   else if (pendingDocs.length) { step = 'DOCUMENTOS'; headline = pendingDocs.length === 1 ? 'Precisamos de 1 documento.' : `Precisamos de ${pendingDocs.length} documentos.`; detail = 'Envie por aqui mesmo, com foto ou PDF.' }
   else if (p.status === 'APROVADA') { step = 'APROVADO'; headline = 'Crédito aprovado!'; detail = 'A loja vai seguir com o contrato.' }
   else if (p.status === 'PRE_APROVADA') { step = 'ANALISE'; headline = 'Crédito pré-aprovado.'; detail = 'O banco ainda está concluindo a análise.' }
@@ -65,7 +69,7 @@ export async function buildPortalView(proposalId: string): Promise<PortalView> {
   const bank = selected?.bankId ? await prisma.financeBank.findUnique({ where: { id: selected.bankId }, select: { name: true } }) : null
   return {
     store: tenant?.name ?? 'Loja', code: p.code, customerFirstName: name.split(' ')[0] ?? '', vehicle: p.vehicle,
-    headline, detail, step,
+    headline, detail, step, signUrl: step === 'ASSINATURA' ? signLink?.url ?? null : null,
     documents: docs.map((d) => ({ id: d.id, type: d.type, status: d.status, label: CUSTOMER_DOC_LABEL[d.status] ?? d.status, canUpload: step !== 'ENCERRADO' && step !== 'CONCLUIDO' && (d.status === 'PENDENTE' || d.status === 'REPROVADO') })),
     offer: selected ? {
       bank: bank?.name ?? 'Banco', amount: num(selected.approvedAmount ?? p.approvedValue), downPayment: num(selected.offerDownPayment ?? p.downPayment),

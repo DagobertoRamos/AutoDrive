@@ -8,8 +8,9 @@
 //     (BV: <assinatura> no header SOAP).
 //     Segredo na URL (?secret=) NÃO é mais aceito (vaza em logs).
 //   • corpo JSON ou XML (o conector recebe o texto bruto quando não é JSON).
-//   • deduplicação: (provider, eventId) único — evento repetido responde 200 e
-//     não muda nada. Sem eventId, usa o hash do corpo.
+//   • deduplicação: (provider, eventId) único — evento já aplicado responde 200 e
+//     não muda nada; evento que falhou é reprocessado no reenvio. Sem eventId,
+//     usa o hash do corpo.
 //   • escopo: a proposta é procurada só entre bancos ligados a ESTE canal; id
 //     externo ambíguo (mais de uma loja) não é aplicado.
 //   • máquina de estados: evento atrasado não faz a proposta regredir.
@@ -96,8 +97,12 @@ export async function POST(req: Request, { params }: Ctx) {
         select: { id: true },
       })
     } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') { results.push({ eventId, processed: false, duplicate: true }); continue }
-      throw e
+      if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')) throw e
+      // Reenvio do mesmo evento: já aplicado → ignora; falhou antes → tenta de novo (o banco reenvia justamente por isso).
+      const prev = await prisma.financeWebhookEvent.findUnique({ where: { provider_eventId: { provider: provider.key, eventId } }, select: { id: true, processed: true } })
+      if (!prev || prev.processed) { results.push({ eventId, processed: false, duplicate: true }); continue }
+      row = prev
+      await prisma.financeWebhookEvent.update({ where: { id: prev.id }, data: { tenantId: sub?.tenantId ?? null, submissionId: sub?.id ?? null, signatureValid: signed } })
     }
     let error: string | null = null
     if (!ev.externalId) error = 'Evento sem identificação da proposta.'

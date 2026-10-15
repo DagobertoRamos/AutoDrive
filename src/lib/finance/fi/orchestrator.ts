@@ -23,6 +23,7 @@ import { createSafeAuditLog } from '@/lib/auth-guards'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 import { markTrackPaid, saveTrack } from '@/lib/finance/fi-contract-track'
 import { logDealChild } from '@/lib/negotiation/children-sync'
+import { chooseReturnRule } from '@/lib/finance/simulation-service'
 import {
   ATTEMPT_OPEN, ATTEMPT_STATUS_META, FORMALIZATION_META, FUNDING_META, LIEN_META,
   checkAttemptTransition, checkFormalizationTransition, checkFundingTransition, checkLienTransition,
@@ -92,7 +93,7 @@ export async function bankRequirements(tenantId: string, banks: { id: string; na
 
 export function personTypeOf(p: { personType?: string | null }): PersonType { return p.personType === 'PJ' ? 'PJ' : 'PF' }
 
-function applicantFrom(p: Record<string, unknown>, co: Record<string, unknown> | null): ApplicantPayload {
+export function applicantFrom(p: Record<string, unknown>, co: Record<string, unknown> | null): ApplicantPayload {
   const clean = (o: Record<string, unknown>) => {
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(o)) {
@@ -119,7 +120,7 @@ function termsFrom(p: { vehicleValue: Prisma.Decimal | null; downPayment: Prisma
 const VEHICLE_CATEGORY = { CAR: 'AUTOMOVEL', MOTORCYCLE: 'MOTO', TRUCK: 'PESADO' } as const
 
 /** Termos + dados do veículo do estoque e UF da loja (para bancos que precificam pelo veículo). */
-async function termsWithVehicle(p: Parameters<typeof termsFrom>[0] & { vehicleId: string | null; tenantId: string }): Promise<ProposalTerms> {
+export async function termsWithVehicle(p: Parameters<typeof termsFrom>[0] & { vehicleId: string | null; tenantId: string }): Promise<ProposalTerms> {
   const terms = termsFrom(p)
   const [v, t] = await Promise.all([
     p.vehicleId ? prisma.vehicle.findFirst({ where: { id: p.vehicleId, tenantId: p.tenantId }, select: { plate: true, brand: true, model: true, year: true, modelYear: true, km: true, fipeCode: true, fipeValue: true, vehicleType: true, conditionType: true, chassi: true, renavam: true, color: true, version: true, engine: true, transmission: true, fuel: true } }) : null,
@@ -137,7 +138,7 @@ async function termsWithVehicle(p: Parameters<typeof termsFrom>[0] & { vehicleId
   return terms
 }
 
-async function loadFull(proposalId: string) {
+export async function loadFull(proposalId: string) {
   const p = await prisma.financeProposal.findUnique({ where: { id: proposalId }, include: { proponent: true, coProponent: true } })
   if (!p) throw new FiError('Ficha não encontrada.', 404)
   if (!p.tenantId) throw new FiError('Ficha sem loja vinculada.', 400)
@@ -175,7 +176,7 @@ export interface AttemptRef { id: string; bankId: string; bankName: string; stat
 export interface SendResult { attempts: AttemptRef[]; dispatch: string[]; missing?: { common: FieldDef[]; byBank: { bankId: string; bankName: string; missing: FieldDef[] }[] } }
 
 const DEFAULT_LEGAL_BASIS = 'PROCEDIMENTOS_PRELIMINARES_CONTRATO'
-async function lgpdConfig(tenantId: string) {
+export async function lgpdConfig(tenantId: string) {
   const row = await prisma.financeTenantSetting.findUnique({ where: { tenantId_key: { tenantId, key: 'lgpd' } } })
   const v = (row?.value && typeof row.value === 'object' ? row.value : {}) as Record<string, unknown>
   return {
@@ -260,13 +261,13 @@ export async function sendToBanks(input: SendInput): Promise<SendResult> {
 }
 
 // ── Execução da chamada ao banco (fora de transação) ─────────────────────────
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new BankGatewayError('O banco não respondeu a tempo.', 'TEMPO_ESGOTADO', 'TALVEZ')), ms) })
   return Promise.race([promise, timeout]).finally(() => { if (timer) clearTimeout(timer) })
 }
 
-async function logIntegration(d: { tenantId: string; adapterKey: string | null; action: string; status: 'OK' | 'ERRO'; durationMs: number; correlationId: string; proposalId: string; submissionId: string; attempt?: number; errorCode?: string | null; message?: string | null }) {
+export async function logIntegration(d: { tenantId: string; adapterKey: string | null; action: string; status: 'OK' | 'ERRO'; durationMs: number; correlationId: string; proposalId: string; submissionId: string | null; attempt?: number; errorCode?: string | null; message?: string | null }) {
   await prisma.financeIntegrationLog.create({
     data: {
       tenantId: d.tenantId, adapterKey: d.adapterKey, action: d.action, status: d.status, durationMs: d.durationMs, correlationId: d.correlationId,
@@ -348,6 +349,15 @@ const MILESTONE_BY_STATUS: Partial<Record<AttemptStatus, CrmMilestone>> = {
   PRE_APROVADA: 'PRE_APROVADA', APROVADA: 'APROVADA', RECUSADA: 'RECUSADA', PENDENTE: 'DOCUMENTACAO_PENDENTE',
 }
 
+/** % de retorno da regra que casa banco + prazo (só regras percentuais; valor fixo não vira %). */
+async function returnPercentFor(tx: Tx, tenantId: string, bankId: string | null, installments: number | null, proposalId: string): Promise<Prisma.Decimal | null> {
+  const n = installments ?? (await tx.financeProposal.findUnique({ where: { id: proposalId }, select: { installments: true } }))?.installments ?? null
+  if (!n) return null
+  const rules = await tx.financeReturnRule.findMany({ where: { tenantId, active: true } })
+  const rule = chooseReturnRule(rules.map((r) => ({ ...r, percent: r.percent == null ? null : Number(r.percent), fixedValue: r.fixedValue == null ? null : Number(r.fixedValue) })), bankId, n)
+  return rule?.percent ? new Prisma.Decimal(rule.percent) : null
+}
+
 export async function applyDecision(submissionId: string, decision: BankDecision, opts: ApplyOptions): Promise<ApplyResult> {
   const head = await prisma.financeProposalSubmission.findUnique({ where: { id: submissionId }, select: { proposalId: true } })
   if (!head) throw new FiError('Proposta não encontrada.', 404)
@@ -362,6 +372,9 @@ export async function applyDecision(submissionId: string, decision: BankDecision
     if (check.noop) return { applied: false, status: a.status, reason: 'Sem mudança.', bank: null, proposalStatus: null, prevProposalStatus: null }
     const o = decision.offer ?? null
     const decided = !['ENVIANDO', 'VERIFICANDO'].includes(decision.status)
+    // Retorno da loja para esta oferta (regras de Configurações › Retornos, por banco e prazo).
+    let returnPercent: Prisma.Decimal | null = null
+    if (o && a.returnPercent == null && a.tenantId) returnPercent = await returnPercentFor(tx, a.tenantId, a.bankId, o.installments ?? null, a.proposalId)
     await tx.financeProposalSubmission.update({
       where: { id: a.id },
       data: {
@@ -372,6 +385,7 @@ export async function applyDecision(submissionId: string, decision: BankDecision
           approvedAmount: dec(o.approvedAmount), offerDownPayment: dec(o.downPayment), offerInstallments: o.installments ?? null,
           installmentValue: dec(o.installmentValue), rateMonthly: dec(o.rateMonthly), cetMonthly: dec(o.cetMonthly), cetYearly: dec(o.cetYearly),
           totalAmount: dec(o.totalAmount), tacValue: dec(o.tacValue), expiresAt: o.expiresAt ? new Date(o.expiresAt) : null,
+          ...(returnPercent != null ? { returnPercent } : {}),
         } : {}),
         ...(decision.pendingItems ? { pendingItems: decision.pendingItems.map((x) => ({ ...x, done: false })) as Prisma.InputJsonValue } : {}),
         statusReason: decision.reason?.slice(0, 500) ?? null,

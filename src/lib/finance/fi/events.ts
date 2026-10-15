@@ -19,7 +19,7 @@ export interface TimelineInput {
   tenantId: string | null
   proposalId: string
   submissionId?: string | null
-  type: 'STATUS_CHANGE' | 'WEBHOOK' | 'NOTE' | 'DOCUMENT' | 'FORMALIZATION' | 'LIEN' | 'FUNDING' | 'SYSTEM' | 'PORTAL' | 'CRM'
+  type: 'STATUS_CHANGE' | 'WEBHOOK' | 'NOTE' | 'DOCUMENT' | 'FORMALIZATION' | 'LIEN' | 'FUNDING' | 'SYSTEM' | 'PORTAL' | 'CRM' | 'PRE_ANALISE'
   status?: string | null
   message: string
   source: 'MANUAL' | 'API' | 'WEBHOOK' | 'PORTAL' | 'SITE' | 'SISTEMA'

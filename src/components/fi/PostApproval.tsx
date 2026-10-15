@@ -5,7 +5,7 @@
 // lateral e oferecem apenas os próximos passos válidos (o servidor confere).
 
 import { useState } from 'react'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Copy, ExternalLink } from 'lucide-react'
 import type { ProposalView } from '@/lib/finance/fi/read-model'
 import { HelpHint } from '@/components/ui/help-hint'
 import { FieldLabel } from '@/components/ui/field'
@@ -67,8 +67,39 @@ export function PostApproval({ view, canFormalize, onChanged }: { view: Proposal
           </li>
         ))}
       </ol>
+      {canFormalize && (pa.digitalFormalization || pa.formalizationLink) && <DigitalFormalization view={view} onChanged={onChanged} />}
       {open && <StepDrawer view={view} kind={open} onClose={() => setOpen(null)} onDone={onChanged} />}
     </>
+  )
+}
+
+/** Formalização digital do banco (link de documentos + assinatura do cliente). */
+function DigitalFormalization({ view, onChanged }: { view: ProposalView; onChanged: () => void }) {
+  const link = view.postApproval.formalizationLink
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const generate = async () => {
+    setBusy(true); setError(null)
+    const r = await api(`/api/financing/proposals/${view.id}/formalization-link`, { method: 'POST' })
+    setBusy(false)
+    if (!r.ok) { setError(r.error); return }
+    onChanged()
+  }
+  const copy = () => { void navigator.clipboard?.writeText(link?.url ?? ''); setCopied(true); setTimeout(() => setCopied(false), 1500) }
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2.5 text-sm">
+      <div className="min-w-0">
+        <p className="font-medium text-gray-900">Formalização digital</p>
+        <p className="text-xs text-gray-500">{link ? `Link do ${link.bankName} gerado em ${dateBR(link.at)}. Também aparece no link do cliente.` : 'O banco gera o link para o cliente enviar documentos e assinar o contrato.'}</p>
+        {error && <p className="mt-1 text-xs text-red-600" role="alert">{error}</p>}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {link && <a href={link.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:underline"><ExternalLink size={12} />Abrir</a>}
+        {link && <button className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:underline" onClick={copy}><Copy size={12} />{copied ? 'Copiado' : 'Copiar'}</button>}
+        {view.postApproval.digitalFormalization && <button className={btnSecondary} onClick={generate} disabled={busy}>{busy ? 'Gerando…' : link ? 'Gerar de novo' : 'Gerar link'}</button>}
+      </div>
+    </div>
   )
 }
 

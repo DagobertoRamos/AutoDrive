@@ -1,32 +1,33 @@
 // =============================================================================
-// /api/financing/proponents/[id] — ver / editar / excluir proponente.
+// /api/financing/proponents/[id] — ver / editar / excluir proponente da loja
+// ativa. CPF/CNPJ, RG e renda só inteiros para quem pode acessar documentos (LGPD).
 // =============================================================================
 
 import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
+import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateProponentSchema } from '@/lib/validators/financing'
-import { zodErrorResponse, ownsTenant, num } from '@/lib/finance/finance-service'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { zodErrorResponse, num } from '@/lib/finance/finance-service'
 import { identityLockError } from '@/lib/identity-lock'
+import { fiAuth } from '@/lib/finance/fi/route'
+import { isFiAllowed } from '@/lib/finance/fi-permissions'
+import { maskDoc } from '@/lib/finance/fi/read-model'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Proponente não encontrado.' }, { status: 404 })
 
-export async function GET(_req: Request, { params }: Ctx) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'financing')) return forbiddenResponse('Sem acesso ao financiamento.')
-  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
+export async function GET(req: Request, { params }: Ctx) {
+  const auth = await fiAuth(req)
+  if (!auth.ok) return auth.res
   const { id } = await params
 
   try {
-    const p = await prisma.financeProponent.findUnique({ where: { id } })
+    const p = await prisma.financeProponent.findFirst({ where: { id, tenantId: auth.tenantId } })
     if (!p) return notFound()
-    if (!ownsTenant(user.role, user.tenantId, p.tenantId)) return forbiddenResponse('Proponente de outro tenant.')
+    const full = await isFiAllowed(auth.tenantId, 'acessarDocumentos', auth.user.role)
+    if (!full) return NextResponse.json({ success: true, data: { ...p, cpf: maskDoc(p.cpf), cnpj: maskDoc(p.cnpj), rg: null, renda: null } })
     return NextResponse.json({ success: true, data: { ...p, renda: p.renda == null ? null : num(p.renda) } })
   } catch (err) {
     return handlePrismaError(err)
@@ -34,16 +35,14 @@ export async function GET(_req: Request, { params }: Ctx) {
 }
 
 export async function PATCH(req: Request, { params }: Ctx) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão.')
-  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
+  const auth = await fiAuth(req, { module: 'financing.manage', cap: 'editarFicha' })
+  if (!auth.ok) return auth.res
+  const { user } = auth
   const { id } = await params
 
   try {
-    const existing = await prisma.financeProponent.findUnique({ where: { id } })
+    const existing = await prisma.financeProponent.findFirst({ where: { id, tenantId: auth.tenantId } })
     if (!existing) return notFound()
-    if (!ownsTenant(user.role, user.tenantId, existing.tenantId)) return forbiddenResponse('Proponente de outro tenant.')
 
     const d = updateProponentSchema.parse(await req.json())
     { const lockErr = identityLockError(user.role, existing as unknown as Record<string, unknown>, d as Record<string, unknown>); if (lockErr) return NextResponse.json({ success: false, error: lockErr }, { status: 403 }) }
@@ -70,17 +69,15 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 }
 
-export async function DELETE(_req: Request, { params }: Ctx) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão.')
-  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
+export async function DELETE(req: Request, { params }: Ctx) {
+  const auth = await fiAuth(req, { module: 'financing.manage', cap: 'editarFicha' })
+  if (!auth.ok) return auth.res
+  const { user } = auth
   const { id } = await params
 
   try {
-    const existing = await prisma.financeProponent.findUnique({ where: { id } })
+    const existing = await prisma.financeProponent.findFirst({ where: { id, tenantId: auth.tenantId } })
     if (!existing) return notFound()
-    if (!ownsTenant(user.role, user.tenantId, existing.tenantId)) return forbiddenResponse('Proponente de outro tenant.')
     // Com fichas (como cliente ou co-comprador) não apaga: o histórico do F&I fica preservado.
     const used = await prisma.financeProposal.count({ where: { OR: [{ proponentId: id }, { coProponentId: id }] } })
     if (used) return NextResponse.json({ success: false, error: 'Este cliente tem fichas de financiamento. Não é possível excluir.' }, { status: 409 })

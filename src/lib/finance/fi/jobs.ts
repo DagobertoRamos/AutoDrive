@@ -2,6 +2,8 @@
 // F&I — rotina periódica (cron). Nunca reenvia proposta às cegas:
 //   1. ENVIANDO travado (processo caiu no meio) → VERIFICANDO.
 //   2. VERIFICANDO → consulta o banco (quando a integração permite).
+//   2b. Em análise (enviada/em análise/pendente/pré-aprovada) por API num banco
+//       que permite consulta e não avisa por webhook → consulta (a cada 1 h).
 //   3. Aprovação vencida e não escolhida → EXPIRADA.
 //   4. Retenção LGPD dos arquivos de documentos.
 //   5. Site: simulação que falhou num banco conectado é tentada de novo (1 h);
@@ -15,9 +17,10 @@ import { applyDecision, verifyAttempt, FiError } from './orchestrator'
 import { purgeExpiredDocuments } from './documents'
 import { alertStalledSiteSimulations, runSiteAutoSimulation } from './site-auto'
 import { readResult } from './site-auto-core'
+import { getBankProvider, listBankProviders } from './gateway/registry'
 
 export async function runFiJobs(now = new Date()) {
-  const out = { stuck: 0, verified: 0, verifyErrors: 0, expired: 0, purged: 0, siteRetried: 0, siteStalledAlerts: 0 }
+  const out = { stuck: 0, verified: 0, verifyErrors: 0, polled: 0, expired: 0, purged: 0, siteRetried: 0, siteStalledAlerts: 0 }
 
   const stuck = await prisma.financeProposalSubmission.findMany({ where: { status: 'ENVIANDO', submittedAt: { lt: new Date(now.getTime() - 2 * 60_000) } }, select: { id: true }, take: 100 })
   for (const s of stuck) {
@@ -32,6 +35,26 @@ export async function runFiJobs(now = new Date()) {
     try { await verifyAttempt(s.id); out.verified++ } catch (e) {
       out.verifyErrors++
       if (!(e instanceof FiError)) console.error('[fi/jobs] verificar', s.id, e instanceof Error ? e.message : e)
+    }
+  }
+
+  // Bancos que só informam por consulta (ex.: PAN): sem webhook, a ficha não andaria sozinha.
+  const pollKeys = listBankProviders().map((p) => getBankProvider(p.key)).filter((p) => p && p.official && p.capabilities.status && !p.capabilities.webhook).map((p) => p!.key)
+  if (pollKeys.length) {
+    const inAnalysis = await prisma.financeProposalSubmission.findMany({
+      where: {
+        active: true, mode: 'API', status: { in: ['ENVIADA', 'EM_ANALISE', 'PENDENTE', 'PRE_APROVADA'] }, externalId: { not: null },
+        submittedAt: { gte: new Date(now.getTime() - 30 * 86_400_000) },
+        OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: new Date(now.getTime() - 60 * 60_000) } }],
+        bankId: { in: (await prisma.financeBank.findMany({ where: { adapterKey: { in: pollKeys } }, select: { id: true } })).map((b) => b.id) },
+      },
+      orderBy: { lastCheckedAt: { sort: 'asc', nulls: 'first' } }, select: { id: true }, take: 40,
+    })
+    for (const s of inAnalysis) {
+      try { await verifyAttempt(s.id); out.polled++ } catch (e) {
+        out.verifyErrors++
+        if (!(e instanceof FiError)) console.error('[fi/jobs] consultar', s.id, e instanceof Error ? e.message : e)
+      }
     }
   }
 

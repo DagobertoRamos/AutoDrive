@@ -85,11 +85,13 @@ export async function openDocumentFile(doc: { storageKey: string | null; fileUrl
   return { body: f.body, contentType: doc.mimeType ?? f.contentType, fileName: doc.fileName ?? 'documento' }
 }
 
-export async function removeDocumentFile(docId: string) {
+/** Remove o arquivo. Pela retenção (`keepStatus`), o documento continua como estava — só o arquivo some. */
+export async function removeDocumentFile(docId: string, opts: { keepStatus?: boolean } = {}) {
   const doc = await prisma.financeProposalDocument.findUniqueOrThrow({ where: { id: docId } })
   const key = doc.storageKey ?? doc.fileUrl
   if (key) await deletePrivateFile(key)
-  await prisma.financeProposalDocument.update({ where: { id: docId }, data: { storageKey: null, fileUrl: null, fileName: null, mimeType: null, sizeBytes: null, uploadedAt: null, status: doc.status === 'APROVADO' ? 'PENDENTE' : doc.status === 'ENVIADO' ? 'PENDENTE' : doc.status } })
+  const status = opts.keepStatus ? doc.status : doc.status === 'APROVADO' || doc.status === 'ENVIADO' ? 'PENDENTE' : doc.status
+  await prisma.financeProposalDocument.update({ where: { id: docId }, data: { storageKey: null, fileUrl: null, fileName: null, mimeType: null, sizeBytes: null, ...(opts.keepStatus ? {} : { uploadedAt: null }), status } })
 }
 
 /** Retenção LGPD: apaga arquivos vencidos de fichas encerradas (mantém o registro). */
@@ -99,7 +101,7 @@ export async function purgeExpiredDocuments(limit = 200): Promise<number> {
     select: { id: true, tenantId: true, proposalId: true, type: true }, take: limit,
   })
   for (const d of due) {
-    await removeDocumentFile(d.id)
+    await removeDocumentFile(d.id, { keepStatus: true })
     if (d.proposalId) await addTimeline(prisma, { tenantId: d.tenantId, proposalId: d.proposalId, type: 'DOCUMENT', source: 'SISTEMA', message: `${d.type}: arquivo apagado pela política de retenção de documentos.` })
   }
   return due.length

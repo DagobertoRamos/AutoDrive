@@ -16,6 +16,50 @@ import { PersonPicker } from './NewProposalModal'
 type View = ProposalView
 const TERMS = [12, 18, 24, 36, 48, 60, 72]
 
+// ── Pré-análise (consulta de elegibilidade num banco conectado) ───────────────
+export function PreAnalysisModal({ view, onClose, onDone }: { view: View; onClose: () => void; onDone: () => void }) {
+  const banks = view.connections.filter((c) => c.api?.preAnalyze)
+  const [bankId, setBankId] = useState(banks[0]?.bankId ?? '')
+  const [consent, setConsent] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<null | { bankName: string; label: string; status: string; reason: string | null; offer: { approvedAmount?: number | null; installments?: number | null; installmentValue?: number | null } | null }>(null)
+
+  const run = async () => {
+    if (!bankId) { setError('Escolha o banco.'); return }
+    if (!consent) { setError('Confirme a autorização do cliente.'); return }
+    setBusy(true); setError(null); setResult(null)
+    const r = await api<NonNullable<typeof result>>(`/api/financing/proposals/${view.id}/pre-analysis`, { method: 'POST', body: { bankId, consent } })
+    setBusy(false)
+    if (!r.ok) { setError(r.error); return }
+    setResult(r.data ?? null); onDone()
+  }
+  const tone = result?.status === 'RECUSADA' ? 'danger' : result?.status === 'PRE_APROVADA' ? 'success' : 'info'
+
+  return (
+    <Modal title="Pré-análise de crédito" onClose={onClose} footer={<><button className={btnSecondary} onClick={onClose}>Fechar</button><button className={btnPrimary} onClick={run} disabled={busy || !banks.length}>{busy ? 'Consultando…' : 'Consultar banco'}</button></>}>
+      <div className="space-y-4">
+        <p className="text-sm text-gray-600">Consulta rápida da chance de aprovação antes de enviar a ficha. Não cria proposta no banco.</p>
+        <div>
+          <FieldLabel>Banco</FieldLabel>
+          <select className={inputClass} value={bankId} onChange={(e) => { setBankId(e.target.value); setResult(null) }}>
+            {banks.map((b) => <option key={b.bankId} value={b.bankId}>{b.bankName}</option>)}
+          </select>
+        </div>
+        <label className="flex items-start gap-2 text-sm text-gray-700"><input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-gray-300" checked={consent} onChange={(e) => setConsent(e.target.checked)} />O cliente autorizou a consulta de crédito neste banco.</label>
+        {result && (
+          <Alert tone={tone}>
+            <p className="font-medium">{result.bankName}: {result.label}</p>
+            {result.reason && <p className="mt-0.5">{result.reason}</p>}
+            {result.offer?.approvedAmount ? <p className="mt-0.5">Até {brlOrDash(result.offer.approvedAmount)}{result.offer.installmentValue ? ` · parcela até ${brlOrDash(result.offer.installmentValue)}` : ''}{result.offer.installments ? ` · até ${result.offer.installments}x` : ''}</p> : null}
+          </Alert>
+        )}
+        {error && <Alert tone="danger">{error}</Alert>}
+      </div>
+    </Modal>
+  )
+}
+
 // ── Enviar aos bancos ─────────────────────────────────────────────────────────
 export function SendModal({ view, onClose, onDone }: { view: View; onClose: () => void; onDone: () => void }) {
   const sentBanks = new Set(view.banks.filter((b) => b.current.active && !['RECUSADA', 'FALHA_ENVIO', 'CANCELADA', 'EXPIRADA', 'SUBSTITUIDA'].includes(b.current.status)).map((b) => b.bankId))

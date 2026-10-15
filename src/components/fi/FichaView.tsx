@@ -9,11 +9,11 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ChevronDown, ChevronRight, MoreHorizontal, RefreshCw, Send, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, MoreHorizontal, RefreshCw, Search, Send, SlidersHorizontal } from 'lucide-react'
 import type { MoneyEntry, ProposalView } from '@/lib/finance/fi/read-model'
 import { HelpHint } from '@/components/ui/help-hint'
 import { Alert, api, brlOrDash, btnPrimary, btnSecondary, dateTimeBR, pct, Section, StatusBadge, toneText } from './ui'
-import { AdjustModal, CancelModal, PortalModal, RespondModal, SendModal } from './FichaModals'
+import { AdjustModal, CancelModal, PortalModal, PreAnalysisModal, RespondModal, SendModal } from './FichaModals'
 import { useSession } from 'next-auth/react'
 import { CadastroForm, internalEndpoints } from './CadastroForm'
 import { PostApproval } from './PostApproval'
@@ -21,7 +21,7 @@ import { DetailsPanel, DocumentsPanel, TechLogs, Timeline } from './FichaTabs'
 import { Modal } from './ui'
 
 type Perms = Record<string, boolean>
-type ModalKind = null | 'send' | 'adjust' | 'portal' | 'cancel' | 'complete' | { respond: string }
+type ModalKind = null | 'send' | 'preanalysis' | 'adjust' | 'portal' | 'cancel' | 'complete' | { respond: string }
 type Tab = 'historico' | 'cadastro' | 'documentos' | 'detalhes' | 'logs'
 
 export default function FichaView({ id }: { id: string }) {
@@ -127,6 +127,7 @@ export default function FichaView({ id }: { id: string }) {
       {/* Bancos */}
       <div id="fi-bancos">
         <Section title="Bancos" actions={<>
+          {canSend && v.connections.some((c) => c.api?.preAnalyze) && <button className={btnSecondary} onClick={() => setModal('preanalysis')}><Search size={15} />Pré-análise</button>}
           {canSend && <button className={btnSecondary} onClick={() => setModal('send')}><Send size={15} />Enviar a bancos</button>}
           {canSend && hasAttempts && <button className={btnSecondary} onClick={() => setModal('adjust')}><SlidersHorizontal size={15} />Ajustar proposta</button>}
         </>}>
@@ -168,6 +169,7 @@ export default function FichaView({ id }: { id: string }) {
                           {seeReturn && <td className="px-4 py-2.5 text-right tabular-nums">{a.returnPercent != null ? `${pct(a.returnPercent)} · ${brlOrDash(a.returnValue)}` : '—'}</td>}
                           <td className="px-4 py-2.5 text-xs text-gray-500">{a.responseMinutes != null ? `${a.responseMinutes} min` : dateTimeBR(a.submittedAt)}</td>
                           <td className="whitespace-nowrap px-4 py-2.5 text-right">
+                            {b.canCheckStatus && a.active && a.mode === 'API' && ['ENVIADA', 'EM_ANALISE', 'PENDENTE', 'PRE_APROVADA'].includes(a.status) && <button className="text-xs font-medium text-brand-700 hover:underline disabled:opacity-50" disabled={busy === a.id} onClick={() => run(a.id, `/api/financing/submissions/${a.id}`, { action: 'VERIFICAR' })}><RefreshCw size={12} className="mr-1 inline" />Atualizar situação</button>}
                             {a.status === 'VERIFICANDO' && a.mode === 'API' && <button className="text-xs font-medium text-brand-700 hover:underline disabled:opacity-50" disabled={busy === a.id} onClick={() => run(a.id, `/api/financing/submissions/${a.id}`, { action: 'VERIFICAR' })}><RefreshCw size={12} className="mr-1 inline" />Verificar agora</button>}
                             {perms.aprovar && a.active && ['ENVIADA', 'EM_ANALISE', 'PENDENTE', 'PRE_APROVADA', 'VERIFICANDO'].includes(a.status) && (a.mode === 'MANUAL' || a.status === 'VERIFICANDO') && <button className="ml-2 text-xs font-medium text-brand-700 hover:underline" onClick={() => setModal({ respond: a.id })}>Registrar resposta</button>}
                             {perms.enviarFicha && a.status === 'APROVADA' && !v.selectedSubmissionId && <button className="ml-2 rounded-md bg-green-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50" disabled={busy === `sel-${a.id}`} onClick={() => run(`sel-${a.id}`, `/api/financing/proposals/${v.id}/select`, { submissionId: a.id })}>Escolher</button>}
@@ -226,6 +228,7 @@ export default function FichaView({ id }: { id: string }) {
       </div>
 
       {modal === 'send' && <SendModal view={v} onClose={() => setModal(null)} onDone={load} />}
+      {modal === 'preanalysis' && <PreAnalysisModal view={v} onClose={() => setModal(null)} onDone={load} />}
       {modal === 'adjust' && <AdjustModal view={v} onClose={() => setModal(null)} onDone={load} />}
       {modal === 'portal' && <PortalModal view={v} onClose={() => setModal(null)} onDone={load} />}
       {modal === 'cancel' && <CancelModal view={v} onClose={() => setModal(null)} onDone={load} />}

@@ -310,6 +310,75 @@ describe.runIf(!!DB)('F&I Core — orquestrador (Postgres real)', () => {
     expect((await prisma.financeProposalSubmission.findUniqueOrThrow({ where: { id: sub.id } })).status).toBe('APROVADA')
   })
 
+  it('retorno da loja: a oferta recebe o % da regra de retorno do banco e do prazo', async () => {
+    await prisma.financeReturnRule.create({ data: { tenantId, bankId: ids.bankA, percent: 3.5, minInstallments: 24, maxInstallments: 60 } })
+    const id = await newProposal()
+    const res = await sendToBanks({ proposalId: id, bankIds: [ids.bankA], idempotencyKey: `k-${randomUUID()}`, actor, consent })
+    expect(await dispatchAttempt(res.dispatch[0])).toBe('APROVADA')
+    const sub = await prisma.financeProposalSubmission.findUniqueOrThrow({ where: { id: res.dispatch[0] } })
+    expect(Number(sub.returnPercent)).toBe(3.5)
+  })
+
+  it('webhook que falhou é reprocessado quando o banco reenvia; o já aplicado continua duplicado', async () => {
+    const { createHmac } = await import('node:crypto')
+    process.env.FINANCE_WEBHOOK_SECRET = 'segredo-de-teste-com-mais-de-16'
+    const { POST } = await import('@/app/api/webhook/financing/[provider]/route')
+    const id = await newProposal()
+    fast.behaviour = 'pendencia'
+    const res = await sendToBanks({ proposalId: id, bankIds: [ids.bankA], idempotencyKey: `k-${randomUUID()}`, actor, consent })
+    await dispatchAttempt(res.dispatch[0])
+    const sub = await prisma.financeProposalSubmission.findUniqueOrThrow({ where: { id: res.dispatch[0] } })
+    const eventId = `ev-${randomUUID()}`
+    await prisma.financeWebhookEvent.create({ data: { provider: fast.key, eventId, externalId: sub.externalId, payload: {}, processed: false, error: 'Falha anterior.' } })
+    const body = JSON.stringify({ eventId, externalId: sub.externalId, status: 'aprovada' })
+    const sig = createHmac('sha256', process.env.FINANCE_WEBHOOK_SECRET!).update(body).digest('hex')
+    const call = () => POST(new Request(`http://localhost/api/webhook/financing/${fast.key}`, { method: 'POST', body, headers: { 'x-signature': sig } }), { params: Promise.resolve({ provider: fast.key }) })
+    const first = await (await call()).json()
+    expect(first.results[0]).toMatchObject({ processed: true })
+    expect((await prisma.financeProposalSubmission.findUniqueOrThrow({ where: { id: sub.id } })).status).toBe('APROVADA')
+    const again = await (await call()).json()
+    expect(again.results[0].duplicate).toBe(true)
+  })
+
+  it('pré-análise e formalização digital: só em banco com a capacidade, com autorização e registro', async () => {
+    const { preAnalyzeAtBank, requestFormalizationLink } = await import('./bank-actions')
+    const { buildPortalView } = await import('./portal')
+    class DigitalBank extends FakeBank {
+      readonly capabilities: BankCapabilities = { ...fast.capabilities, preAnalyze: true, formalize: true }
+      async preAnalyze(): Promise<BankDecision> { return { status: 'PRE_APROVADA', reason: 'Farol azul.', offer: { approvedAmount: 50000, installments: 48 } } }
+      async formalize(externalId: string) { return { contractNumber: externalId, documentUrl: 'https://banco.test/assinar?x=1', signed: false } }
+    }
+    const digital = new DigitalBank(`fake-d-${run}`, 'Banco Digital')
+    __setBankProviderForTests(digital)
+    const bankD = (await prisma.financeBank.create({ data: { tenantId, name: 'Banco Digital', adapterKey: digital.key } })).id
+    const id = await newProposal()
+
+    await expect(preAnalyzeAtBank(id, bankD, { confirmed: false }, actor)).rejects.toMatchObject({ code: 'CONSENTIMENTO' })
+    await expect(preAnalyzeAtBank(id, ids.bankA, { confirmed: true }, actor)).rejects.toMatchObject({ code: 'SEM_PREANALISE' })
+    const pa = await preAnalyzeAtBank(id, bankD, { confirmed: true, ip: '10.0.0.1' }, actor)
+    expect(pa).toMatchObject({ bankName: 'Banco Digital', status: 'PRE_APROVADA', reason: 'Farol azul.' })
+    expect(await prisma.financeProposalEvent.count({ where: { proposalId: id, type: 'PRE_ANALISE' } })).toBe(1)
+    expect((await prisma.financeConsent.findFirst({ where: { proposalId: id }, orderBy: { createdAt: 'desc' } }))?.purpose).toMatch(/Pré-análise/)
+    expect(await prisma.financeProposalSubmission.count({ where: { proposalId: id } })).toBe(0) // não cria proposta
+
+    const res = await sendToBanks({ proposalId: id, bankIds: [bankD], idempotencyKey: `k-${randomUUID()}`, actor, consent })
+    expect(await dispatchAttempt(res.dispatch[0])).toBe('APROVADA')
+    await selectOffer(id, res.dispatch[0], actor)
+    const link = await requestFormalizationLink(id, actor)
+    expect(link).toMatchObject({ url: 'https://banco.test/assinar?x=1', bankName: 'Banco Digital' })
+    const p = await prisma.financeProposal.findUniqueOrThrow({ where: { id } })
+    expect(p.formalizationStatus).toBe('AGUARDANDO_ASSINATURA')
+    const portal = await buildPortalView(id)
+    expect(portal).toMatchObject({ step: 'ASSINATURA', signUrl: 'https://banco.test/assinar?x=1' })
+
+    // Banco sem formalização digital: recusa com motivo, nada é inventado.
+    const id2 = await newProposal()
+    const r2 = await sendToBanks({ proposalId: id2, bankIds: [ids.bankA], idempotencyKey: `k-${randomUUID()}`, actor, consent })
+    await dispatchAttempt(r2.dispatch[0])
+    await selectOffer(id2, r2.dispatch[0], actor)
+    await expect(requestFormalizationLink(id2, actor)).rejects.toMatchObject({ code: 'SEM_FORMALIZACAO' })
+  })
+
   it('código FI-AAAA-NNNNNN sem repetição mesmo com criação simultânea', async () => {
     const { nextFiCode } = await import('./orchestrator')
     const codes = await Promise.all(Array.from({ length: 6 }, () => prisma.$transaction((tx) => nextFiCode(tx, tenantId).then(async (code) => { await tx.financeProposal.create({ data: { tenantId, proponentId: ids.person, code } }); return code }))))

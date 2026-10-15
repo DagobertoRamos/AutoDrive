@@ -16,6 +16,7 @@ import { commonRequiredFor, missingForBanks, missingMessage } from './fields-cor
 import { bankRequirements, ensureFiCode, personTypeOf } from './orchestrator'
 import { resolveBank } from './gateway/resolve'
 import { CONNECTION_META } from './gateway/registry'
+import { formalizationLinkOf } from './bank-actions'
 
 const num = (v: unknown): number | null => (v == null ? null : Number(v))
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null)
@@ -101,8 +102,15 @@ export async function buildProposalView(proposalId: string, perms: Perms) {
   // Conexão de cada banco da loja (para o botão "Enviar").
   const connections = await Promise.all(tenantBanks.map(async (b) => {
     const r = await resolveBank(tenantId, b)
-    return { bankId: b.id, bankName: b.name, state: r.state, label: CONNECTION_META[r.state].label, tone: CONNECTION_META[r.state].tone }
+    const c = r.live && r.provider ? r.provider.capabilities : null
+    return {
+      bankId: b.id, bankName: b.name, state: r.state, label: CONNECTION_META[r.state].label, tone: CONNECTION_META[r.state].tone,
+      // O que a integração oficial deste banco faz agora (null = só manual).
+      api: c ? { preAnalyze: c.preAnalyze, status: c.status, formalize: c.formalize } : null,
+    }
   }))
+  const apiOf = new Map(connections.map((c) => [c.bankId, c.api]))
+  const formalizationLink = perms.formalizar ? formalizationLinkOf(p.originMeta) : null
 
   const na = nextAction({
     status: p.status, missingFields: miss.common.length,
@@ -155,7 +163,7 @@ export async function buildProposalView(proposalId: string, perms: Perms) {
     terms: { vehicleValue: num(p.vehicleValue), downPayment: num(p.downPayment), amount, installments: p.installments },
     deal: p.deal ? { id: p.deal.id, number: p.deal.dealNumber, status: p.deal.status } : null,
     leadId: p.leadId,
-    banks, ranking, rankingLabels: OFFER_RANKING_LABEL,
+    banks: banks.map((b) => ({ ...b, canCheckStatus: !!apiOf.get(b.bankId)?.status })), ranking, rankingLabels: OFFER_RANKING_LABEL,
     selectedSubmissionId: p.selectedSubmissionId,
     missing: {
       common: miss.common.map((f) => ({ key: f.key, label: f.label, group: f.group })),
@@ -174,6 +182,12 @@ export async function buildProposalView(proposalId: string, perms: Perms) {
       lien: { status: p.lienStatus, meta: LIEN_META[p.lienStatus as keyof typeof LIEN_META] ?? metaOf('lien', p.lienStatus), registeredAt: iso(p.lienRegisteredAt) },
       funding: { status: p.fundingStatus, meta: FUNDING_META[p.fundingStatus as keyof typeof FUNDING_META] ?? metaOf('funding', p.fundingStatus), expectedAt: iso(p.fundingExpectedAt), paidAt: iso(p.fundedAt), amount: num(p.fundedAmount), waitingDays },
       contractNumber: p.contractNumber, contractSignedAt: iso(p.contractSignedAt), approvedValue: num(p.approvedValue), monthlyPayment: num(p.monthlyPayment),
+      formalizationLink,
+      /** O banco da proposta escolhida gera a formalização digital pela integração? */
+      digitalFormalization: (() => {
+        const sel = subs.find((x) => x.id === p.selectedSubmissionId)
+        return !!(sel?.bankId && sel.mode === 'API' && sel.externalId && apiOf.get(sel.bankId)?.formalize)
+      })(),
     },
     money,
     portal: { active: !!(p.portalTokenHash && p.portalTokenExpiresAt && p.portalTokenExpiresAt > new Date()), expiresAt: iso(p.portalTokenExpiresAt) },

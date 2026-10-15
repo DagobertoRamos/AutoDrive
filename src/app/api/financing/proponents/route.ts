@@ -1,29 +1,28 @@
 // =============================================================================
 // /api/financing/proponents — proponentes de financiamento. Multi-tenant.
-//   GET  : financing (read; busca ?q= por nome/cpf/email/celular)
-//   POST : financing.manage
+//   GET  : financing (read; busca ?q= por nome/cpf/email/celular). CPF/CNPJ e
+//          renda só aparecem inteiros para quem pode acessar documentos (LGPD).
+//   POST : financing.manage + criarFicha
 // =============================================================================
 
 import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
+import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createProponentSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, num } from '@/lib/finance/finance-service'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
-import { resolveActingTenant } from '@/lib/acting-tenant'
+import { fiAuth } from '@/lib/finance/fi/route'
+import { isFiAllowed } from '@/lib/finance/fi-permissions'
+import { maskDoc } from '@/lib/finance/fi/read-model'
 
 export async function GET(req: Request) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'financing')) return forbiddenResponse('Sem acesso ao financiamento.')
-  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
+  const auth = await fiAuth(req)
+  if (!auth.ok) return auth.res
+  const { tenantId } = auth
 
   try {
-    const tenantId = await resolveActingTenant(user, req)
-    if (!tenantId) return NextResponse.json({ success: false, error: 'Escolha a loja no topo da tela.' }, { status: 400 })
+    const full = await isFiAllowed(tenantId, 'acessarDocumentos', auth.user.role)
     const { searchParams } = new URL(req.url)
     const extra: Record<string, unknown> = {}
     const q = searchParams.get('q')?.trim()
@@ -49,21 +48,23 @@ export async function GET(req: Request) {
         _count: { select: { proposals: true } },
       },
     })
-    return NextResponse.json({ success: true, data: data.map((p) => ({ ...p, renda: num(p.renda), proposals: p._count.proposals })) })
+    return NextResponse.json({
+      success: true,
+      data: data.map(({ _count, ...p }) => ({
+        ...p, cpf: full ? p.cpf : maskDoc(p.cpf), cnpj: full ? p.cnpj : maskDoc(p.cnpj), renda: full ? num(p.renda) : null, proposals: _count.proposals,
+      })),
+    })
   } catch (err) {
     return handlePrismaError(err)
   }
 }
 
 export async function POST(req: Request) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão para cadastrar proponentes.')
-  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
+  const auth = await fiAuth(req, { module: 'financing.manage', cap: 'criarFicha' })
+  if (!auth.ok) return auth.res
+  const { tenantId, user } = auth
 
   try {
-    const tenantId = await resolveActingTenant(user, req)
-    if (!tenantId) return NextResponse.json({ success: false, error: 'Escolha a loja no topo da tela.' }, { status: 400 })
     const d = createProponentSchema.parse(await req.json())
     const dup = await prisma.financeProponent.findFirst({ where: { tenantId, cpf: d.cpf.replace(/\D/g, '') }, select: { id: true } })
     if (dup) return NextResponse.json({ success: false, error: 'Já existe um cliente com este CPF na loja.', id: dup.id }, { status: 409 })
