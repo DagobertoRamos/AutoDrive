@@ -122,7 +122,7 @@ const VEHICLE_CATEGORY = { CAR: 'AUTOMOVEL', MOTORCYCLE: 'MOTO', TRUCK: 'PESADO'
 async function termsWithVehicle(p: Parameters<typeof termsFrom>[0] & { vehicleId: string | null; tenantId: string }): Promise<ProposalTerms> {
   const terms = termsFrom(p)
   const [v, t] = await Promise.all([
-    p.vehicleId ? prisma.vehicle.findFirst({ where: { id: p.vehicleId, tenantId: p.tenantId }, select: { plate: true, brand: true, model: true, year: true, modelYear: true, km: true, fipeCode: true, fipeValue: true, vehicleType: true, conditionType: true, chassi: true, renavam: true, color: true } }) : null,
+    p.vehicleId ? prisma.vehicle.findFirst({ where: { id: p.vehicleId, tenantId: p.tenantId }, select: { plate: true, brand: true, model: true, year: true, modelYear: true, km: true, fipeCode: true, fipeValue: true, vehicleType: true, conditionType: true, chassi: true, renavam: true, color: true, version: true, engine: true, transmission: true, fuel: true } }) : null,
     prisma.tenant.findUnique({ where: { id: p.tenantId }, select: { state: true } }),
   ])
   if (v) {
@@ -130,7 +130,7 @@ async function termsWithVehicle(p: Parameters<typeof termsFrom>[0] & { vehicleId
       ...terms.vehicle, plate: v.plate, brand: v.brand, model: v.model, year: v.year, modelYear: v.modelYear ?? v.year, km: v.km,
       fipeCode: v.fipeCode, fipeValue: n(v.fipeValue), zeroKm: v.conditionType === 'ZERO_KM',
       category: v.vehicleType ? VEHICLE_CATEGORY[v.vehicleType] : 'AUTOMOVEL',
-      chassi: v.chassi, renavam: v.renavam, color: v.color,
+      chassi: v.chassi, renavam: v.renavam, color: v.color, version: v.version, engine: v.engine, transmission: v.transmission, fuel: v.fuel,
     }
   }
   terms.storeUf = t?.state?.trim().toUpperCase().slice(0, 2) || null

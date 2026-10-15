@@ -64,6 +64,7 @@ export interface ProposalTerms {
     modelYear?: number | null; fipeValue?: number | null; km?: number | null; brand?: string | null; model?: string | null
     zeroKm?: boolean | null; uf?: string | null; category?: 'AUTOMOVEL' | 'MOTO' | 'PESADO' | null
     chassi?: string | null; renavam?: string | null; color?: string | null
+    version?: string | null; engine?: string | null; transmission?: string | null; fuel?: string | null
   } | null
   /** UF da loja (endereço do cadastro), quando o banco precisa. */
   storeUf?: string | null

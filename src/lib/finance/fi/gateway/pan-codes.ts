@@ -1,10 +1,8 @@
 // =============================================================================
-// Banco PAN — códigos da OpenAPI Veículos (developers.bancopan.com.br,
-// "Financiamento de Veículos", atualização de março/2023) e o de-para a partir
-// da ficha universal. PURO (sem I/O) — testado em pan.test.ts.
-//
-// A documentação do PAN é HTML com exemplos, sem tabela de domínios. Só entra
-// aqui o que aparece nela; o resto está marcado como TODO (validar na homologação).
+// Banco PAN — códigos da OpenAPI Veículos e o de-para a partir da ficha
+// universal. Fonte: portal developers.bancopan.com.br + pacote "Documentação v4"
+// (PDFs de campos e JSONs de exemplo). PURO (sem I/O) — testado em pan.test.ts.
+// O que o PAN não publica está marcado como TODO (validar na homologação).
 // =============================================================================
 
 import type { AttemptStatus } from '../status-core'
@@ -14,12 +12,15 @@ export const panNorm = (s: unknown) => String(s ?? '').normalize('NFD').replace(
 /** Texto em maiúsculas, sem acento (o PAN usa assim nos exemplos). */
 export const panUpper = (s: unknown) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim()
 
-/** Categoria da pré-análise (enum documentado: "LEVES" | "MOTOS"). */
+/** Categoria da pré-análise e da simulação (enum documentado: "LEVES" | "MOTOS"). */
 export function panCategory(cat: 'AUTOMOVEL' | 'MOTO' | 'PESADO' | null | undefined): 'LEVES' | 'MOTOS' | null {
   if (!cat || cat === 'AUTOMOVEL') return 'LEVES'
   if (cat === 'MOTO') return 'MOTOS'
   return null
 }
+
+/** Categoria das tabelas de marcas/modelos/versões e dos produtos (enum: "Automoveis" | "Motocicletas"). */
+export const panCatalogCategory = (c: 'LEVES' | 'MOTOS') => (c === 'MOTOS' ? 'Motocicletas' : 'Automoveis')
 
 /** Sexo (cliente.sexo). Documentado: "FEMININO"; "MASCULINO" por simetria — TODO confirmar. */
 export function panSex(v: unknown): 'MASCULINO' | 'FEMININO' | null {
@@ -55,12 +56,13 @@ export function panNationalityCode(v: unknown): string | null {
 }
 
 /**
- * Natureza da ocupação (dadosCliente.codigoNaturezaOcupacao). A documentação não
- * publica a tabela (exemplos: "04", "13"). TODO homologação: pedir a tabela ao PAN
- * e preencher o de-para. Sem código, o campo não vai (a pré-análise o marca como
- * não obrigatório) e a profissão não é consultada.
+ * Natureza da ocupação (dadosCliente.codigoNaturezaOcupacao), tabela publicada em
+ * GET /veiculos/v0/naturezas-ocupacao: 01 aposentado/pensionista, 02 autônomo,
+ * 04 empregado setor privado, 06 funcionário público, 07 militar, 08 profissional
+ * liberal, 09 proprietário de empresa, 10 rendimentos de capital, 11 sem rendimento,
+ * 12 setor rural, 13 geral (não utilizar). A ficha une CLT e servidor: vai 04.
  */
-export const PAN_OCCUPATION_NATURE: Record<string, string> = {}
+export const PAN_OCCUPATION_NATURE: Record<string, string> = { CLT: '04', AUTONOMO: '02', EMPRESARIO: '09', APOSENTADO_PENSIONISTA: '01' }
 export const panOccupationNature = (occupation: unknown): string | null => PAN_OCCUPATION_NATURE[String(occupation ?? '')] ?? null
 
 /** Profissão: casa o nome da ficha com a lista do PAN (GET /propostas/profissoes). */
@@ -72,7 +74,7 @@ export function panMatchProfession(list: { codigoDaProfissao?: string; descricao
   return hit ? { codigo: String(hit.codigoDaProfissao), nome: String(hit.descricao) } : null
 }
 
-/** Farol da pré-análise ("Farol do Crivo"). Documentado: codigo 2 = Pré-Aprovado, 4 = Não Elegível. */
+/** Farol do Crivo. Exemplos: codigo 2 = Pré-Aprovado, 3 = Elegivel, 4 = Não Elegivel; farol não localizado vem como erro. */
 export type PanFarol = 'PRE_APROVADO' | 'ELEGIVEL' | 'NAO_ELEGIVEL' | 'INDISPONIVEL' | 'DESCONHECIDO'
 export function panFarol(codigo: unknown, descricao: unknown): PanFarol {
   const d = panNorm(descricao)
@@ -82,14 +84,17 @@ export function panFarol(codigo: unknown, descricao: unknown): PanFarol {
   if (d.includes('ELEGIVEL') || d === 'OK' || d.includes('VERDE')) return 'ELEGIVEL'
   const c = Number(codigo)
   if (c === 2) return 'PRE_APROVADO'
+  if (c === 3) return 'ELEGIVEL'
   if (c === 4) return 'NAO_ELEGIVEL'
   return 'DESCONHECIDO'
 }
 
 /**
- * Situação da proposta (GET /propostas/{n} → "status"). O PAN não publica o domínio;
- * de-para por palavra-chave e, na dúvida, "Em análise" — status desconhecido nunca
- * vira sucesso. TODO homologação: trocar pelos valores reais.
+ * Situação da proposta (GET /propostas/{n} → "status", formato "N.Descrição", ex.:
+ * "2.Formalização Digital"). O PAN não publica a lista: de-para por palavra-chave e,
+ * na dúvida, "Em análise" — status desconhecido nunca vira sucesso.
+ * Formalização = crédito aprovado (no exemplo, atividade "Formalização Digital: Aprovada").
+ * TODO homologação: confirmar a lista real de status.
  */
 export function panProposalStatus(status: unknown): AttemptStatus {
   const s = panNorm(status)
@@ -99,8 +104,59 @@ export function panProposalStatus(status: unknown): AttemptStatus {
   if (s.includes('RECUS') || s.includes('REPROV') || s.includes('NEGAD') || s.includes('NAO APROV')) return 'RECUSADA'
   if (s.includes('PENDEN')) return 'PENDENTE'
   if (s.includes('PRE APROV')) return 'PRE_APROVADA'
-  if (s.includes('APROVAD') || s.includes('PAGO') || s.includes('PAGA') || s.includes('LIBERAD') || s.includes('EFETIVAD')) return 'APROVADA'
+  if (s.includes('APROVAD') || s.includes('FORMALIZ') || s.includes('PAGO') || s.includes('PAGA') || s.includes('LIBERAD') || s.includes('EFETIVAD')) return 'APROVADA'
   return 'EM_ANALISE'
+}
+
+/** Decisão do Crivo na simulação ("decisaoCredito"; exemplos: "Aprovada" ou null). */
+export function panCreditRefused(decisao: unknown): boolean {
+  const s = panNorm(decisao)
+  return s.includes('RECUS') || s.includes('REPROV') || s.includes('NEGAD') || s.includes('NAO APROV')
+}
+
+// ── Código Molicar (codigoVeiculo da simulação) ─────────────────────────────
+// O PAN não aceita FIPE: o veículo vai pelo código Molicar, achado nas tabelas
+// marcas → modelos → versões. O de-para abaixo casa o cadastro do estoque com elas.
+const BRAND_ALIASES: Record<string, string> = { VW: 'VOLKSWAGEN', GM: 'CHEVROLET', 'MERCEDES BENZ': 'MERCEDES-BENZ', CAOA: 'CAOA CHERY' }
+const tokens = (s: unknown) => panNorm(s).split(' ').filter((t) => t.length > 0)
+
+/** Marca do PAN (lista vem com espaços à direita). */
+export function panMatchBrand(list: string[], brand: unknown): string | null {
+  const raw = panNorm(brand)
+  if (!raw) return null
+  const first = raw.split(' ')[0]
+  const want = BRAND_ALIASES[raw] ?? BRAND_ALIASES[first] ?? raw
+  const items = list.map((b) => ({ orig: b.trim(), n: panNorm(b) })).filter((b) => b.n)
+  return (items.find((b) => b.n === panNorm(want)) ?? items.find((b) => panNorm(want).startsWith(`${b.n} `) || b.n.startsWith(`${panNorm(want)} `))
+    ?? items.find((b) => b.n === first))?.orig ?? null
+}
+
+/** Modelos do PAN que correspondem ao modelo do estoque (exatos primeiro). */
+export function panMatchModels(list: string[], model: unknown): string[] {
+  const want = panNorm(model)
+  if (!want) return []
+  const head = want.split(' ')[0]
+  const items = list.map((m) => ({ orig: m.trim(), n: panNorm(m) })).filter((m) => m.n)
+  const exact = items.filter((m) => m.n === want)
+  const prefix = items.filter((m) => m.n !== want && (want.startsWith(`${m.n} `) || m.n.startsWith(`${want} `) || m.n.startsWith(`${want}`)))
+  const loose = items.filter((m) => !exact.includes(m) && !prefix.includes(m) && m.n.split(' ')[0] === head)
+  return [...exact, ...prefix, ...loose].map((m) => m.orig).slice(0, 3)
+}
+
+export interface PanMolicarVersion { codigoMolicar?: string; valorMolicar?: number; descricaoVersao?: string }
+
+/**
+ * Versão Molicar mais parecida com o veículo: palavras em comum com versão/motor/
+ * câmbio/combustível; empate decide pelo valor Molicar mais perto da FIPE/venda.
+ */
+export function panPickVersion(list: PanMolicarVersion[], v: { version?: string | null; engine?: string | null; transmission?: string | null; fuel?: string | null; model?: string | null }, refValue: number | null): PanMolicarVersion | null {
+  const items = list.filter((x) => x.codigoMolicar)
+  if (!items.length) return null
+  const TRANS: Record<string, string[]> = { AUTOMATICO: ['AUTOMATICO', 'AUT'], CVT: ['CVT', 'AUTOMATICO'], MANUAL: ['MECANICO', 'MANUAL'], SEMI_AUTOMATICO: ['AUTOMATIZADO'] }
+  const want = new Set([...tokens(v.version), ...tokens(v.engine), ...tokens(v.fuel), ...(TRANS[panNorm(v.transmission).replace(/ /g, '_')] ?? [])].filter((t) => t.length > 1 || /\d/.test(t)))
+  const score = (x: PanMolicarVersion) => tokens(x.descricaoVersao).filter((t) => want.has(t)).length
+  const dist = (x: PanMolicarVersion) => (refValue && x.valorMolicar ? Math.abs(x.valorMolicar - refValue) : Number.MAX_SAFE_INTEGER)
+  return [...items].sort((a, b) => score(b) - score(a) || dist(a) - dist(b))[0]
 }
 
 /** "R$ 14.000,00" → 14000 */

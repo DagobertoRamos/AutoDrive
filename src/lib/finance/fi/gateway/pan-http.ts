@@ -11,6 +11,8 @@
 import { BankGatewayError, type BankContext } from './types'
 
 export const PAN_SANDBOX_URL = 'https://sandbox-hml.bancopan.com.br'
+// O portal indica ap-gateway-web; os PDFs da "Documentação v4" indicam https://api.bancopan.com.br.
+// TODO homologação: confirmar com o PAN na liberação de produção (a loja pode fixar a URL na credencial).
 export const PAN_PRODUCTION_URL = 'https://ap-gateway-web.bancopan.com.br'
 const TOKEN_PATH = '/veiculos/v0/tokens'
 const TIMEOUT_MS = 20_000
