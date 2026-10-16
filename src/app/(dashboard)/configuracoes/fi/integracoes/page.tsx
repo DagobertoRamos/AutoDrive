@@ -16,6 +16,7 @@ import { HelpHint } from '@/components/ui/help-hint'
 import { DEAL_HINTS } from '@/lib/glossary-deals'
 import { RequiredMark } from '@/components/ui/field'
 import { credentialSpecFor } from '@/lib/finance/fi/gateway/credential-specs'
+import { CredereCard } from '@/components/fi/CredereCard'
 
 const CONFIG_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO']
 
@@ -151,6 +152,8 @@ export default function FiCredentialsPage() {
         </div>
         <button onClick={openNew} disabled={!cryptoReady} className="btn-primary text-sm disabled:opacity-50"><Plus size={15} />Nova credencial</button>
       </div>
+
+      <CredereCard />
 
       {!cryptoReady && (
         <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

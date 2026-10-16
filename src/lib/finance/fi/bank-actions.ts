@@ -12,7 +12,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { addTimeline } from './events'
-import { resolveBank } from './gateway/resolve'
+import { resolveBank, viaOf } from './gateway/resolve'
 import { BankGatewayError, type BankDecision } from './gateway/types'
 import { ATTEMPT_STATUS_META } from './status-core'
 import {
@@ -92,13 +92,13 @@ export function formalizationLinkOf(originMeta: unknown): FormalizationLink | nu
 export async function requestFormalizationLink(proposalId: string, actor: Actor): Promise<FormalizationLink> {
   const p = await loadFull(proposalId)
   if (!p.selectedSubmissionId) throw new FiError('Escolha a proposta aprovada antes de formalizar.', 409)
-  const sub = await prisma.financeProposalSubmission.findUnique({ where: { id: p.selectedSubmissionId }, select: { id: true, bankId: true, externalId: true, mode: true } })
+  const sub = await prisma.financeProposalSubmission.findUnique({ where: { id: p.selectedSubmissionId }, select: { id: true, bankId: true, externalId: true, mode: true, providerId: true } })
   if (!sub?.bankId || !sub.externalId || sub.mode !== 'API') throw new FiError('A proposta escolhida não foi enviada pela integração: formalize pelo portal do banco.', 409, 'SEM_FORMALIZACAO')
   const bank = await prisma.financeBank.findFirst({ where: { id: sub.bankId, tenantId: p.tenantId }, select: { id: true, name: true, adapterKey: true } })
   if (!bank) throw new FiError('Banco não encontrado nesta loja.', 404)
   const correlationId = randomUUID()
-  const r = await resolveBank(p.tenantId, bank, correlationId)
-  if (!r.live || !r.provider?.capabilities.formalize) throw new FiError('Este banco não oferece formalização digital pela integração.', 409, 'SEM_FORMALIZACAO')
+  const r = await resolveBank(p.tenantId, bank, correlationId, viaOf(sub))
+    if (!r.live || !r.provider?.capabilities.formalize) throw new FiError('Este banco não oferece formalização digital pela integração.', 409, 'SEM_FORMALIZACAO')
 
   const t0 = Date.now()
   let url: string | null

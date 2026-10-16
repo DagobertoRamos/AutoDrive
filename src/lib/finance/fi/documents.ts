@@ -12,7 +12,7 @@ import { prisma } from '@/lib/prisma'
 import { deletePrivateFile, effectiveMime, readPrivateFile, savePrivateFile, validatePrivateFile } from '@/lib/storage/private-files'
 import { addTimeline, notifyWatchers, reflectOnCrm } from './events'
 import { fiDocDrivePath } from '@/lib/storage/drive-files'
-import { resolveBank } from './gateway/resolve'
+import { resolveBank, viaOf } from './gateway/resolve'
 
 export const DOC_STATUS_META: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'danger' | 'warning' }> = {
   PENDENTE: { label: 'Aguardando envio', tone: 'warning' },
@@ -64,7 +64,7 @@ async function forwardToBank(docId: string, bytes: Buffer) {
   if (!sub?.bankId || !sub.externalId || sub.mode !== 'API') return
   const bank = await prisma.financeBank.findUnique({ where: { id: sub.bankId }, select: { id: true, name: true, adapterKey: true } })
   if (!bank) return
-  const r = await resolveBank(sub.tenantId, bank)
+  const r = await resolveBank(sub.tenantId, bank, undefined, viaOf(sub))
   if (!r.live || !r.provider?.capabilities.documents) return
   const t0 = Date.now()
   try {

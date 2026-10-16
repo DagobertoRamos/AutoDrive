@@ -45,6 +45,8 @@ export interface BankContext {
   idempotencyKey?: string
   /** Agregador: código do banco final atendido pelo agregador. */
   routedBankCode?: string | null
+  /** Grava na credencial da loja valores renovados pelo conector (ex.: token OAuth). */
+  persistCredentials?: (patch: Record<string, string>) => Promise<void>
 }
 
 export interface ApplicantPayload {
@@ -116,6 +118,13 @@ export interface BankProvider {
   readonly capabilities: BankCapabilities
   /** Existe implementação OFICIAL (API contratada/homologada) para este conector? */
   readonly official: boolean
+  /** Tempo máximo da jornada de envio (ms), quando maior que o padrão (ex.: agregador assíncrono). */
+  readonly timeoutMs?: number
+  /**
+   * Webhook sem assinatura documentada: o aviso só dispara uma nova CONSULTA ao
+   * provedor com a credencial da loja (o conteúdo do aviso nunca muda status).
+   */
+  readonly webhookRefetch?: boolean
   /** true só com implementação OFICIAL + credencial completa da loja. */
   isIntegrated(ctx: BankContext): boolean
   /** Campos extras exigidos pelo banco (null = usar a configuração da loja). */

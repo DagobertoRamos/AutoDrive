@@ -31,7 +31,7 @@ import {
 } from './status-core'
 import { COMMON_REQUIRED, missingForBanks, sanitizeFieldList, type FieldDef, type PersonType } from './fields-core'
 import { addTimeline, notifyRoles, notifyWatchers, reflectOnCrm, type CrmMilestone } from './events'
-import { resolveBank, type ResolvedBank } from './gateway/resolve'
+import { resolveBank, viaOf, type ResolvedBank } from './gateway/resolve'
 import { BankGatewayError, type ApplicantPayload, type BankDecision, type ProposalTerms } from './gateway/types'
 
 // ── Tipos públicos ────────────────────────────────────────────────────────────
@@ -284,11 +284,14 @@ export async function dispatchAttempt(submissionId: string, timeoutMs = BANK_TIM
   const bank = await prisma.financeBank.findUnique({ where: { id: a.bankId }, select: { id: true, name: true, adapterKey: true } })
   if (!bank) return applyDecision(a.id, { status: 'FALHA_ENVIO', reason: 'Banco removido do cadastro da loja.' }, { source: 'SISTEMA' }).then((r) => r.status)
   const meta = (a.requestPayload ?? {}) as { correlationId?: string; previousExternalId?: string }
-  const r = await resolveBank(p.tenantId, bank, meta.correlationId ?? randomUUID())
+  const r = await resolveBank(p.tenantId, bank, meta.correlationId ?? randomUUID(), meta.previousExternalId ? viaOf(a) : 'AUTO')
   if (!r.live || !r.provider) {
     await prisma.financeProposalSubmission.update({ where: { id: a.id }, data: { mode: 'MANUAL' } })
     return applyDecision(a.id, { status: 'ENVIADA', reason: 'Banco ainda não integrado. Envie pelo portal do banco e registre a resposta aqui.' }, { source: 'SISTEMA' }).then((x) => x.status)
   }
+  // Registra o canal (direto ou reserva pela Credere): consulta e cancelamento seguem por ele.
+  await prisma.financeProposalSubmission.update({ where: { id: a.id }, data: { mode: 'API', providerId: r.via === 'CREDERE' ? 'credere' : null } })
+  timeoutMs = Math.max(timeoutMs, r.provider.timeoutMs ?? 0)
   const t0 = Date.now()
   const ctx = { ...r.ctx, idempotencyKey: a.idempotencyKey ?? undefined }
   try {
@@ -317,7 +320,7 @@ export async function verifyAttempt(submissionId: string, actor?: Actor | null):
   if (!['VERIFICANDO', 'ENVIADA', 'EM_ANALISE', 'PENDENTE', 'PRE_APROVADA'].includes(a.status)) return a.status
   const bank = await prisma.financeBank.findUnique({ where: { id: a.bankId }, select: { id: true, name: true, adapterKey: true } })
   if (!bank) throw new FiError('Banco não encontrado.', 404)
-  const r = await resolveBank(a.tenantId, bank)
+  const r = await resolveBank(a.tenantId, bank, undefined, viaOf(a))
   if (!r.live || !r.provider || !r.provider.capabilities.status) {
     throw new FiError('Este banco não permite consultar pela integração. Confira no portal do banco e registre a resposta.', 409, 'SEM_CONSULTA')
   }
@@ -760,7 +763,7 @@ export async function cancelProposal(proposalId: string, reason: string, actor: 
     const cur = await tx.financeProposal.findUniqueOrThrow({ where: { id: proposalId } })
     if (cur.status === 'CANCELADA') return null
     if (cur.fundingStatus === 'PAGO' || cur.fundingStatus === 'PAGO_PARCIAL') throw new FiError('O banco já pagou. Use o estorno no financeiro.', 409)
-    const open = await tx.financeProposalSubmission.findMany({ where: { proposalId, active: true, status: { in: ATTEMPT_OPEN } }, select: { id: true, mode: true, externalId: true, bankId: true } })
+    const open = await tx.financeProposalSubmission.findMany({ where: { proposalId, active: true, status: { in: ATTEMPT_OPEN } }, select: { id: true, mode: true, externalId: true, bankId: true, providerId: true } })
     for (const a of open) await tx.financeProposalSubmission.update({ where: { id: a.id }, data: { status: 'CANCELADA', statusReason: text.slice(0, 300) } })
     await tx.financeProposal.update({ where: { id: proposalId }, data: { status: 'CANCELADA', fundingStatus: 'NAO_ESPERADO', revision: { increment: 1 } } })
     await addTimeline(tx, { tenantId: p.tenantId, proposalId, type: 'STATUS_CHANGE', status: 'CANCELADA', source: 'MANUAL', actorId: actor.id, message: `Ficha cancelada: ${text.slice(0, 200)}` })
@@ -773,7 +776,7 @@ export async function cancelProposal(proposalId: string, reason: string, actor: 
   for (const a of opened.open.filter((x) => x.mode === 'API' && x.externalId && x.bankId)) {
     const bank = await prisma.financeBank.findUnique({ where: { id: a.bankId! }, select: { id: true, name: true, adapterKey: true } })
     if (!bank) continue
-    const r = await resolveBank(p.tenantId, bank)
+    const r = await resolveBank(p.tenantId, bank, undefined, viaOf(a))
     if (!r.live || !r.provider?.capabilities.cancel) continue
     const t0 = Date.now()
     try {

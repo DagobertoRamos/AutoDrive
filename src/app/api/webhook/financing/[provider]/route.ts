@@ -24,7 +24,7 @@ import { prisma } from '@/lib/prisma'
 import { secretsMatch, extractWebhookFields, mapProviderStatus } from '@/lib/finance/webhook-service'
 import { getBankProvider } from '@/lib/finance/fi/gateway/registry'
 import type { WebhookEvent } from '@/lib/finance/fi/gateway/types'
-import { advancePostApproval, applyDecision, FiError } from '@/lib/finance/fi/orchestrator'
+import { advancePostApproval, applyDecision, FiError, verifyAttempt } from '@/lib/finance/fi/orchestrator'
 import { tenantWebhookKey } from '@/lib/finance/fi/gateway/webhook-keys'
 
 type Ctx = { params: Promise<{ provider: string }> }
@@ -60,6 +60,7 @@ export async function POST(req: Request, { params }: Ctx) {
 
   const raw = await req.text()
   if (raw.length > 512_000) return NextResponse.json({ success: false, error: 'Payload grande demais.' }, { status: 413 })
+  if (provider.webhookRefetch) return refetchWebhook(provider, raw, tenantScope)
   const headers: Record<string, string> = {}
   req.headers.forEach((v, k) => { headers[k.toLowerCase()] = v })
   const signed = provider.verifyWebhook(raw, headers, secret)
@@ -127,5 +128,38 @@ export async function POST(req: Request, { params }: Ctx) {
   }
   // 200 sempre que autenticado: o banco não entra em reenvio infinito; erros ficam nos Logs técnicos.
   if (xml) return new NextResponse(SOAP_ACK, { status: 200, headers: { 'Content-Type': 'text/xml; charset=utf-8' } })
+  return NextResponse.json({ success: true, results })
+}
+
+/**
+ * Provedor sem assinatura de webhook (ex.: Credere): o aviso NÃO muda nada por
+ * si — só identifica a tentativa, e o status vem de uma consulta ao provedor com
+ * a credencial da loja. Um aviso forjado, no máximo, provoca uma consulta.
+ */
+async function refetchWebhook(provider: NonNullable<ReturnType<typeof getBankProvider>>, raw: string, tenantScope: string | null) {
+  if (!tenantScope) return NextResponse.json({ success: false, error: 'Loja não informada.' }, { status: 400 })
+  let payload: unknown
+  try { payload = JSON.parse(raw) } catch { return NextResponse.json({ success: false, error: 'Payload inválido.' }, { status: 400 }) }
+  const results: { eventId: string | null; processed: boolean; duplicate?: boolean; error?: string | null }[] = []
+  for (const ev of provider.parseWebhook(payload).slice(0, 20)) {
+    const eventId = ev.eventId ?? `sha256:${createHash('sha256').update(raw).digest('hex')}`
+    const sub = ev.externalId
+      ? await prisma.financeProposalSubmission.findFirst({ where: { tenantId: tenantScope, providerId: provider.key, externalId: ev.externalId }, select: { id: true, tenantId: true } })
+      : null
+    try {
+      await prisma.financeWebhookEvent.create({
+        data: { provider: provider.key, eventId, externalId: ev.externalId, tenantId: sub?.tenantId ?? null, submissionId: sub?.id ?? null, signatureValid: false, payload: (ev.raw ?? null) as Prisma.InputJsonValue, processed: false },
+      })
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') { results.push({ eventId, processed: false, duplicate: true }); continue }
+      throw e
+    }
+    let error: string | null = sub ? null : 'Nenhuma proposta desta loja com este id.'
+    if (sub) {
+      try { await verifyAttempt(sub.id) } catch (e) { error = e instanceof FiError ? e.message : 'Falha ao consultar o provedor.' }
+    }
+    await prisma.financeWebhookEvent.updateMany({ where: { provider: provider.key, eventId }, data: { processed: !error, processedAt: new Date(), error } })
+    results.push({ eventId, processed: !error, error })
+  }
   return NextResponse.json({ success: true, results })
 }

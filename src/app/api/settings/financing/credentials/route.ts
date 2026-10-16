@@ -75,7 +75,8 @@ export async function GET(req: Request) {
     return NextResponse.json({
       success: true,
       cryptoReady: isCryptoConfigured(),
-      data: rows.map((r) => ({ ...r, bankName: r.bankId ? (bankMap[r.bankId] ?? '—') : '—', webhook: webhookFor(r.bankId) })),
+      // A conexão da Credere (reserva) tem cartão próprio na tela; não entra nesta lista.
+      data: rows.filter((r) => (r.maskedHints as Record<string, unknown> | null)?.provider !== 'credere').map((r) => ({ ...r, bankName: r.bankId ? (bankMap[r.bankId] ?? '—') : '—', webhook: webhookFor(r.bankId) })),
     })
   } catch (err) {
     return handlePrismaError(err)

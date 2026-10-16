@@ -21,14 +21,17 @@ export async function GET(req: Request) {
       where: { tenantId: auth.tenantId, adapterKey: { in: keys } }, orderBy: { createdAt: 'desc' }, take: 200, select: { adapterKey: true, createdAt: true, status: true },
     }) : []
     const data = await Promise.all(banks.map(async (b) => {
-      const r = await resolveBank(auth.tenantId, b)
+      const r = await resolveBank(auth.tenantId, b, undefined)
       const provider = getBankProvider(b.adapterKey)
       const last = lastLogs.find((l) => l.adapterKey === b.adapterKey)
       const lastAt = [last?.createdAt, r.lastTestAt].filter(Boolean).sort((x, y) => (y as Date).getTime() - (x as Date).getTime())[0] as Date | undefined
       return {
         id: b.id, name: b.name, code: b.code, active: b.active, adapterKey: b.adapterKey,
         channel: provider ? { name: provider.name, kind: provider.channel } : null,
-        state: r.state, label: CONNECTION_META[r.state].label, tone: CONNECTION_META[r.state].tone, hint: CONNECTION_META[r.state].hint,
+        state: r.state, tone: CONNECTION_META[r.state].tone,
+        label: r.via === 'CREDERE' ? 'Conectado pela Credere' : CONNECTION_META[r.state].label,
+        hint: r.via === 'CREDERE' ? 'Sem conexão direta com este banco: as propostas vão pela Credere da loja.' : CONNECTION_META[r.state].hint,
+        via: r.via,
         hasCredential: canConfig ? !!r.credentialId : undefined,
         lastCommunicationAt: lastAt?.toISOString() ?? null,
         lastTestStatus: canConfig ? r.lastTestStatus : undefined,

@@ -8,10 +8,12 @@ import {
   ItauAdapter, PanAdapter, SafraAdapter, SantanderAdapter,
 } from './banks'
 import { SandboxBankAdapter, isSandboxAllowed } from './sandbox'
+import { CredereAdapter } from './credere'
 
 const builtins: BankProvider[] = [
   new BVAdapter(), new PanAdapter(), new SantanderAdapter(), new ItauAdapter(), new SafraAdapter(),
   new C6Adapter(), new BradescoAdapter(), new DaycovalAdapter(), new AggregatorAdapter(), new SandboxBankAdapter(),
+  new CredereAdapter(),
 ]
 let providers = new Map<string, BankProvider>(builtins.map((p) => [p.key, p]))
 
@@ -23,7 +25,8 @@ export function getBankProvider(key: string | null | undefined): BankProvider | 
 /** Catálogo para a tela de Bancos (o banco de testes só fora de produção). */
 export function listBankProviders(): { key: string; name: string; channel: string }[] {
   return [...providers.values()]
-    .filter((p) => p.channel !== 'TESTE' || isSandboxAllowed())
+    // A Credere é a RESERVA automática (conexão da loja), não um canal escolhido por banco.
+    .filter((p) => p.key !== 'credere' && (p.channel !== 'TESTE' || isSandboxAllowed()))
     .map((p) => ({ key: p.key, name: p.name, channel: p.channel }))
 }
 
