@@ -3903,3 +3903,57 @@ Usuário digita a placa manualmente → política volta a AUTOMATIC
 10. Branch de falha do worker OCR (PDF) aplicava dados mas não anexava o CRLV → attachOrDefer adicionado.
 11. "Ler novamente"/re-upload duplicava o anexo a cada clique → dedupe por assinatura (evaluationId+nome+tamanho+mtime).
 Testes: 40/40 documentos reais + 12/12 regressões novas. Nota: a lente "correctness" caiu por limite de sessão do provedor; cobertura pelas 3 demais.
+
+
+---
+
+## 2026-10-17 — Claude (Opus 5.5) — Dashboards por cargo: acesso por colaborador, "Precisa da sua atenção", gargalos e novos painéis
+
+**Objetivo:** dashboards operacionais por função, mostrando **exatamente o que está liberado para cada colaborador** (pedido explícito do usuário), com dados reais, drill-down e isolamento de tenant. Evolução cirúrgica do que já existia (`src/lib/dashboard/*`, `DashboardRouter`, `/api/dashboard/*`) — nada paralelo.
+
+**Auditoria (o que já existia e foi preservado):** perfil por cargo (`dashboardProfiles`), gate por serviço da loja (`dashboardWidgets`), dashboards ricos do Vendedor (`/api/dashboard/seller`, fila, metas, ranking) e do Gerente (`/api/dashboard/manager`), Master. Permissões já no formato módulo.ação.escopo (`crm.view.own/unit/all`, `queue.*`, `ops.*`, `finance.*`) + exceção por colaborador (`UserModule`) + chavinha da loja + regras do CRM por perfil. Suporte seguro do MASTER já existe (impersonate com motivo obrigatório + `ImpersonationSession` + `AuditLog`).
+
+| Perfil | Antes | Agora | Fonte |
+|---|---|---|---|
+| Administrador / Gerente Geral | 4 KPIs + blocos com "—" | Cockpit: vendas aprovadas, faturamento/ticket, conversão, estoque (aging 0–30/31–60/61–90/+90, próprio/consignado/parceiro, imobilizado só c/ permissão de custo), preparação, CRM, financeiro, documentação veicular, entregas, unidades, ranking | Deal (regra da comissão), Vehicle, VehicleService, MarketingLead/CrmLeadVisit, FinancialEntry, VehicleOperation |
+| Gerente | ManagerDashboard | + central de atenção + "Quem pode precisar de apoio" | idem |
+| Vendedor / Líder | VendedorDashboard | + central de atenção (leads sem contato com SLA progressivo, retornos atrasados, negociações devolvidas, entregas); líder: apoio à equipe | idem |
+| SDR / Marketing | itens "Dados ainda não disponíveis" | visitas do dia, no-show, contatos feitos, tempo até 1º contato, veículo mais procurado | CrmLeadVisit, CrmLeadInteraction, MarketingLeadAssignment |
+| Documentação (novo) | caía em "Auxiliar" | transferências abertas/paradas, RENAVE, notas, restrições, **saúde documental**, contratos/assinaturas, entregas | VehicleOperation (mesmos filtros de /operacoes) |
+| Preparação (novo: preparador, estética, lavador) | — | veículos em preparação, serviços atrasados/hoje/concluídos, custo previsto×realizado (só c/ permissão) | VehicleService (prep-core) |
+| Pós-venda (novo) | — | aguardando entrega, atrasadas, hoje, entregues, pós-venda na fila | Deal.deliveryDate, SellerQueuePosVenda |
+| Financeiro / F&I | blocos genéricos | + central reaproveitando `computeAlerts` (financeiro) e o "Precisa da sua atenção" do F&I (funding: "banco aprovou ≠ dinheiro na conta") | finance/alerts, finance/fi/dashboard |
+
+**Arquitetura (arquivos):**
+- `src/lib/dashboard/access.ts` — acesso EFETIVO do colaborador (loja desligou → bloqueia, inclusive ancestral; exceção individual vence; regra do CRM da loja; papel/chavinha). 1 leva de consultas, avaliação em memória.
+- `src/lib/dashboard/context.ts` — contexto + filtros por escopo (SELF/UNIT/TENANT) extraídos do getDashboardData; fonte única p/ dashboard e central.
+- `src/lib/dashboard/sources.ts` — WHERE compartilhados (estoque = critério do relatório de parados; transferência aberta/parada = /operacoes; serviço atrasado = prep-core).
+- `src/lib/dashboard/attention-core.ts` + `attention.ts` — central "Precisa da sua atenção": severidade (CRÍTICO/IMPORTANTE/ATENÇÃO/INFORMATIVO), gavetas (críticas/atrasadas/hoje/aguardando terceiros/próximas), dedupe, ordem, drill-down. Áreas = trabalho do cargo ∩ acesso efetivo. Falha de uma área não derruba as outras (`failedAreas`).
+- `src/lib/dashboard/insights-core.ts` + `insights.ts` — tempo entre etapas (lead→1º contato, comparecimento em visitas, ciclo de serviço de preparação, contrato→funding), 30d vs 30d anteriores, amostra mínima 5 ("Ainda não há dados suficientes"), "maior gargalo" = o que mais piorou (≥15%).
+- `src/lib/dashboard/team-core.ts` + `team.ts` — "Quem pode precisar de apoio" (líder/gerência): sinais objetivos, linguagem de coaching, sem dado financeiro de colegas; agregações groupBy (sem N+1).
+- `src/app/api/dashboard/attention/route.ts` — 1 chamada para atenção + gargalos + equipe.
+- `src/components/dashboard/AttentionPanel.tsx` — bloco do topo de TODOS os dashboards (skeleton, erro com "tentar de novo", vazio "Tudo em dia", atualização a cada 2 min só com a aba visível).
+- `getDashboardData.ts` — usa contexto/acesso; plano de carga só consulta o que o colaborador pode ver; novos blocos (estoque, preparação, documentação veicular, entregas); builders novos (executivo, documentação, preparação, pós-venda).
+- `dashboardWidgets.ts` — gate por módulo do colaborador por href/widget (`MODULES_BY_HREF`/`MODULES_BY_WIDGET`), seção que fica vazia por permissão some; `applyAccessToLoadPlan`.
+- `dashboardProfiles.ts`/`types.ts` — perfis DOCUMENTACAO, PREPARACAO, POS_VENDA (pelo cargo); "Tenant" → "Toda a loja".
+
+**Bugs corrigidos (contagens):**
+1. Valor vendido, vendas por unidade, consignações, compras: usavam só FINALIZADA/ENTREGUE → agora a regra da comissão/ranking (`commissionEligibleDealWindowWhere`: conta da APROVAÇÃO). A finalização segue só operacional.
+2. Leads excluídos (soft delete `deletedAt`) entravam nos números.
+3. Pendências excluídas (`[EXCLUIDA]`) entravam nos números.
+4. F&I do vendedor filtrava `FinanceProposal.sellerId` (Seller.id) com User.id → zerado. Agora = escopo do módulo F&I (criou OU vendedor).
+5. Estoque: carro de parceiro (também CONSIGNADO) era contado 2×.
+6. Cartões de seção estouravam a largura no celular (grid sem `min-w-0`).
+7. "canSeeFinancial/canSeeRanking" passaram a considerar a exceção individual (antes só o papel).
+
+**Migrations:** nenhuma. **APIs:** nova `GET /api/dashboard/attention`; `/api/dashboard/summary` mesmo contrato (+ seções novas).
+
+**Testes:** `npm test` 1498 ✓ (93 skipped pré-existentes). Novos: `access.test.ts`, `attention-core.test.ts`, `insights-core.test.ts`, `role-dashboards.test.ts` (isolamento de tenant em 13 perfis; vendedor só Seller.id; sem vínculo = nada; bloqueio individual tira área até do ADM; módulo desligado some p/ todos; widget financeiro some sem `finance`; plano de carga não consulta o negado). `tsc --noEmit` limpo; ESLint 0 erros nos arquivos novos (2 erros `set-state-in-effect` PRÉ-EXISTENTES em DashboardRouter:315 e ManagerDashboard:239 — não mascarados). Verificação local (banco 5434, cópia da Neon): dashboard + central montados para os 23 usuários ativos, 0 falhas, <0,5 s; navegador como ADM de teste (só local): bloco renderiza, bloqueio individual de `finance` remove seção/itens/valores no servidor, mobile 375px sem estouro, todas as rotas de drill-down existem.
+
+**Riscos / limitações / pendências (não inventei dado nem tabela):**
+- **Não existem models** para: tarefas de motorista, limpeza/faxina, seguros (cotação/apólice/renovação) e contatos D+N/satisfação de pós-venda. Esses perfis caem no painel operacional (pendências + o que o acesso liberar). Precisam de definição de regra + migration (fase própria).
+- Funil de marketing com investimento/CPL/ROAS: sem dado de investimento no sistema → não exibido (sem atribuição inventada).
+- "Tempo até 1º contato" depende de interação registrada (ligação/WhatsApp/e-mail) ou resposta à atribuição; com pouca amostra mostra "Sem dados suficientes".
+- Resumo "inteligente" é determinístico (regras sobre dados reais), sem LLM; a IA não executa ação nenhuma a partir do dashboard.
+- Filtros globais de período/unidade no dashboard: não feitos nesta etapa (período = mês atual; drill-down leva às telas que já têm filtro).
+- Impersonação do MASTER hoje só troca o banner no navegador (sessão do servidor continua MASTER) — avaliar sessão de suporte com expiração.
