@@ -1078,74 +1078,71 @@
 .autodrive-site .banner-carousel {
   position: relative;
   width: 100%;
-  aspect-ratio: 3 / 1;
   overflow: hidden;
   background: var(--dark);
 }
+/* Todas as artes no mesmo lugar (grid) e troca com fade; a altura acompanha a
+   arte, sem tarja vazia em cima/embaixo. */
+.autodrive-site .banner-track { display: grid; }
 .autodrive-site .banner-slide {
+  grid-area: 1 / 1;
+  align-self: center;
   display: block;
   width: 100%;
-  height: 100%;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .7s ease, visibility .7s;
 }
+.autodrive-site .banner-slide.is-active { opacity: 1; visibility: visible; }
 .autodrive-site .banner-slide img {
+  display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-@media (max-width: 760px) {
-.autodrive-site .banner-carousel { aspect-ratio: 2 / 1; }
-.autodrive-site .banner-slide img { object-position: left center; }
-
-
+  height: auto;
 }
 .autodrive-site .mapa-acoes { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 18px; }
 .autodrive-site .mapa-embutido { border: 0; border-radius: 14px; display: block; }
 .autodrive-site .footer-mapas { display: flex; gap: 14px; font-size: .86rem; }
 .autodrive-site .footer-mapas a { color: var(--brand-bright); font-weight: 700; text-decoration: underline; }
-.autodrive-site .banner-nav {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  background: rgba(255,255,255,0.15);
-  backdrop-filter: blur(4px);
-  border: none;
-  color: #fff;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  font-size: 1.8rem;
-  cursor: pointer;
+/* Faixa de controles abaixo da arte: ‹  • • • •  › */
+.autodrive-site .banner-controls {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 3;
-  transition: background 0.15s;
+  gap: 18px;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  background: color-mix(in srgb, var(--dark) 92%, #000);
 }
-.autodrive-site .banner-nav:hover { background: rgba(255,255,255,0.3); }
-.autodrive-site .banner-prev { left: 16px; }
-.autodrive-site .banner-next { right: 16px; }
-.autodrive-site .banner-dots {
-  position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 8px;
-  z-index: 3;
-}
-.autodrive-site .banner-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.7);
-  background: transparent;
-  cursor: pointer;
+.autodrive-site .banner-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
   padding: 0;
-  transition: background 0.2s;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(255,255,255,.06);
+  cursor: pointer;
+  transition: background .2s, border-color .2s, transform .2s;
 }
-.autodrive-site .banner-dot.active, .autodrive-site .banner-dot:hover {
-  background: #fff;
+.autodrive-site .banner-nav svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.autodrive-site .banner-nav:hover { background: var(--brand); border-color: var(--brand); transform: scale(1.06); }
+.autodrive-site .banner-nav:focus-visible, .autodrive-site .banner-dot:focus-visible { outline: 2px solid var(--brand-soft); outline-offset: 2px; }
+.autodrive-site .banner-dots { display: flex; align-items: center; gap: 8px; }
+.autodrive-site .banner-dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255,255,255,.35);
+  cursor: pointer;
+  transition: width .3s ease, background .2s;
 }
+.autodrive-site .banner-dot:hover { background: rgba(255,255,255,.7); }
+.autodrive-site .banner-dot.active { width: 26px; background: #fff; }
 .autodrive-site .header-actions {
   display: flex;
   align-items: center;
@@ -1227,9 +1224,6 @@
 @media (max-width: 760px) {
 .autodrive-site .banner-settings { grid-template-columns: 1fr; align-items: stretch; }
 .autodrive-site .banner-settings input { max-width: none; }
-.autodrive-site .banner-nav { width: 36px; height: 36px; font-size: 1.4rem; }
-.autodrive-site .banner-prev { left: 8px; }
-.autodrive-site .banner-next { right: 8px; }
 
 
 }
@@ -1974,13 +1968,11 @@
 .autodrive-site input, .autodrive-site select, .autodrive-site textarea { border-radius: 6px; border-color: color-mix(in srgb, var(--brand) 16%, #b9bfc9); }
 .autodrive-site .eyebrow { color: var(--blue); font-size: .76rem; }
 .autodrive-site .home-hero { min-height: 0; padding-block: 28px 30px; color: white; background: #062936; }
-.autodrive-site .hero-grid { display: grid; grid-template-columns: minmax(0, .86fr) minmax(420px, 1.14fr); align-items: center; gap: clamp(28px, 5vw, 58px); }
+.autodrive-site .hero-grid { display: grid; grid-template-columns: minmax(0, .62fr) minmax(480px, 1.38fr); align-items: center; gap: clamp(28px, 5vw, 58px); }
 .autodrive-site .hero-content { padding-block: 0; }
 .autodrive-site .hero-content h1 { max-width: 520px; font-size: clamp(2.7rem, 5vw, 4.4rem); }
 .autodrive-site .hero-content > p:not(.eyebrow) { max-width: 510px; }
 .autodrive-site .hero-banner-frame { min-width: 0; overflow: hidden; border: 1px solid color-mix(in srgb, var(--brand-soft) 55%, transparent); border-radius: 18px; background: var(--dark); box-shadow: 0 18px 42px rgba(0, 0, 0, .2); }
-.autodrive-site .hero-banner-frame .banner-carousel { aspect-ratio: 2 / 1; }
-.autodrive-site .hero-banner-frame .banner-slide img { object-fit: contain; }
 .autodrive-site .home-services { background: white; border-block: 1px solid var(--line); }
 .autodrive-site .section-intro { margin: 8px 0 0; color: var(--muted); }
 .autodrive-site .service-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
@@ -2121,7 +2113,7 @@
 @media (max-width: 1180px) {
 .autodrive-site .home-journeys { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .autodrive-site .vehicle-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.autodrive-site .hero-grid { grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr); gap: 28px; }
+.autodrive-site .hero-grid { grid-template-columns: minmax(0, .85fr) minmax(400px, 1.15fr); gap: 28px; }
 
 
 }
@@ -2132,7 +2124,7 @@
 .autodrive-site .footer-cta .button { margin-left: 0; }
 .autodrive-site .hero-grid { grid-template-columns: 1fr; }
 .autodrive-site .hero-content { padding-bottom: 4px; }
-.autodrive-site .hero-banner-frame { max-width: 680px; width: 100%; }
+.autodrive-site .hero-banner-frame { width: 100%; }
 .autodrive-site .home-partner-grid, .autodrive-site .home-faq-location { grid-template-columns: 1fr; }
 
 
@@ -2144,14 +2136,8 @@
 .autodrive-site .header-actions { display: none; }
 .autodrive-site .mobile-menu { margin-left: auto; }
 .autodrive-site .home-hero { min-height: 0; padding-block: 32px 34px; }
-.autodrive-site .banner-carousel { aspect-ratio: auto; }
-.autodrive-site .hero-banner-frame .banner-carousel { aspect-ratio: auto; }
-.autodrive-site .banner-carousel:has(.banner-dots) { padding-bottom: 36px; }
-.autodrive-site .banner-slide { height: auto; aspect-ratio: 3 / 1; }
-.autodrive-site .banner-slide img { height: auto; aspect-ratio: 3 / 1; object-fit: contain; object-position: center; }
-.autodrive-site .banner-nav { top: auto; bottom: 4px; transform: none; width: 28px; height: 28px; border-radius: 6px; font-size: 1.4rem; }
-.autodrive-site .banner-dots { bottom: 12px; }
-.autodrive-site .banner-dot { width: 9px; height: 9px; border-width: 1px; }
+.autodrive-site .banner-controls { gap: 14px; padding: 9px 12px; }
+.autodrive-site .banner-nav { width: 30px; height: 30px; }
 .autodrive-site .hero-content { padding-block: 0; }
 .autodrive-site .hero-content h1 { font-size: 2.35rem; }
 .autodrive-site .hero-content > p:not(.eyebrow) { font-size: 1rem; }
