@@ -158,7 +158,18 @@ export class BankGatewayError extends Error {
     readonly code: GatewayErrorCode,
     /** O pedido pode ter chegado ao banco? 'NAO' permite tentar de novo; 'TALVEZ' exige verificar antes. */
     readonly delivered: 'NAO' | 'TALVEZ' = 'NAO',
+    /** Limite de chamadas do provedor (HTTP 429): tentar de novo depois deste tempo. Não é falha. */
+    readonly retryAfterMs: number | null = null,
   ) { super(message); this.name = 'BankGatewayError' }
+}
+
+/** "Retry-After" em segundos ou data HTTP → ms (padrão 15 min; entre 1 min e 6 h). */
+export function retryAfterMs(header: string | null | undefined, now = Date.now()): number {
+  const v = (header ?? '').trim()
+  let ms = 15 * 60_000
+  if (/^\d+$/.test(v)) ms = Number(v) * 1000
+  else if (v) { const t = Date.parse(v); if (Number.isFinite(t)) ms = t - now }
+  return Math.min(6 * 3_600_000, Math.max(60_000, ms))
 }
 export const notIntegrated = () => new BankGatewayError('Banco ainda não integrado.', 'NAO_INTEGRADO')
 export const notSupported = (what: string) => new BankGatewayError(`Este banco não oferece ${what} pela integração.`, 'NAO_SUPORTADO')

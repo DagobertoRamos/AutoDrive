@@ -8,15 +8,18 @@
 // Jornada: lead (cria/atualiza) → modelo do veículo pela FIPE → simulação no
 // banco escolhido (assíncrona: consulta até terminar) → cliente (ficha completa)
 // → proposta com a condição escolhida → "analyze" (envia ao banco).
-// Andamento: consulta da tentativa (GET) — o webhook da Credere não tem
-// assinatura documentada, então o aviso só dispara uma nova consulta.
+// Andamento: consulta da tentativa (GET). O aviso (webhook) só dispara uma nova
+// consulta; com a URL cadastrada na Credere ele vem assinado (X-Credere-Signature,
+// secret da loja) e aviso sem assinatura válida é recusado. HTTP 429 = limite de
+// consultas do contrato: vira "tentar de novo depois", nunca recusa.
 //
 // Montadores e conversões são puros e exportados (testados em credere.test.ts).
 // =============================================================================
 
+import { createHmac, timingSafeEqual } from 'node:crypto'
 import { NotIntegratedBank } from './base'
 import {
-  BankGatewayError,
+  BankGatewayError, retryAfterMs,
   type ApplicantPayload, type BankCapabilities, type BankChannel, type BankContext, type BankDecision, type BankOffer,
   type FundingInfo, type ProposalTerms, type WebhookEvent,
 } from './types'
@@ -306,6 +309,24 @@ export function splitAttemptKey(externalId: string): { proposalId: string; attem
   return { proposalId: digits(p), attemptId: digits(t) }
 }
 
+/**
+ * Assinatura do webhook da Credere (URL cadastrada no formulário da loja na Credere;
+ * cada URL tem um secret próprio). Cabeçalho X-Credere-Signature: "t=<epoch s>,v1=<hex>",
+ * v1 = HMAC-SHA256("{t}.{corpo bruto}", secret). Recusa assinatura com mais de 5 min
+ * (ou do futuro) para impedir reenvio de um aviso capturado.
+ */
+export const CREDERE_SIGNATURE_TOLERANCE_S = 300
+export function verifyCredereSignature(rawBody: string, header: string | null | undefined, secret: string, nowMs = Date.now()): boolean {
+  if (!header || !secret) return false
+  const parts = Object.fromEntries(header.split(',').map((p) => { const i = p.indexOf('='); return i > 0 ? [p.slice(0, i).trim(), p.slice(i + 1).trim()] : [p.trim(), ''] }))
+  const t = parts.t
+  const v1 = (parts.v1 ?? '').toLowerCase()
+  if (!/^\d{9,12}$/.test(t ?? '') || !/^[0-9a-f]{64}$/.test(v1)) return false
+  if (Math.abs(Math.floor(nowMs / 1000) - Number(t)) > CREDERE_SIGNATURE_TOLERANCE_S) return false
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex')
+  return timingSafeEqual(Buffer.from(expected, 'utf8'), Buffer.from(v1, 'utf8'))
+}
+
 /** Do aviso (webhook), só a identificação da tentativa — o status vem da consulta. */
 export function parseCredereWebhook(payload: unknown): WebhookEvent[] {
   if (!payload || typeof payload !== 'object') return []
@@ -315,7 +336,9 @@ export function parseCredereWebhook(payload: unknown): WebhookEvent[] {
   const proposalId = digits(at.proposal_id ?? p.proposal_id ?? (p.complete_proposal as Record<string, unknown> | undefined)?.id ?? (at.proposal as Record<string, unknown> | undefined)?.id)
   if (!attemptId || !proposalId) return []
   const externalId = attemptKey(proposalId, attemptId)
-  return [{ eventId: `credere:${externalId}:${str(at.state)}:${str(at.updated_at)}`, externalId, decision: null, raw: { proposalId, attemptId, state: at.state ?? null } }]
+  // A Credere manda "event_id" em todo aviso (igual em todas as cópias do mesmo evento): deduplica por ele.
+  const eventId = typeof p.event_id === 'string' || typeof p.event_id === 'number' ? `credere:ev:${p.event_id}` : `credere:${externalId}:${str(at.state)}:${str(at.updated_at)}`
+  return [{ eventId, externalId, decision: null, raw: { proposalId, attemptId, state: at.state ?? null } }]
 }
 
 // ── Transporte (token da loja, renovação automática) ─────────────────────────
@@ -372,6 +395,8 @@ export async function credereRequest<T>(ctx: BankContext, r: Req): Promise<T | n
       throw new BankGatewayError(timeout ? 'A Credere não respondeu a tempo.' : 'Não foi possível falar com a Credere agora.', timeout ? 'TEMPO_ESGOTADO' : 'INDISPONIVEL', r.idempotent || r.method === 'GET' ? 'NAO' : 'TALVEZ')
     }
     if (res.status === 401 && attempt === 0) { token = await refreshToken(ctx); continue }
+    // Limite de consultas por hora/dia do contrato: a chamada não foi processada.
+    if (res.status === 429) throw new BankGatewayError('A Credere atingiu o limite de consultas da loja. Tentamos de novo automaticamente.', 'INDISPONIVEL', 'NAO', retryAfterMs(res.headers.get('retry-after')))
     const body = await res.json().catch(() => null)
     if (res.status === 404 && r.allow404) return null
     if (res.status === 401 || res.status === 403) throw new BankGatewayError(credereErrorMessage(body) ?? 'A Credere recusou o acesso da loja. Conecte de novo em Configurações › F&I.', 'CREDENCIAL')
@@ -495,8 +520,9 @@ export class CredereAdapter extends NotIntegratedBank {
       : (await credereRequest<{ customer?: { id?: number } }>(ctx, { method: 'POST', path: '/v1/customers', body, idempotent: true }))?.customer
     if (!customer?.id) throw new BankGatewayError('A Credere não devolveu o cadastro do cliente.', 'INDISPONIVEL')
 
+    // Com a URL cadastrada na Credere (aviso ASSINADO), não pede o aviso sem assinatura pelo corpo da proposta.
     const origin = (process.env.NEXTAUTH_URL || '').replace(/\/+$/, '')
-    const webhookUrl = origin.startsWith('https://') ? `${origin}/api/webhook/financing/credere?l=${encodeURIComponent(ctx.tenantId)}` : undefined
+    const webhookUrl = origin.startsWith('https://') && !ctx.credentials.webhookSecret ? `${origin}/api/webhook/financing/credere?l=${encodeURIComponent(ctx.tenantId)}` : undefined
     // Criar a proposta NÃO é idempotente: falha de rede aqui vira "verificar".
     const created = await credereRequest<{ complete_proposal?: { id?: number; proposal_attempt?: CredereAttempt } }>(ctx, {
       method: 'POST', path: '/v1/proposals',
@@ -511,13 +537,20 @@ export class CredereAdapter extends NotIntegratedBank {
     if (!prop?.id || !prop.proposal_attempt?.id) throw new BankGatewayError('A Credere não devolveu a proposta criada.', 'INDISPONIVEL', 'TALVEZ')
     const externalId = attemptKey(prop.id, prop.proposal_attempt.id)
     // Envia ao banco ("analyze"). Se falhar, a proposta já existe: vira consulta.
+    let limited = false
     const analyzed = await credereRequest<{ proposal_attempt?: CredereAttempt }>(ctx, { method: 'GET', path: `/v1/proposals/${prop.id}/proposal_attempts/${prop.proposal_attempt.id}/analyze`, idempotent: true })
-      .catch((e) => { if (e instanceof BankGatewayError && e.code === 'REJEITADO') throw reject(`A Credere não enviou ao banco: ${e.message}`); return null })
+      .catch((e) => {
+        if (e instanceof BankGatewayError && e.code === 'REJEITADO') throw reject(`A Credere não enviou ao banco: ${e.message}`)
+        if (e instanceof BankGatewayError && e.retryAfterMs != null) limited = true
+        return null
+      })
     const d = analyzed?.proposal_attempt ? decisionFromAttempt(externalId, analyzed.proposal_attempt) : null
     return {
       externalId, requestId: d?.requestId ?? externalId,
       status: d && d.status !== 'ENVIADA' ? d.status : 'EM_ANALISE',
-      reason: d?.reason ?? `Proposta ${prop.id} enviada ao banco pela Credere.`,
+      reason: d?.reason ?? (limited
+        ? `Proposta ${prop.id} criada na Credere, mas o limite de consultas impediu o envio ao banco agora. Confira o envio no painel da Credere.`
+        : `Proposta ${prop.id} enviada ao banco pela Credere.`),
       offer: offerFromCondition(ev.ok),
     }
   }
@@ -552,7 +585,10 @@ export class CredereAdapter extends NotIntegratedBank {
     await credereRequest(ctx, { method: 'GET', path: '/v1/users/current' })
   }
 
-  /** Sem assinatura documentada: aceita o aviso, mas ele só dispara uma consulta (webhookRefetch). */
+  /**
+   * O aviso nunca muda a proposta por si: só dispara uma consulta (webhookRefetch).
+   * A assinatura (secret da loja) é conferida na rota do webhook — ver verifyCredereSignature.
+   */
   verifyWebhook(): boolean { return false }
   parseWebhook(payload: unknown): WebhookEvent[] { return parseCredereWebhook(payload) }
 }

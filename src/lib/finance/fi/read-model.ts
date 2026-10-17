@@ -78,6 +78,8 @@ export async function buildProposalView(proposalId: string, perms: Perms) {
     returnPercent: seeReturn ? num(s.returnPercent) : undefined,
     returnValue: seeReturn && s.returnPercent != null ? Math.round((num(s.approvedAmount) ?? amount ?? 0) * Number(s.returnPercent)) / 100 : undefined,
     pendingItems: Array.isArray(s.pendingItems) ? s.pendingItems : [],
+    /** Na fila pelo limite do canal: quando o envio será repetido. */
+    retryAt: s.status === 'ENVIANDO' ? ((s.requestPayload as { retryAt?: string } | null)?.retryAt ?? null) : null,
     terms: s.terms ?? null,
   })
   const banks = [...byBank.entries()].map(([bankId, list]) => {

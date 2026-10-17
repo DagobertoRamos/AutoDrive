@@ -43,7 +43,8 @@ export default function FichaView({ id }: { id: string }) {
   }, [id])
   useEffect(() => { const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [load])
 
-  const waitingBank = !!view?.banks.some((b) => ['ENVIANDO', 'VERIFICANDO'].includes(b.current.status))
+  // Atualiza sozinho só enquanto há resposta a caminho (envio na fila por limite do canal espera a rotina).
+  const waitingBank = !!view?.banks.some((b) => ['ENVIANDO', 'VERIFICANDO'].includes(b.current.status) && !b.current.retryAt)
   useEffect(() => {
     if (!waitingBank) return
     const t = setInterval(load, 4000)

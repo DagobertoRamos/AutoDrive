@@ -1,6 +1,7 @@
 // =============================================================================
 // F&I — rotina periódica (cron). Nunca reenvia proposta às cegas:
 //   1. ENVIANDO travado (processo caiu no meio) → VERIFICANDO.
+//      ENVIANDO na fila por limite do canal (HTTP 429) → reenvia na hora marcada.
 //   2. VERIFICANDO → consulta o banco (quando a integração permite).
 //   2b. Em análise (enviada/em análise/pendente/pré-aprovada) por API num banco
 //       que permite consulta e não avisa por webhook → consulta (a cada 1 h).
@@ -13,17 +14,33 @@
 
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { applyDecision, verifyAttempt, FiError } from './orchestrator'
+import { applyDecision, dispatchAttempt, verifyAttempt, FiError, type DispatchMeta } from './orchestrator'
 import { purgeExpiredDocuments } from './documents'
 import { alertStalledSiteSimulations, runSiteAutoSimulation } from './site-auto'
 import { readResult } from './site-auto-core'
 import { getBankProvider, listBankProviders } from './gateway/registry'
 
-export async function runFiJobs(now = new Date()) {
-  const out = { stuck: 0, verified: 0, verifyErrors: 0, polled: 0, expired: 0, purged: 0, siteRetried: 0, siteStalledAlerts: 0 }
+/** Envio parado em ENVIANDO: na fila do limite do canal (aguardar/reenviar) ou travado (verificar). */
+export function stuckAction(requestPayload: unknown, now: Date): 'VERIFICAR' | 'AGUARDAR' | 'REENVIAR' {
+  const retryAt = (requestPayload as DispatchMeta | null)?.retryAt
+  if (!retryAt) return 'VERIFICAR'
+  const t = Date.parse(retryAt)
+  return Number.isFinite(t) && t > now.getTime() ? 'AGUARDAR' : 'REENVIAR'
+}
 
-  const stuck = await prisma.financeProposalSubmission.findMany({ where: { status: 'ENVIANDO', submittedAt: { lt: new Date(now.getTime() - 2 * 60_000) } }, select: { id: true }, take: 100 })
+export async function runFiJobs(now = new Date()) {
+  const out = { stuck: 0, requeued: 0, verified: 0, verifyErrors: 0, polled: 0, expired: 0, purged: 0, siteRetried: 0, siteStalledAlerts: 0 }
+
+  const stuck = await prisma.financeProposalSubmission.findMany({ where: { status: 'ENVIANDO', submittedAt: { lt: new Date(now.getTime() - 2 * 60_000) } }, select: { id: true, requestPayload: true }, take: 100 })
   for (const s of stuck) {
+    const action = stuckAction(s.requestPayload, now)
+    if (action === 'AGUARDAR') continue
+    if (action === 'REENVIAR') {
+      // Na fila pelo limite do canal: o pedido não chegou ao banco — reenviar é seguro (poucos por rodada).
+      if (out.requeued >= 3) continue
+      try { await dispatchAttempt(s.id); out.requeued++ } catch (e) { console.error('[fi/jobs] fila', s.id, e instanceof Error ? e.message : e) }
+      continue
+    }
     try { await applyDecision(s.id, { status: 'VERIFICANDO', reason: 'Verificando resposta do banco.' }, { source: 'SISTEMA' }); out.stuck++ } catch (e) { console.error('[fi/jobs] travada', s.id, e instanceof Error ? e.message : e) }
   }
 

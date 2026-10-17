@@ -22,10 +22,12 @@ import { createHash } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { secretsMatch, extractWebhookFields, mapProviderStatus } from '@/lib/finance/webhook-service'
-import { getBankProvider } from '@/lib/finance/fi/gateway/registry'
+import { currentFiEnvironment, getBankProvider } from '@/lib/finance/fi/gateway/registry'
 import type { WebhookEvent } from '@/lib/finance/fi/gateway/types'
 import { advancePostApproval, applyDecision, FiError, verifyAttempt } from '@/lib/finance/fi/orchestrator'
 import { tenantWebhookKey } from '@/lib/finance/fi/gateway/webhook-keys'
+import { verifyCredereSignature } from '@/lib/finance/fi/gateway/credere'
+import { findCredereConnection } from '@/lib/finance/fi/gateway/credere-connection'
 
 type Ctx = { params: Promise<{ provider: string }> }
 const SYSTEM_ACTOR = { id: 'sistema', name: 'Banco (webhook)', role: 'MASTER' }
@@ -60,7 +62,7 @@ export async function POST(req: Request, { params }: Ctx) {
 
   const raw = await req.text()
   if (raw.length > 512_000) return NextResponse.json({ success: false, error: 'Payload grande demais.' }, { status: 413 })
-  if (provider.webhookRefetch) return refetchWebhook(provider, raw, tenantScope)
+  if (provider.webhookRefetch) return refetchWebhook(provider, raw, tenantScope, req.headers)
   const headers: Record<string, string> = {}
   req.headers.forEach((v, k) => { headers[k.toLowerCase()] = v })
   const signed = provider.verifyWebhook(raw, headers, secret)
@@ -132,12 +134,23 @@ export async function POST(req: Request, { params }: Ctx) {
 }
 
 /**
- * Provedor sem assinatura de webhook (ex.: Credere): o aviso NÃO muda nada por
- * si — só identifica a tentativa, e o status vem de uma consulta ao provedor com
- * a credencial da loja. Um aviso forjado, no máximo, provoca uma consulta.
+ * Provedor cujo aviso só dispara consulta (ex.: Credere): o aviso NÃO muda nada
+ * por si — só identifica a tentativa, e o status vem de uma consulta ao provedor
+ * com a credencial da loja. Credere com secret cadastrado pela loja: só aceita
+ * aviso assinado e recente (senão 401), o que evita gastar o limite de consultas.
  */
-async function refetchWebhook(provider: NonNullable<ReturnType<typeof getBankProvider>>, raw: string, tenantScope: string | null) {
+async function refetchWebhook(provider: NonNullable<ReturnType<typeof getBankProvider>>, raw: string, tenantScope: string | null, headers: Headers) {
   if (!tenantScope) return NextResponse.json({ success: false, error: 'Loja não informada.' }, { status: 400 })
+  // Credere: com o secret da URL cadastrado pela loja, só aceita aviso assinado (e recente).
+  let signatureValid = false
+  if (provider.key === 'credere') {
+    const conn = await findCredereConnection(tenantScope, currentFiEnvironment())
+    const secret = conn?.readable ? conn.credentials.webhookSecret ?? '' : ''
+    if (secret) {
+      if (!verifyCredereSignature(raw, headers.get('x-credere-signature'), secret)) return NextResponse.json({ success: false, error: 'Não autorizado.' }, { status: 401 })
+      signatureValid = true
+    }
+  }
   let payload: unknown
   try { payload = JSON.parse(raw) } catch { return NextResponse.json({ success: false, error: 'Payload inválido.' }, { status: 400 }) }
   const results: { eventId: string | null; processed: boolean; duplicate?: boolean; error?: string | null }[] = []
@@ -148,11 +161,14 @@ async function refetchWebhook(provider: NonNullable<ReturnType<typeof getBankPro
       : null
     try {
       await prisma.financeWebhookEvent.create({
-        data: { provider: provider.key, eventId, externalId: ev.externalId, tenantId: sub?.tenantId ?? null, submissionId: sub?.id ?? null, signatureValid: false, payload: (ev.raw ?? null) as Prisma.InputJsonValue, processed: false },
+        data: { provider: provider.key, eventId, externalId: ev.externalId, tenantId: sub?.tenantId ?? null, submissionId: sub?.id ?? null, signatureValid, payload: (ev.raw ?? null) as Prisma.InputJsonValue, processed: false },
       })
     } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') { results.push({ eventId, processed: false, duplicate: true }); continue }
-      throw e
+      if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')) throw e
+      // Mesmo event_id de novo: já aplicado → ignora; falhou antes (ex.: limite de consultas) → consulta de novo.
+      const prev = await prisma.financeWebhookEvent.findUnique({ where: { provider_eventId: { provider: provider.key, eventId } }, select: { id: true, processed: true } })
+      if (!prev || prev.processed) { results.push({ eventId, processed: false, duplicate: true }); continue }
+      await prisma.financeWebhookEvent.update({ where: { id: prev.id }, data: { tenantId: sub?.tenantId ?? null, submissionId: sub?.id ?? null, signatureValid } })
     }
     let error: string | null = sub ? null : 'Nenhuma proposta desta loja com este id.'
     if (sub) {

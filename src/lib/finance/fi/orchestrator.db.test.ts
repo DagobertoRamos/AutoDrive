@@ -28,7 +28,7 @@ import {
 import { syncDealFinance } from '@/lib/finance/deal-finance-sync'
 
 // ── Banco falso controlável (canal TESTE: só existe em testes) ────────────────
-type Behaviour = 'aprova' | 'recusa' | 'pendencia' | 'lento' | 'fora' | 'sem_resposta'
+type Behaviour = 'aprova' | 'recusa' | 'pendencia' | 'lento' | 'fora' | 'sem_resposta' | 'limite'
 class FakeBank extends NotIntegratedBank {
   readonly channel: BankChannel = 'TESTE'
   readonly capabilities: BankCapabilities = { simulate: false, preAnalyze: false, submit: true, update: true, status: true, documents: false, formalize: false, contract: false, funding: false, cancel: true, webhook: true }
@@ -42,6 +42,7 @@ class FakeBank extends NotIntegratedBank {
     if (this.behaviour === 'lento') await new Promise((r) => setTimeout(r, 400))
     if (this.behaviour === 'fora') throw new BankGatewayError('O banco está fora do ar.', 'INDISPONIVEL', 'NAO')
     if (this.behaviour === 'sem_resposta') throw new BankGatewayError('Sem resposta.', 'TEMPO_ESGOTADO', 'TALVEZ')
+    if (this.behaviour === 'limite') throw new BankGatewayError('Limite de consultas do canal.', 'INDISPONIVEL', 'NAO', 120_000)
     const d: BankDecision = this.behaviour === 'recusa'
       ? { externalId: `EXT-${ctx.idempotencyKey}`, status: 'RECUSADA', reason: 'Política de crédito.' }
       : this.behaviour === 'pendencia'
@@ -377,6 +378,35 @@ describe.runIf(!!DB)('F&I Core — orquestrador (Postgres real)', () => {
     await dispatchAttempt(r2.dispatch[0])
     await selectOffer(id2, r2.dispatch[0], actor)
     await expect(requestFormalizationLink(id2, actor)).rejects.toMatchObject({ code: 'SEM_FORMALIZACAO' })
+  })
+
+  it('limite de consultas do canal (429): fica na fila e repete sozinho, sem marcar falha', async () => {
+    const id = await newProposal()
+    fast.behaviour = 'limite'
+    const res = await sendToBanks({ proposalId: id, bankIds: [ids.bankA], idempotencyKey: `k-${randomUUID()}`, actor, consent })
+    expect(await dispatchAttempt(res.dispatch[0])).toBe('ENVIANDO')
+    let sub = await prisma.financeProposalSubmission.findUniqueOrThrow({ where: { id: res.dispatch[0] } })
+    const meta = sub.requestPayload as { retryAt?: string; retries?: number }
+    expect(meta.retries).toBe(1)
+    expect(Date.parse(meta.retryAt!)).toBeGreaterThan(Date.now() + 60_000)
+    expect(sub.statusReason).toMatch(/Na fila/)
+    // Rotina: antes da hora aguarda (não vira "Verificando"); depois reenvia; sem fila, verifica.
+    const { stuckAction } = await import('./jobs')
+    expect(stuckAction(sub.requestPayload, new Date())).toBe('AGUARDAR')
+    expect(stuckAction(sub.requestPayload, new Date(Date.now() + 3 * 60_000))).toBe('REENVIAR')
+    expect(stuckAction({ correlationId: 'x' }, new Date())).toBe('VERIFICAR')
+    // Na hora marcada, com o canal liberado, o envio sai normalmente.
+    await prisma.financeProposalSubmission.update({ where: { id: sub.id }, data: { requestPayload: { ...meta, retryAt: new Date(Date.now() - 1000).toISOString() } } })
+    fast.behaviour = 'aprova'
+    expect(await dispatchAttempt(sub.id)).toBe('APROVADA')
+    // Esgotadas as novas tentativas, vira falha de envio (com motivo) e libera reenvio manual.
+    const id2 = await newProposal()
+    fast.behaviour = 'limite'
+    const r2 = await sendToBanks({ proposalId: id2, bankIds: [ids.bankA], idempotencyKey: `k-${randomUUID()}`, actor, consent })
+    await prisma.financeProposalSubmission.update({ where: { id: r2.dispatch[0] }, data: { requestPayload: { retries: 8 } } })
+    expect(await dispatchAttempt(r2.dispatch[0])).toBe('FALHA_ENVIO')
+    sub = await prisma.financeProposalSubmission.findUniqueOrThrow({ where: { id: r2.dispatch[0] } })
+    expect(sub.statusReason).toMatch(/Limite/)
   })
 
   it('código FI-AAAA-NNNNNN sem repetição mesmo com criação simultânea', async () => {

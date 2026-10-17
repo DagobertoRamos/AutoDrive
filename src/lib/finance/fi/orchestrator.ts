@@ -276,6 +276,11 @@ export async function logIntegration(d: { tenantId: string; adapterKey: string |
   }).catch((e) => console.error('[fi/log] falha ao registrar log técnico', e instanceof Error ? e.message : e))
 }
 
+/** Dados de controle do envio guardados na tentativa (requestPayload). */
+export interface DispatchMeta { correlationId?: string; previousExternalId?: string; retryAt?: string; retries?: number }
+/** Limite de chamadas do canal: até 8 novas tentativas automáticas antes de virar falha de envio. */
+export const MAX_RATE_RETRIES = 8
+
 /** Envia UMA tentativa em estado ENVIANDO. Seguro para chamar mais de uma vez. */
 export async function dispatchAttempt(submissionId: string, timeoutMs = BANK_TIMEOUT_MS): Promise<string> {
   const a = await prisma.financeProposalSubmission.findUnique({ where: { id: submissionId } })
@@ -283,7 +288,7 @@ export async function dispatchAttempt(submissionId: string, timeoutMs = BANK_TIM
   const p = await loadFull(a.proposalId)
   const bank = await prisma.financeBank.findUnique({ where: { id: a.bankId }, select: { id: true, name: true, adapterKey: true } })
   if (!bank) return applyDecision(a.id, { status: 'FALHA_ENVIO', reason: 'Banco removido do cadastro da loja.' }, { source: 'SISTEMA' }).then((r) => r.status)
-  const meta = (a.requestPayload ?? {}) as { correlationId?: string; previousExternalId?: string }
+  const meta = (a.requestPayload ?? {}) as DispatchMeta
   const r = await resolveBank(p.tenantId, bank, meta.correlationId ?? randomUUID(), meta.previousExternalId ? viaOf(a) : 'AUTO')
   if (!r.live || !r.provider) {
     await prisma.financeProposalSubmission.update({ where: { id: a.id }, data: { mode: 'MANUAL' } })
@@ -305,6 +310,20 @@ export async function dispatchAttempt(submissionId: string, timeoutMs = BANK_TIM
   } catch (e) {
     const ge = e instanceof BankGatewayError ? e : null
     await logIntegration({ tenantId: p.tenantId, adapterKey: bank.adapterKey, action: 'ENVIAR_PROPOSTA', status: 'ERRO', durationMs: Date.now() - t0, correlationId: ctx.correlationId, proposalId: p.id, submissionId: a.id, attempt: a.attemptVersion, errorCode: ge?.code ?? 'DESCONHECIDO', message: ge?.message ?? (e instanceof Error ? e.name : 'erro') })
+    // Limite de chamadas do canal (HTTP 429): o pedido não foi processado — fica na fila e repete sozinho.
+    if (ge && ge.delivered === 'NAO' && ge.retryAfterMs != null && (meta.retries ?? 0) < MAX_RATE_RETRIES) {
+      const retryAt = new Date(Date.now() + ge.retryAfterMs)
+      const when = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(retryAt)
+      await prisma.financeProposalSubmission.update({
+        where: { id: a.id },
+        data: {
+          requestPayload: { ...meta, retryAt: retryAt.toISOString(), retries: (meta.retries ?? 0) + 1 } as Prisma.InputJsonValue,
+          statusReason: `Na fila: ${ge.message} Nova tentativa a partir de ${when}.`.slice(0, 500), errorMessage: ge.message.slice(0, 300),
+        },
+      })
+      await addTimeline(prisma, { tenantId: p.tenantId, proposalId: p.id, submissionId: a.id, type: 'SYSTEM', status: 'ENVIANDO', source: 'SISTEMA', message: `${bank.name}: limite de consultas do canal atingido. O envio será repetido automaticamente a partir de ${when}.` })
+      return 'ENVIANDO'
+    }
     // Só é falha confirmada quando o pedido comprovadamente NÃO saiu daqui.
     if (ge && ge.delivered === 'NAO') {
       return (await applyDecision(a.id, { status: 'FALHA_ENVIO', reason: ge.message }, { source: 'SISTEMA', errorMessage: ge.message })).status

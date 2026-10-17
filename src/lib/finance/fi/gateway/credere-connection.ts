@@ -62,6 +62,16 @@ export async function deleteCredereConnection(tenantId: string, environment: Ban
   return true
 }
 
+/** Secret do webhook que a Credere mostra no formulário da loja (abaixo da URL cadastrada). */
+export async function setCredereWebhookSecret(credentialId: string, secret: string | null): Promise<void> {
+  const cred = await prisma.financeCredential.findUnique({ where: { id: credentialId } })
+  if (!cred?.secretsEncrypted) return
+  const current = decryptSecretsStrict(cred.secretsEncrypted)
+  const { webhookSecret: _old, ...rest } = current
+  const merged = secret ? { ...rest, webhookSecret: secret } : rest
+  await prisma.financeCredential.update({ where: { id: credentialId }, data: { secretsEncrypted: encryptSecrets(merged), maskedHints: credereHints(merged) as never } })
+}
+
 /** A conexão tem o mínimo para enviar (token, loja e vendedor)? */
 export const credereReady = (c: CredereConnection | null) =>
   !!c && c.readable && !!c.credentials.accessToken && !!c.credentials.storeId && !!c.credentials.sellerCpf && !!c.credentials.sellerId

@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   CredereAdapter, __resetCredereCachesForTests, attemptKey, customerPayload, decisionFromAttempt, evaluateCondition, febrabanFor, formatCpf,
-  leadPayload, mapCredereState, matchDomain, parseCredereWebhook, pickVehicleModel, simulationPayload, splitAttemptKey,
+  leadPayload, mapCredereState, matchDomain, parseCredereWebhook, pickVehicleModel, simulationPayload, splitAttemptKey, verifyCredereSignature,
 } from './credere'
+import { createHmac } from 'node:crypto'
+import { retryAfterMs } from './types'
 import { pickStore, signState, verifyState } from './credere-oauth'
 import { listBankProviders, getBankProvider } from './registry'
 import type { ApplicantPayload, BankContext, ProposalTerms } from './types'
@@ -161,5 +163,48 @@ describe('Credere — envio ponta a ponta (API simulada)', () => {
     const d = await new CredereAdapter().submitProposal(applicant, terms, ctx)
     expect(d.status).toBe('RECUSADA')
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/v1/proposals'))).toBe(false)
+  })
+})
+
+describe('Credere — assinatura do webhook (X-Credere-Signature)', () => {
+  const secret = 'whsec_loja_123456'
+  const body = '{"event":"proposal_attempt.updated","event_id":"ev-1","proposal_attempt":{"id":2000}}'
+  const now = Date.parse('2026-10-17T15:00:00Z')
+  const t = Math.floor(now / 1000)
+  const sign = (b: string, ts = t, key = secret) => `t=${ts},v1=${createHmac('sha256', key).update(`${ts}.${b}`).digest('hex')}`
+
+  it('aceita a assinatura da documentação (HMAC de "{t}.{corpo bruto}")', () => {
+    expect(verifyCredereSignature(body, sign(body), secret, now)).toBe(true)
+    expect(verifyCredereSignature(body, ` t=${t} , v1=${sign(body).split('v1=')[1].toUpperCase()} `, secret, now)).toBe(true)
+  })
+  it('recusa corpo alterado, outro secret, cabeçalho ausente ou malformado', () => {
+    expect(verifyCredereSignature(body.replace('2000', '2001'), sign(body), secret, now)).toBe(false)
+    expect(verifyCredereSignature(body, sign(body, t, 'outro-secret-qualquer'), secret, now)).toBe(false)
+    expect(verifyCredereSignature(body, null, secret, now)).toBe(false)
+    expect(verifyCredereSignature(body, 'v1=abc', secret, now)).toBe(false)
+    expect(verifyCredereSignature(body, sign(body), '', now)).toBe(false)
+  })
+  it('recusa assinatura antiga ou do futuro (mais de 5 min): impede reenvio de aviso capturado', () => {
+    expect(verifyCredereSignature(body, sign(body, t - 301), secret, now)).toBe(false)
+    expect(verifyCredereSignature(body, sign(body, t + 301), secret, now)).toBe(false)
+    expect(verifyCredereSignature(body, sign(body, t - 290), secret, now)).toBe(true)
+  })
+})
+
+describe('Credere — limite de consultas (HTTP 429)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); __resetCredereCachesForTests() })
+  it('vira "tentar de novo depois" (não chegou; não é recusa), com o Retry-After da Credere', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Too many requests' }), { status: 429, headers: { 'Retry-After': '120' } })))
+    const ctx: BankContext = { tenantId: 't3', environment: 'HOMOLOGACAO', credentials: { ...creds }, correlationId: 'c', routedBankCode: '655' }
+    await expect(new CredereAdapter().submitProposal(applicant, terms, ctx)).rejects.toMatchObject({ code: 'INDISPONIVEL', delivered: 'NAO', retryAfterMs: 120_000 })
+    await expect(new CredereAdapter().getStatus('1:2', ctx)).rejects.toMatchObject({ retryAfterMs: 120_000 })
+  })
+  it('Retry-After em segundos, em data HTTP ou ausente (padrão 15 min, entre 1 min e 6 h)', () => {
+    const now = Date.parse('2026-10-17T15:00:00Z')
+    expect(retryAfterMs('30', now)).toBe(60_000)
+    expect(retryAfterMs('600', now)).toBe(600_000)
+    expect(retryAfterMs('Fri, 17 Oct 2026 15:10:00 GMT', now)).toBe(600_000)
+    expect(retryAfterMs(null, now)).toBe(900_000)
+    expect(retryAfterMs('999999', now)).toBe(6 * 3_600_000)
   })
 })
