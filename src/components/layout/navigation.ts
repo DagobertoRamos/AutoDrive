@@ -118,6 +118,21 @@ export const NAV_GROUPS: NavItem[] = [
     ],
   },
 
+  // ── NEGOCIAÇÕES ───────────────────────────────────────────────────────────
+  {
+    label: 'Negociações',
+    icon:  Handshake,
+    module: 'negotiations',
+    children: [
+      { label: 'Todas',              href: '/negociacoes',            icon: ListChecks, module: 'negotiations' },
+      { label: 'Nova Negociação',    href: '/negociacoes/nova',       icon: Handshake,  module: 'negotiations' },
+      { label: 'Pendente Aprovação', href: '/negociacoes/aprovacoes', icon: ShieldCheck,module: 'negotiations.approve' },
+    ],
+  },
+
+  // ⚠ REGRA FIXA: Dashboard, Estoque e Negociações são SEMPRE os 3 primeiros
+  // itens do menu, nessa ordem. Itens novos entram daqui para baixo.
+
   // ── OPERAÇÕES (RENAVE, notas, transferências, consultas) ──────────────────
   {
     label: 'Operações',
@@ -130,18 +145,6 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Transferências',  href: '/operacoes/transferencias',  icon: Car,         module: 'ops.panel' },
       { label: 'Consultas',       href: '/operacoes/consultas',       icon: ClipboardCheck, module: 'ops.panel' },
       { label: 'Configurações',   href: '/configuracoes/operacoes',   icon: Settings,    module: 'ops.settings' },
-    ],
-  },
-
-  // ── NEGOCIAÇÕES ───────────────────────────────────────────────────────────
-  {
-    label: 'Negociações',
-    icon:  Handshake,
-    module: 'negotiations',
-    children: [
-      { label: 'Todas',              href: '/negociacoes',            icon: ListChecks, module: 'negotiations' },
-      { label: 'Nova Negociação',    href: '/negociacoes/nova',       icon: Handshake,  module: 'negotiations' },
-      { label: 'Pendente Aprovação', href: '/negociacoes/aprovacoes', icon: ShieldCheck,module: 'negotiations.approve' },
     ],
   },
 
