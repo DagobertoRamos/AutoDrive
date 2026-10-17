@@ -1,5 +1,7 @@
 import type { DashboardIcon, DashboardListItem, DashboardMetric, DashboardSection } from '@/lib/dashboard/types'
 import { hasTenantService, type TenantServiceFlags, type TenantServiceKey } from '@/lib/tenant-services/types'
+import type { Module } from '@/lib/permissions'
+import type { DashboardAccess } from '@/lib/dashboard/access'
 
 export interface DashboardWidgetDescriptor {
   id: string
@@ -23,6 +25,7 @@ export interface DashboardDataLoadPlan {
   documents: boolean
   system: boolean
   units: boolean
+  stock: boolean
 }
 
 const SERVICE_BY_TEXT: Array<{ pattern: RegExp; services: TenantServiceKey[] }> = [
@@ -158,12 +161,99 @@ export function resolveDashboardWidgetServices(widget: DashboardWidgetDescriptor
   return uniqueServices(matches)
 }
 
+// ── Permissão do COLABORADOR por widget ──────────────────────────────────────
+// Além do serviço contratado pela loja, o widget só aparece se o colaborador
+// tem o módulo liberado (papel + liberação/bloqueio individual). Basta UM.
+export const CRM_MODULES: Module[] = ['crm', 'crm.view.own', 'crm.view.unit', 'crm.view.all', 'marketing', 'marketing.sdr']
+
+const MODULES_BY_HREF: Array<{ prefix: string; modules: Module[] }> = [
+  { prefix: '/negociacoes/aprovacoes', modules: ['negotiations.approve'] },
+  { prefix: '/negociacoes', modules: ['negotiations'] },
+  { prefix: '/financeiro', modules: ['finance'] },
+  { prefix: '/relatorios/financeiro', modules: ['finance'] },
+  { prefix: '/financiamento', modules: ['financing'] },
+  { prefix: '/comissoes', modules: ['commissions'] },
+  { prefix: '/ranking', modules: ['ranking'] },
+  { prefix: '/desempenho', modules: ['ranking'] },
+  { prefix: '/metas', modules: ['goals'] },
+  { prefix: '/marketing/publicacoes', modules: ['marketing.publications'] },
+  { prefix: '/marketing', modules: CRM_MODULES },
+  { prefix: '/crm', modules: CRM_MODULES },
+  { prefix: '/estoque/avaliacoes', modules: ['stock.evaluate'] },
+  { prefix: '/estoque', modules: ['stock.view'] },
+  { prefix: '/relatorios/estoque', modules: ['stock.view'] },
+  { prefix: '/pendencias/central', modules: ['pendencies.central', 'pendencies.manage', 'pendencies'] },
+  { prefix: '/pendencias/gerencia', modules: ['pendencies.manage'] },
+  { prefix: '/pendencias', modules: ['pendencies'] },
+  { prefix: '/relatorios/pendencias', modules: ['pendencies.manage', 'logs'] },
+  { prefix: '/operacoes', modules: ['ops.panel', 'ops.transfer.view', 'ops.renave.view'] },
+  { prefix: '/documentos', modules: ['documents'] },
+  { prefix: '/cadastros/unidades', modules: ['registrations.units'] },
+  { prefix: '/vendedor-da-vez', modules: ['sellerQueue.view'] },
+]
+
+const MODULES_BY_WIDGET: Record<string, Module[]> = {
+  'section:financeiro': ['finance'],
+  'section:produtos-retorno': ['finance', 'financing'],
+  'section:bancos': ['financing'],
+  'section:operacao-fi': ['financing'],
+  'section:origens': CRM_MODULES,
+  'section:funil': CRM_MODULES,
+  'section:atendimento': CRM_MODULES,
+  'section:performance': CRM_MODULES,
+  'section:ranking': ['ranking'],
+  'section:ranking-geral': ['ranking'],
+  'section:compras': ['stock.evaluate', 'stock.view'],
+  'section:operacao-compras': ['stock.evaluate', 'stock.view'],
+  'section:estoque': ['stock.view'],
+  'metric:valor-vendido': ['negotiations'],
+  'metric:a-receber': ['finance'],
+  'metric:a-pagar': ['finance'],
+  'metric:comissoes': ['commissions', 'finance'],
+  'item:receitas': ['finance'],
+  'item:a-receber': ['finance'],
+  'item:comissoes': ['commissions', 'finance'],
+  'item:retorno': ['financing', 'finance'],
+  'item:valor-imobilizado': ['ops.costs.view', 'finance.profit'],
+}
+
+export function resolveDashboardWidgetModules(widget: DashboardWidgetDescriptor): Module[] {
+  const explicit = MODULES_BY_WIDGET[`${widget.kind}:${widget.id}`]
+  if (explicit) return explicit
+  const href = widget.href
+  if (href) {
+    const fromHref = MODULES_BY_HREF.find(({ prefix }) => href === prefix || href.startsWith(`${prefix}/`) || href.startsWith(`${prefix}?`))
+    if (fromHref) return fromHref.modules
+  }
+  return []
+}
+
 export function canRenderDashboardWidget(
   widget: DashboardWidgetDescriptor,
   services: TenantServiceFlags,
+  access?: DashboardAccess,
 ): boolean {
   const requiredServices = resolveDashboardWidgetServices(widget)
-  return requiredServices.length === 0 || hasTenantService(services, requiredServices)
+  if (requiredServices.length > 0 && !hasTenantService(services, requiredServices)) return false
+  if (!access) return true
+  return access.canAny(resolveDashboardWidgetModules(widget))
+}
+
+/** Plano de carga limitado ao que o colaborador pode ver — nem consulta o resto. */
+export function applyAccessToLoadPlan(plan: DashboardDataLoadPlan, access: DashboardAccess): DashboardDataLoadPlan {
+  return {
+    ...plan,
+    commercial: plan.commercial && access.canAny(['negotiations', 'goals', 'ranking', 'commissions', 'dashboard']),
+    pendencies: plan.pendencies && access.can('pendencies'),
+    goals: plan.goals && access.can('goals'),
+    ranking: plan.ranking && access.can('ranking'),
+    leads: plan.leads && access.canAny(CRM_MODULES),
+    financing: plan.financing && access.can('financing'),
+    finance: plan.finance && access.can('finance'),
+    purchases: plan.purchases && access.canAny(['stock.evaluate', 'stock.view']),
+    documents: plan.documents && access.canAny(['documents', 'ops.panel', 'ops.transfer.view', 'negotiations']),
+    stock: plan.stock && access.can('stock.view'),
+  }
 }
 
 export function resolveDashboardDataLoadPlan(services: TenantServiceFlags): DashboardDataLoadPlan {
@@ -192,6 +282,7 @@ export function resolveDashboardDataLoadPlan(services: TenantServiceFlags): Dash
     documents: services.documentacao,
     system: hasTenantService(services, ['avisos', 'integracoes', 'whatsappChat', 'relatorios']),
     units: hasTenantService(services, ['negociacoes', 'relatorios']),
+    stock: services.estoque,
   }
 }
 
@@ -226,20 +317,21 @@ function sectionDescriptor(section: DashboardSection): DashboardWidgetDescriptor
   }
 }
 
-export function filterDashboardMetrics(metrics: DashboardMetric[], services: TenantServiceFlags): DashboardMetric[] {
-  return metrics.filter((metric) => canRenderDashboardWidget(metricDescriptor(metric), services))
+export function filterDashboardMetrics(metrics: DashboardMetric[], services: TenantServiceFlags, access?: DashboardAccess): DashboardMetric[] {
+  return metrics.filter((metric) => canRenderDashboardWidget(metricDescriptor(metric), services, access))
 }
 
-export function filterDashboardSection(section: DashboardSection, services: TenantServiceFlags): DashboardSection | null {
-  if (!canRenderDashboardWidget(sectionDescriptor(section), services)) return null
+export function filterDashboardSection(section: DashboardSection, services: TenantServiceFlags, access?: DashboardAccess): DashboardSection | null {
+  if (!canRenderDashboardWidget(sectionDescriptor(section), services, access)) return null
 
-  const items = section.items.filter((item) => canRenderDashboardWidget(itemDescriptor(item), services))
+  const items = section.items.filter((item) => canRenderDashboardWidget(itemDescriptor(item), services, access))
 
   return { ...section, items }
 }
 
-export function filterDashboardSections(sections: DashboardSection[], services: TenantServiceFlags): DashboardSection[] {
+export function filterDashboardSections(sections: DashboardSection[], services: TenantServiceFlags, access?: DashboardAccess): DashboardSection[] {
   return sections
-    .map((section) => filterDashboardSection(section, services))
-    .filter((section): section is DashboardSection => Boolean(section))
+    .map((section) => filterDashboardSection(section, services, access))
+    // Com permissão aplicada, seção que ficou sem nenhum item some (sem "caixa vazia").
+    .filter((section): section is DashboardSection => Boolean(section) && (!access || section!.items.length > 0))
 }

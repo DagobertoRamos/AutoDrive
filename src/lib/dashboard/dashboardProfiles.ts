@@ -47,11 +47,25 @@ function inferOperationalRole(input: DashboardProfileInput): DashboardRoleKind |
     return 'FINANCEIRO'
   }
 
+  if (textMatches(text, ['pos venda', 'pos-venda', 'posvenda', 'relacionamento', 'entrega'])) {
+    return 'POS_VENDA'
+  }
+
+  // Antes de "compras/estoque": preparador, estética e lavagem cuidam do carro,
+  // não da compra.
+  if (textMatches(text, ['preparacao', 'preparador', 'estetica', 'lavador', 'lavagem', 'higienizacao', 'polimento', 'oficina', 'mecanic', 'funilaria', 'vistoria'])) {
+    return 'PREPARACAO'
+  }
+
   if (textMatches(text, ['compras', 'compra', 'avaliacao', 'avaliador', 'estoque'])) {
     return 'COMPRAS'
   }
 
-  if (textMatches(text, ['documentacao', 'documento', 'auxiliar', 'administrativo', 'backoffice', 'operacional'])) {
+  if (textMatches(text, ['documentacao', 'documento', 'despachante', 'transferencia', 'renave'])) {
+    return 'DOCUMENTACAO'
+  }
+
+  if (textMatches(text, ['auxiliar', 'administrativo', 'backoffice', 'operacional'])) {
     return 'AUXILIAR'
   }
 
@@ -77,6 +91,7 @@ function scopeFor(kind: DashboardRoleKind, role: UserRole): DashboardScopeKind {
   if (kind === 'VENDEDOR') return 'SELF'
   if (kind === 'GERENTE') return 'UNIT'
   if (kind === 'MARKETING' || kind === 'SDR' || kind === 'COMPRAS' || kind === 'AUXILIAR') return 'UNIT'
+  if (kind === 'DOCUMENTACAO' || kind === 'PREPARACAO' || kind === 'POS_VENDA') return 'UNIT'
   if (kind === 'FI') return 'TENANT'
   return 'UNIT'
 }
@@ -122,6 +137,18 @@ const ROLE_LABEL: Record<DashboardRoleKind, { label: string; description: string
     label: 'Dashboard de Compras',
     description: 'Avaliações, compras, trocas, vistorias e estoque previsto.',
   },
+  DOCUMENTACAO: {
+    label: 'Painel da Documentação',
+    description: 'Transferências, RENAVE, notas, gravame, contratos e entregas com prazo.',
+  },
+  PREPARACAO: {
+    label: 'Painel da Preparação',
+    description: 'Veículos em preparação, serviços atrasados, fornecedores e tempo até ficar pronto.',
+  },
+  POS_VENDA: {
+    label: 'Painel do Pós-venda',
+    description: 'Entregas, pendências do cliente após a venda e retornos.',
+  },
   AUXILIAR: {
     label: 'Dashboard Operacional',
     description: 'Tarefas, documentação, pendências atribuídas e andamento do dia.',
@@ -147,7 +174,7 @@ export function resolveDashboardProfile(input: DashboardProfileInput): Dashboard
     scope === 'GLOBAL'
       ? 'Plataforma'
       : scope === 'TENANT'
-        ? 'Tenant'
+        ? 'Toda a loja'
         : scope === 'UNIT'
           ? input.unitName ? `Unidade: ${input.unitName}` : 'Unidade'
           : 'Meus dados'

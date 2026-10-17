@@ -28,7 +28,16 @@ describe('resolveDashboardProfile', () => {
     expect(profile('USUARIO', 'SDR / Pré-vendas')).toBe('SDR')
     expect(profile('USUARIO', 'F&I')).toBe('FI')
     expect(profile('USUARIO', 'Compras e Avaliações')).toBe('COMPRAS')
-    expect(profile('USUARIO', 'Auxiliar de Documentação')).toBe('AUXILIAR')
+    expect(profile('USUARIO', 'Auxiliar de Documentação')).toBe('DOCUMENTACAO')
+    expect(profile('USUARIO', 'Despachante')).toBe('DOCUMENTACAO')
+    expect(profile('USUARIO', 'Lavador')).toBe('PREPARACAO')
+    expect(profile('USUARIO', 'Preparação de Estoque')).toBe('PREPARACAO')
+    expect(profile('USUARIO', 'Pós-venda')).toBe('POS_VENDA')
+    expect(profile('USUARIO', 'Auxiliar Administrativo')).toBe('AUXILIAR')
+  })
+
+  it('vendedor continua no dashboard do vendedor mesmo com cargo operacional', () => {
+    expect(profile('VENDEDOR', 'Vendedor e Preparação')).toBe('VENDEDOR')
   })
 
   it('uses active SDR membership when the position name is generic', () => {

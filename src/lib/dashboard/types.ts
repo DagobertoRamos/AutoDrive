@@ -11,6 +11,9 @@ export type DashboardRoleKind =
   | 'FI'
   | 'SDR'
   | 'COMPRAS'
+  | 'DOCUMENTACAO'
+  | 'PREPARACAO'
+  | 'POS_VENDA'
   | 'AUXILIAR'
   | 'DEFAULT'
 

@@ -5,18 +5,17 @@ import type {
   Prisma,
 } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import type { UserRole } from '@/lib/permissions'
 import type { SessionUser } from '@/lib/auth-guards'
-import { assertTenantId } from '@/lib/auth-guards'
-import { aggregateAchieved, type AggregationScope } from '@/lib/goals/aggregators'
+import { aggregateAchieved } from '@/lib/goals/aggregators'
 import { computeRanking } from '@/lib/ranking/service'
 import { getGoalPeriod } from '@/lib/goals/service'
 import { num } from '@/lib/finance/finance-service'
-import { resolveDashboardProfile } from '@/lib/dashboard/dashboardProfiles'
+import { commissionEligibleDealWindowWhere } from '@/lib/commission/status'
 import {
   filterDashboardMetrics,
   filterDashboardSection,
   filterDashboardSections,
+  applyAccessToLoadPlan,
   resolveDashboardDataLoadPlan,
 } from '@/lib/dashboard/dashboardWidgets'
 import type {
@@ -26,21 +25,37 @@ import type {
   DashboardSection,
   DashboardSummary,
 } from '@/lib/dashboard/types'
-import { getTenantServicesForUser } from '@/lib/tenant-services/resolveTenantServices'
 import type { TenantServiceKey } from '@/lib/tenant-services/types'
+import {
+  NO_MATCH,
+  aggregationScope,
+  resolveDashboardContext,
+  scopedDealWhere,
+  scopedFinanceProposalWhere,
+  scopedFinancialWhere,
+  scopedLeadWhere,
+  scopedPendencyWhere,
+  type DashboardContext,
+} from '@/lib/dashboard/context'
+import {
+  AGED_STOCK_DAYS,
+  AVAILABLE_STOCK_STATUSES,
+  NEGOTIATION_STOCK_STATUSES,
+  OPEN_SERVICE_STATUSES,
+  PREP_STOCK_STATUSES,
+  STALLED_TRANSFER_DAYS,
+  daysAgo,
+  inStockVehicleWhere,
+  openTransferWhere,
+  operationWhere,
+  overdueServiceWhere,
+  serviceWhere,
+  stalledTransferWhere,
+} from '@/lib/dashboard/sources'
+import { financeCan } from '@/lib/finance/access'
+import { leadFirstResponseMinutes } from '@/lib/dashboard/insights'
+import { formatInsightValue } from '@/lib/dashboard/insights-core'
 
-const NO_MATCH = '__dashboard_no_match__'
-
-const DONE_DEALS: DealStatus[] = ['FINALIZADA', 'ENTREGUE']
-const APPROVED_DEALS: DealStatus[] = [
-  'APROVADA',
-  'LIBERADA',
-  'FINANCEIRO_APROVADO',
-  'DOCUMENTACAO_CONCLUIDA',
-  'ASSINADA',
-  'FINALIZADA',
-  'ENTREGUE',
-]
 const LOST_DEALS: DealStatus[] = ['CANCELADA', 'RECUSADA', 'DESAPROVADA', 'FINANCEIRO_REPROVADO']
 const OPEN_DEALS: DealStatus[] = [
   'RASCUNHO',
@@ -64,14 +79,6 @@ const OPEN_PENDENCIES: PendencyStatus[] = ['ABERTA', 'EM_ANDAMENTO', 'AGUARDANDO
 const CLOSED_PENDENCIES: PendencyStatus[] = ['FINALIZADA', 'CANCELADA']
 const PENDING_FINANCE: FinanceProposalStatus[] = ['SIMULACAO', 'ENVIADA']
 
-interface DashboardContext {
-  user: SessionUser
-  profile: DashboardProfile
-  tenantId: string | null
-  unitId: string | null
-  sellerId: string | null
-  managerId: string | null
-}
 
 interface RawDashboardMetrics {
   commercial: {
@@ -121,6 +128,12 @@ interface RawDashboardMetrics {
     convertidos: number
     meus: number
     porOrigem: DashboardListItem[]
+    visitasHoje: number
+    noShowMes: number
+    contatosMes: number
+    /** Média lead → primeiro contato (min); null = dados insuficientes. */
+    tempoRespostaMin: number | null
+    veiculoMaisProcurado: string | null
   }
   financing: {
     total: number
@@ -169,6 +182,47 @@ interface RawDashboardMetrics {
     alertasSistema: number
   }
   units: DashboardListItem[]
+  stock: {
+    total: number
+    proprio: number
+    consignado: number
+    parceiro: number
+    emPreparacao: number
+    emNegociacao: number
+    disponiveis: number
+    publicados: number | null
+    aging: { ate30: number; de31a60: number; de61a90: number; acima90: number }
+    valorVenda: number
+    /** Custo de aquisição — só para quem pode ver custo (null = sem permissão). */
+    valorImobilizado: number | null
+  }
+  prep: {
+    servicosAbertos: number
+    aguardando: number
+    emServico: number
+    atrasados: number
+    previstosHoje: number
+    concluidosMes: number
+    custoPrevistoAberto: number | null
+    custoRealizadoMes: number | null
+  }
+  ops: {
+    transferenciasAbertas: number
+    transferenciasParadas: number
+    renaveSaidaPendente: number
+    renaveProblemas: number
+    notasPendentes: number
+    notasRejeitadas: number
+    restricoesAtivas: number
+    vendas90d: number
+  }
+  deliveries: {
+    aguardandoEntrega: number
+    entregasAtrasadas: number
+    entregasHoje: number
+    entreguesMes: number
+    posVendaAtivos: number
+  }
 }
 
 function emptyRawDashboardMetrics(): RawDashboardMetrics {
@@ -220,6 +274,11 @@ function emptyRawDashboardMetrics(): RawDashboardMetrics {
       convertidos: 0,
       meus: 0,
       porOrigem: [],
+      visitasHoje: 0,
+      noShowMes: 0,
+      contatosMes: 0,
+      tempoRespostaMin: null,
+      veiculoMaisProcurado: null,
     },
     financing: {
       total: 0,
@@ -259,6 +318,46 @@ function emptyRawDashboardMetrics(): RawDashboardMetrics {
       alertasSistema: 0,
     },
     units: [],
+    stock: {
+      total: 0,
+      proprio: 0,
+      consignado: 0,
+      parceiro: 0,
+      emPreparacao: 0,
+      emNegociacao: 0,
+      disponiveis: 0,
+      publicados: null,
+      aging: { ate30: 0, de31a60: 0, de61a90: 0, acima90: 0 },
+      valorVenda: 0,
+      valorImobilizado: null,
+    },
+    prep: {
+      servicosAbertos: 0,
+      aguardando: 0,
+      emServico: 0,
+      atrasados: 0,
+      previstosHoje: 0,
+      concluidosMes: 0,
+      custoPrevistoAberto: null,
+      custoRealizadoMes: null,
+    },
+    ops: {
+      transferenciasAbertas: 0,
+      transferenciasParadas: 0,
+      renaveSaidaPendente: 0,
+      renaveProblemas: 0,
+      notasPendentes: 0,
+      notasRejeitadas: 0,
+      restricoesAtivas: 0,
+      vendas90d: 0,
+    },
+    deliveries: {
+      aguardandoEntrega: 0,
+      entregasAtrasadas: 0,
+      entregasHoje: 0,
+      entreguesMes: 0,
+      posVendaAtivos: 0,
+    },
   }
 }
 
@@ -283,114 +382,17 @@ function fmtCurrency(value: number): string {
   }).format(value)
 }
 
+/** "SITE" → "Site", "meta_ads" → "Meta ads" (rótulo legível da origem). */
+function sourceLabel(source: string | null): string {
+  if (!source) return 'Sem origem'
+  const t = source.replace(/[_-]+/g, ' ').trim().toLowerCase()
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 function fmtPercent(value: number): string {
   return `${Math.round(value)}%`
 }
 
-function tenantFilter(ctx: DashboardContext): Prisma.DealWhereInput {
-  return ctx.user.role === 'MASTER' ? {} : { tenantId: ctx.tenantId }
-}
-
-function scopedDealWhere(ctx: DashboardContext, extra: Prisma.DealWhereInput = {}): Prisma.DealWhereInput {
-  const where: Prisma.DealWhereInput = { ...tenantFilter(ctx), ...extra }
-
-  if (ctx.profile.scope === 'SELF') {
-    where.sellerId = ctx.sellerId ?? NO_MATCH
-    return where
-  }
-
-  if (ctx.profile.scope === 'UNIT') {
-    where.unitId = ctx.unitId ?? NO_MATCH
-  }
-
-  return where
-}
-
-function toArray<T>(value: T | T[] | undefined): T[] {
-  if (value === undefined) return []
-  return Array.isArray(value) ? value : [value]
-}
-
-function scopedPendencyWhere(ctx: DashboardContext, extra: Prisma.PendencyWhereInput = {}): Prisma.PendencyWhereInput {
-  const where: Prisma.PendencyWhereInput = {
-    ...(ctx.user.role === 'MASTER' ? {} : { tenantId: ctx.tenantId }),
-    ...extra,
-  }
-
-  if (ctx.profile.scope === 'SELF') {
-    // AND: não sobrescreve um OR vindo de `extra`
-    where.AND = [
-      ...toArray(where.AND),
-      { OR: [{ responsibleId: ctx.sellerId ?? NO_MATCH }, { assignedUserId: ctx.user.id }] },
-    ]
-    return where
-  }
-
-  if (ctx.profile.scope === 'UNIT') {
-    where.unitId = ctx.unitId ?? NO_MATCH
-  }
-
-  return where
-}
-
-function scopedLeadWhere(ctx: DashboardContext, extra: Prisma.MarketingLeadWhereInput = {}): Prisma.MarketingLeadWhereInput {
-  const where: Prisma.MarketingLeadWhereInput = {
-    ...(ctx.user.role === 'MASTER' ? {} : { tenantId: ctx.tenantId ?? NO_MATCH }),
-    ...extra,
-  }
-
-  if (ctx.profile.scope === 'SELF' || ctx.profile.kind === 'SDR') {
-    where.AND = [
-      ...toArray(where.AND),
-      { OR: [{ assignedToUserId: ctx.user.id }, { claimedByUserId: ctx.user.id }] },
-    ]
-    return where
-  }
-
-  if (ctx.profile.scope === 'UNIT') {
-    where.unitId = ctx.unitId ?? NO_MATCH
-  }
-
-  return where
-}
-
-function scopedFinanceProposalWhere(ctx: DashboardContext, extra: Prisma.FinanceProposalWhereInput = {}): Prisma.FinanceProposalWhereInput {
-  const where: Prisma.FinanceProposalWhereInput = {
-    ...(ctx.user.role === 'MASTER' ? {} : { tenantId: ctx.tenantId }),
-    ...extra,
-  }
-
-  if (ctx.profile.scope === 'SELF') {
-    where.sellerId = ctx.user.id
-  }
-
-  if (ctx.profile.scope === 'UNIT') {
-    where.deal = { unitId: ctx.unitId ?? NO_MATCH }
-  }
-
-  return where
-}
-
-function scopedFinancialWhere(ctx: DashboardContext, extra: Prisma.FinancialEntryWhereInput = {}): Prisma.FinancialEntryWhereInput {
-  const where: Prisma.FinancialEntryWhereInput = {
-    ...(ctx.user.role === 'MASTER' ? {} : { tenantId: ctx.tenantId }),
-    ...extra,
-  }
-
-  if (ctx.profile.scope === 'UNIT') {
-    where.unitId = ctx.unitId ?? NO_MATCH
-  }
-
-  return where
-}
-
-function aggregationScope(ctx: DashboardContext): AggregationScope {
-  return {
-    tenantId: ctx.user.role === 'MASTER' ? null : ctx.tenantId,
-    unitId: ctx.profile.scope === 'UNIT' ? ctx.unitId : null,
-    sellerId: ctx.profile.scope === 'SELF' ? ctx.sellerId ?? NO_MATCH : null,
-  }
-}
 
 type WidgetServices = TenantServiceKey | TenantServiceKey[]
 
@@ -443,71 +445,13 @@ function section(
   }
 }
 
-async function loadActorContext(user: SessionUser) {
-  const dbUser = await prisma.user.findUnique({
-    where: { id: user.id },
-    select: {
-      position: { select: { name: true, slug: true } },
-      unit: { select: { name: true } },
-      seller: {
-        select: {
-          id: true,
-          cargo: true,
-          unitId: true,
-          managerId: true,
-          position: { select: { name: true, slug: true } },
-        },
-      },
-      manager: {
-        select: {
-          id: true,
-          accessProfile: true,
-          unitId: true,
-          position: { select: { name: true, slug: true } },
-        },
-      },
-    },
-  })
-
-  const isSdrMember = user.tenantId
-    ? await prisma.marketingSdrMember.count({
-      where: { tenantId: user.tenantId, userId: user.id, active: true },
-    }).then((count) => count > 0)
-    : false
-
-  const positionName =
-    dbUser?.position?.name ??
-    dbUser?.seller?.position?.name ??
-    dbUser?.manager?.position?.name ??
-    dbUser?.seller?.cargo ??
-    dbUser?.manager?.accessProfile ??
-    null
-
-  const positionSlug =
-    dbUser?.position?.slug ??
-    dbUser?.seller?.position?.slug ??
-    dbUser?.manager?.position?.slug ??
-    null
-
-  return {
-    dbUser,
-    isSdrMember,
-    positionName,
-    positionSlug,
-  }
-}
 
 async function loadCommercial(ctx: DashboardContext, start: Date, end: Date) {
   const scope = aggregationScope(ctx)
   const window = { start, end }
-  const completedThisMonth = scopedDealWhere(ctx, {
-    status: { in: DONE_DEALS },
-    OR: [
-      { finalizedAt: { gte: start, lte: end } },
-      { finalizedAt: null, saleDate: { gte: start, lte: end } },
-      { finalizedAt: null, saleDate: null, createdAt: { gte: start, lte: end } },
-    ],
-  })
+  // Mesma regra de metas/ranking/comissão: a negociação conta a partir da
+  // APROVAÇÃO (não da finalização), na data de referência da comissão.
+  const eligibleThisMonth = commissionEligibleDealWindowWhere(window) as Prisma.DealWhereInput
 
   const [
     vendasTrocas,
@@ -529,15 +473,15 @@ async function loadCommercial(ctx: DashboardContext, start: Date, end: Date) {
     aggregateAchieved('RETURN', scope, window),
     aggregateAchieved('EXTENDED_WARRANTY', scope, window),
     aggregateAchieved('SERVICE', scope, window),
-    prisma.deal.count({ where: scopedDealWhere(ctx, { type: 'CONSIGNACAO', ...completedThisMonth }) }),
+    prisma.deal.count({ where: scopedDealWhere(ctx, { type: 'CONSIGNACAO', ...eligibleThisMonth }) }),
     prisma.deal.count({ where: scopedDealWhere(ctx, { status: { in: OPEN_DEALS } }) }),
-    prisma.deal.count({ where: scopedDealWhere(ctx, { status: { in: APPROVED_DEALS }, createdAt: { gte: start, lte: end } }) }),
+    prisma.deal.count({ where: scopedDealWhere(ctx, eligibleThisMonth) }),
     prisma.deal.count({ where: scopedDealWhere(ctx, { status: { in: LOST_DEALS }, updatedAt: { gte: start, lte: end } }) }),
     prisma.deal.count({ where: scopedDealWhere(ctx, { status: { in: ['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO'] } }) }),
     prisma.deal.count({ where: scopedDealWhere(ctx, { status: 'AGUARDANDO_FINANCEIRO' }) }),
     prisma.deal.count({ where: scopedDealWhere(ctx, { status: 'AGUARDANDO_DOCUMENTACAO' }) }),
     prisma.deal.aggregate({
-      where: completedThisMonth,
+      where: scopedDealWhere(ctx, { type: { in: ['VENDA', 'TROCA'] }, ...eligibleThisMonth }),
       _sum: { saleAmount: true },
     }),
   ])
@@ -712,8 +656,41 @@ async function loadRanking(ctx: DashboardContext) {
   }
 }
 
-async function loadLeads(ctx: DashboardContext, start: Date, end: Date) {
+async function loadLeads(ctx: DashboardContext, start: Date, end: Date, todayStart: Date, todayEnd: Date) {
   const monthWhere = scopedLeadWhere(ctx, { createdAt: { gte: start, lte: end } })
+  const tenantPart = ctx.user.role === 'MASTER' ? {} : { tenantId: ctx.tenantId ?? NO_MATCH }
+  const visitScope: Prisma.CrmLeadVisitWhereInput = {
+    ...tenantPart,
+    ...(ctx.profile.scope === 'UNIT' ? { unitId: ctx.unitId ?? NO_MATCH } : {}),
+    ...(ctx.profile.scope === 'SELF' ? { hostUserId: ctx.user.id } : {}),
+    ...(ctx.profile.kind === 'SDR' ? { createdByUserId: ctx.user.id } : {}),
+  }
+  const ownInteractions = ctx.profile.scope === 'SELF' || ctx.profile.kind === 'SDR'
+  const [visitasHoje, noShowMes, contatosMes, resposta, topVehicle] = await Promise.all([
+    prisma.crmLeadVisit.count({ where: { ...visitScope, status: { in: ['SCHEDULED', 'CONFIRMED', 'RESCHEDULED', 'COMPLETED'] }, scheduledAt: { gte: todayStart, lte: todayEnd } } }).catch(() => 0),
+    prisma.crmLeadVisit.count({ where: { ...visitScope, status: 'NO_SHOW', scheduledAt: { gte: start, lte: end } } }).catch(() => 0),
+    prisma.crmLeadInteraction.count({
+      where: {
+        ...tenantPart,
+        occurredAt: { gte: start, lte: end },
+        type: { in: ['CALL', 'WHATSAPP', 'EMAIL'] },
+        ...(ownInteractions ? { authorId: ctx.user.id } : {}),
+      },
+    }).catch(() => 0),
+    leadFirstResponseMinutes(ctx).catch(() => null),
+    prisma.marketingLead.groupBy({
+      by: ['vehicleId'],
+      where: scopedLeadWhere(ctx, { createdAt: { gte: start, lte: end }, vehicleId: { not: null } }),
+      _count: { _all: true },
+      orderBy: { _count: { vehicleId: 'desc' } },
+      take: 1,
+    }).then(async (rows) => {
+      const top = rows[0]
+      if (!top?.vehicleId) return null
+      const v = await prisma.vehicle.findFirst({ where: { id: top.vehicleId, ...tenantPart }, select: { brand: true, model: true } })
+      return v ? `${[v.brand, v.model].filter(Boolean).join(' ')} (${top._count._all})` : null
+    }).catch(() => null),
+  ])
   const [
     total,
     novos,
@@ -730,7 +707,7 @@ async function loadLeads(ctx: DashboardContext, start: Date, end: Date) {
     prisma.marketingLead.count({ where: scopedLeadWhere(ctx, { status: { in: ['ASSIGNED', 'WORKING', 'QUALIFIED'] } }) }),
     prisma.marketingLead.count({ where: scopedLeadWhere(ctx, { status: 'LOST', updatedAt: { gte: start, lte: end } }) }),
     prisma.marketingLead.count({ where: scopedLeadWhere(ctx, { convertedAt: { gte: start, lte: end } }) }),
-    prisma.marketingLead.count({ where: { ...(ctx.user.role === 'MASTER' ? {} : { tenantId: ctx.tenantId ?? NO_MATCH }), assignedToUserId: ctx.user.id } }),
+    prisma.marketingLead.count({ where: { ...tenantPart, deletedAt: null, assignedToUserId: ctx.user.id, status: { notIn: ['CONVERTED', 'LOST', 'DISCARDED'] } } }),
     prisma.marketingLead.groupBy({
       by: ['source'],
       where: monthWhere,
@@ -747,9 +724,14 @@ async function loadLeads(ctx: DashboardContext, start: Date, end: Date) {
     convertidos,
     meus,
     porOrigem: porOrigemRaw
-      .map((row) => item(`origem-${row.source ?? 'sem'}`, row.source || 'Sem origem', row._count._all, 'Leads no mês'))
+      .map((row) => item(`origem-${row.source ?? 'sem'}`, sourceLabel(row.source), row._count._all, 'Leads no mês'))
       .sort((a, b) => Number(b.value) - Number(a.value))
       .slice(0, 5),
+    visitasHoje,
+    noShowMes,
+    contatosMes,
+    tempoRespostaMin: resposta?.value ?? null,
+    veiculoMaisProcurado: topVehicle,
   }
 }
 
@@ -896,7 +878,7 @@ async function loadPurchases(ctx: DashboardContext, start: Date, end: Date) {
     prisma.vehicleEvaluation.count({ where: { ...baseEvaluation, status: { in: ['DRAFT', 'IN_PROGRESS', 'AGUARDANDO_APROVACAO', 'PENDING_REVIEW'] } } }),
     prisma.vehicleEvaluation.count({ where: { ...baseEvaluation, OR: [{ result: 'APROVADO' }, { status: { in: ['APPROVED', 'LIBERADA'] } }] } }),
     prisma.vehicleEvaluation.count({ where: { ...baseEvaluation, result: 'PENDENTE' } }),
-    prisma.deal.count({ where: scopedDealWhere(ctx, { type: 'COMPRA', status: { in: DONE_DEALS }, createdAt: { gte: start, lte: end } }) }),
+    prisma.deal.count({ where: scopedDealWhere(ctx, { type: 'COMPRA', ...(commissionEligibleDealWindowWhere({ start, end }) as Prisma.DealWhereInput) }) }),
     prisma.deal.count({ where: scopedDealWhere(ctx, { type: 'TROCA', status: { in: OPEN_DEALS } }) }),
     prisma.vehicleEvaluation.count({ where: { ...baseEvaluation, vehicleId: { not: null }, releasedAt: { gte: start, lte: end } } }),
     prisma.pendency.count({ where: scopedPendencyWhere(ctx, { status: { in: OPEN_PENDENCIES }, type: { contains: 'document', mode: 'insensitive' } }) }),
@@ -959,11 +941,7 @@ async function loadUnits(ctx: DashboardContext, start: Date, end: Date) {
     by: ['unitId'],
     where: scopedDealWhere(ctx, {
       type: { in: ['VENDA', 'TROCA'] },
-      status: { in: DONE_DEALS },
-      OR: [
-        { finalizedAt: { gte: start, lte: end } },
-        { finalizedAt: null, saleDate: { gte: start, lte: end } },
-      ],
+      ...(commissionEligibleDealWindowWhere({ start, end }) as Prisma.DealWhereInput),
     }),
     _count: { _all: true },
   })
@@ -977,6 +955,187 @@ async function loadUnits(ctx: DashboardContext, start: Date, end: Date) {
     .map((row) => item(`unit-${row.unitId ?? 'sem'}`, row.unitId ? names.get(row.unitId) ?? 'Unidade' : 'Sem unidade', row._count._all, 'Vendas/trocas no mês'))
     .sort((a, b) => Number(b.value) - Number(a.value))
     .slice(0, 5)
+}
+
+async function loadStock(ctx: DashboardContext, canSeeCost: boolean, canSeePublications: boolean) {
+  const now = Date.now()
+  const where = (extra?: Prisma.VehicleWhereInput) => inStockVehicleWhere(ctx, extra)
+  const [
+    total,
+    consignado,
+    parceiro,
+    emPreparacao,
+    emNegociacao,
+    disponiveis,
+    ate30,
+    de31a60,
+    de61a90,
+    acima90,
+    valores,
+    publicados,
+  ] = await Promise.all([
+    prisma.vehicle.count({ where: where() }),
+    // Carro de loja parceira também vem como CONSIGNADO: conta só como parceiro.
+    prisma.vehicle.count({ where: where({ stockType: 'CONSIGNADO', OR: [{ originType: null }, { originType: { not: 'PARTNER' } }] }) }),
+    prisma.vehicle.count({ where: where({ originType: 'PARTNER' }) }),
+    prisma.vehicle.count({ where: where({ stockStatus: { in: [...PREP_STOCK_STATUSES] } }) }),
+    prisma.vehicle.count({ where: where({ stockStatus: { in: [...NEGOTIATION_STOCK_STATUSES] } }) }),
+    prisma.vehicle.count({ where: where({ stockStatus: { in: [...AVAILABLE_STOCK_STATUSES] } }) }),
+    // Faixas do relatório de parados (sem data de entrada = recém-chegado).
+    prisma.vehicle.count({ where: where({ OR: [{ entryDate: null }, { entryDate: { gte: daysAgo(30, now) } }] }) }),
+    prisma.vehicle.count({ where: where({ entryDate: { lt: daysAgo(30, now), gte: daysAgo(60, now) } }) }),
+    prisma.vehicle.count({ where: where({ entryDate: { lt: daysAgo(60, now), gte: daysAgo(AGED_STOCK_DAYS, now) } }) }),
+    prisma.vehicle.count({ where: where({ entryDate: { lt: daysAgo(AGED_STOCK_DAYS, now) } }) }),
+    prisma.vehicle.aggregate({ where: where(), _sum: { salePrice: true, purchasePrice: true } }),
+    canSeePublications
+      ? prisma.publication.groupBy({
+        by: ['vehicleId'],
+        where: { status: 'PUBLICADO', vehicle: where() },
+      }).then((rows) => rows.length).catch(() => null)
+      : Promise.resolve(null),
+  ])
+
+  return {
+    total,
+    proprio: Math.max(0, total - consignado - parceiro),
+    consignado,
+    parceiro,
+    emPreparacao,
+    emNegociacao,
+    disponiveis,
+    publicados,
+    aging: { ate30, de31a60, de61a90, acima90 },
+    valorVenda: num(valores._sum.salePrice),
+    valorImobilizado: canSeeCost ? num(valores._sum.purchasePrice) : null,
+  }
+}
+
+async function loadPreparation(ctx: DashboardContext, now: Date, todayStart: Date, todayEnd: Date, start: Date, end: Date, canSeeCost: boolean) {
+  const open = { status: { in: [...OPEN_SERVICE_STATUSES] } }
+  const [servicosAbertos, aguardando, emServico, atrasados, previstosHoje, concluidosMes, custoAberto, custoMes] = await Promise.all([
+    prisma.vehicleService.count({ where: serviceWhere(ctx, open) }),
+    prisma.vehicleService.count({ where: serviceWhere(ctx, { status: 'AGUARDANDO' }) }),
+    prisma.vehicleService.count({ where: serviceWhere(ctx, { status: 'EM_SERVICO' }) }),
+    prisma.vehicleService.count({ where: overdueServiceWhere(ctx, now) }),
+    prisma.vehicleService.count({ where: serviceWhere(ctx, { ...open, dueAt: { gte: todayStart, lte: todayEnd } }) }),
+    prisma.vehicleService.count({ where: serviceWhere(ctx, { status: 'CONCLUIDO', finishedAt: { gte: start, lte: end } }) }),
+    canSeeCost ? prisma.vehicleService.aggregate({ where: serviceWhere(ctx, open), _sum: { estimatedCost: true } }) : Promise.resolve(null),
+    canSeeCost ? prisma.vehicleService.aggregate({ where: serviceWhere(ctx, { status: 'CONCLUIDO', finishedAt: { gte: start, lte: end } }), _sum: { actualCost: true, estimatedCost: true } }) : Promise.resolve(null),
+  ])
+  return {
+    servicosAbertos,
+    aguardando,
+    emServico,
+    atrasados,
+    previstosHoje,
+    concluidosMes,
+    custoPrevistoAberto: custoAberto ? num(custoAberto._sum.estimatedCost) : null,
+    custoRealizadoMes: custoMes ? num(custoMes._sum.actualCost ?? custoMes._sum.estimatedCost) : null,
+  }
+}
+
+async function loadOperations(ctx: DashboardContext) {
+  const now = Date.now()
+  const tenantPart = ctx.user.role === 'MASTER' ? {} : { tenantId: ctx.tenantId ?? NO_MATCH }
+  const [abertas, paradas, saidaPendente, problemas, notasPendentes, notasRejeitadas, restricoes, vendas90d] = await Promise.all([
+    prisma.vehicleOperation.count({ where: openTransferWhere(ctx) }),
+    prisma.vehicleOperation.count({ where: stalledTransferWhere(ctx, now) }),
+    prisma.vehicleOperation.count({ where: operationWhere(ctx, { kind: 'SALE', cancelledAt: null, commercialStatus: 'SOLD', renaveStatus: 'PENDING' }) }),
+    prisma.vehicleOperation.count({ where: operationWhere(ctx, { renaveStatus: { in: ['REJECTED', 'UNKNOWN'] } }) }),
+    prisma.vehicleOperation.count({ where: operationWhere(ctx, { cancelledAt: null, commercialStatus: { in: ['SOLD', 'ACQUIRED', 'CLOSED'] }, fiscalStatus: { in: ['PENDING', 'PROCESSING', 'UNKNOWN'] } }) }),
+    prisma.vehicleOperation.count({ where: operationWhere(ctx, { cancelledAt: null, fiscalStatus: 'REJECTED' }) }),
+    prisma.vehicleRestriction.count({ where: { ...tenantPart, status: 'ACTIVE', blocking: true } }),
+    prisma.vehicleOperation.count({ where: operationWhere(ctx, { kind: 'SALE', cancelledAt: null, commercialStatus: 'SOLD', createdAt: { gte: daysAgo(90, now) } }) }),
+  ])
+  return {
+    transferenciasAbertas: abertas,
+    transferenciasParadas: paradas,
+    renaveSaidaPendente: saidaPendente,
+    renaveProblemas: problemas,
+    notasPendentes,
+    notasRejeitadas,
+    restricoesAtivas: restricoes,
+    vendas90d,
+  }
+}
+
+async function loadDeliveries(ctx: DashboardContext, todayStart: Date, todayEnd: Date, start: Date, end: Date) {
+  const waiting = { status: 'AGUARDANDO_ENTREGA' as DealStatus }
+  const [aguardandoEntrega, entregasAtrasadas, entregasHoje, entreguesMes, posVendaAtivos] = await Promise.all([
+    prisma.deal.count({ where: scopedDealWhere(ctx, waiting) }),
+    prisma.deal.count({ where: scopedDealWhere(ctx, { ...waiting, deliveryDate: { lt: todayStart } }) }),
+    prisma.deal.count({ where: scopedDealWhere(ctx, { ...waiting, deliveryDate: { gte: todayStart, lte: todayEnd } }) }),
+    prisma.deal.count({ where: scopedDealWhere(ctx, { status: 'ENTREGUE', updatedAt: { gte: start, lte: end } }) }),
+    prisma.sellerQueuePosVenda.count({
+      where: {
+        ...(ctx.user.role === 'MASTER' ? {} : { tenantId: ctx.tenantId ?? NO_MATCH }),
+        ...(ctx.profile.scope === 'UNIT' ? { unitId: ctx.unitId ?? NO_MATCH } : {}),
+        ...(ctx.profile.scope === 'SELF' ? { sellerId: ctx.user.id } : {}),
+        status: { in: ['ACTIVE', 'RETURN_REQUESTED'] },
+      },
+    }).catch(() => 0),
+  ])
+  return { aguardandoEntrega, entregasAtrasadas, entregasHoje, entreguesMes, posVendaAtivos }
+}
+
+function stockSection(raw: RawDashboardMetrics): DashboardSection {
+  const s = raw.stock
+  return section('estoque', 'Estoque', [
+    item('estoque-total', 'Veículos em estoque', s.total, `${s.proprio} próprios · ${s.consignado} consignados · ${s.parceiro} de parceiros`, 'brand', '/estoque'),
+    item('estoque-disponivel', 'Disponíveis para venda', s.disponiveis, s.publicados != null ? `${s.publicados} com anúncio publicado` : 'Prontos para vender', 'green', '/estoque'),
+    item('estoque-preparacao', 'Em preparação', s.emPreparacao, 'Ainda não estão prontos', s.emPreparacao > 0 ? 'amber' : 'gray', '/relatorios/estoque/preparacao'),
+    item('estoque-negociacao', 'Em negociação / reservados', s.emNegociacao, 'Com cliente', 'blue', '/estoque'),
+    item('estoque-aging', 'Tempo em estoque', `${s.aging.ate30} · ${s.aging.de31a60} · ${s.aging.de61a90} · ${s.aging.acima90}`, '0–30 · 31–60 · 61–90 · +90 dias', s.aging.acima90 > 0 ? 'amber' : 'gray', '/relatorios/estoque/parados'),
+    item('estoque-valor', 'Valor de venda do estoque', fmtCurrency(s.valorVenda), 'Soma dos preços anunciados', 'slate', '/relatorios/estoque/atual'),
+    ...(s.valorImobilizado != null
+      ? [item('valor-imobilizado', 'Valor imobilizado', fmtCurrency(s.valorImobilizado), 'Custo de aquisição do estoque', 'purple', '/relatorios/estoque/margem')]
+      : []),
+  ], 'Fonte única: cadastro do estoque.', 'stock', ['estoque'])
+}
+
+function prepSection(raw: RawDashboardMetrics): DashboardSection {
+  const p = raw.prep
+  return section('preparacao', 'Preparação', [
+    item('prep-veiculos', 'Veículos em preparação', raw.stock.emPreparacao, 'Pendente de preparação ou em serviço', 'brand', '/relatorios/estoque/preparacao'),
+    item('prep-atrasados', 'Serviços atrasados', p.atrasados, 'Previsão de entrega vencida', p.atrasados > 0 ? 'red' : 'gray', '/relatorios/estoque/preparacao'),
+    item('prep-aguardando', 'Aguardando início', p.aguardando, 'Serviço ainda não enviado', p.aguardando > 0 ? 'amber' : 'gray', '/relatorios/estoque/preparacao'),
+    item('prep-em-servico', 'Em serviço', p.emServico, 'No prestador/oficina', 'blue', '/relatorios/estoque/preparacao'),
+    item('prep-hoje', 'Previstos para hoje', p.previstosHoje, 'Devem voltar hoje', 'teal', '/relatorios/estoque/preparacao'),
+    item('prep-concluidos', 'Concluídos no mês', p.concluidosMes, 'Serviços encerrados', 'green', '/relatorios/estoque/preparacao'),
+    ...(p.custoPrevistoAberto != null
+      ? [item('prep-custo', 'Custo previsto em aberto', fmtCurrency(p.custoPrevistoAberto), p.custoRealizadoMes != null ? `Realizado no mês: ${fmtCurrency(p.custoRealizadoMes)}` : undefined, 'purple', '/relatorios/estoque/preparacao')]
+      : []),
+  ], 'Serviços de preparação do estoque.', 'clock', ['estoque'])
+}
+
+function opsSection(raw: RawDashboardMetrics): DashboardSection {
+  const o = raw.ops
+  return section('documentacao-veicular', 'Documentação veicular', [
+    item('ops-transferencias', 'Transferências em aberto', o.transferenciasAbertas, o.transferenciasParadas > 0 ? `${o.transferenciasParadas} paradas há +${STALLED_TRANSFER_DAYS} dias` : 'Vendas aguardando transferência', o.transferenciasParadas > 0 ? 'amber' : 'gray', '/operacoes/transferencias?aba=open'),
+    item('ops-renave-saida', 'RENAVE — saída pendente', o.renaveSaidaPendente, 'Vendas sem saída registrada', o.renaveSaidaPendente > 0 ? 'amber' : 'gray', '/operacoes/renave?aba=pending'),
+    item('ops-renave-problema', 'RENAVE com problema', o.renaveProblemas, 'Rejeitado ou sem confirmação', o.renaveProblemas > 0 ? 'red' : 'gray', '/operacoes/renave?aba=issues'),
+    item('ops-notas', 'Notas fiscais pendentes', o.notasPendentes, o.notasRejeitadas > 0 ? `${o.notasRejeitadas} rejeitadas` : 'Aguardando emissão', o.notasRejeitadas > 0 ? 'red' : 'gray', '/operacoes/notas'),
+    item('ops-restricoes', 'Restrições bloqueantes', o.restricoesAtivas, 'Gravame, judicial e outras', o.restricoesAtivas > 0 ? 'red' : 'gray', '/estoque/conformidade'),
+    item('ops-saude', 'Saúde documental', documentalHealth(o), 'Vendas dos últimos 90 dias sem pendência travada', 'green', '/operacoes'),
+  ], 'Transferência, RENAVE, notas e restrições.', 'documents')
+}
+
+function deliveriesSection(raw: RawDashboardMetrics): DashboardSection {
+  const d = raw.deliveries
+  return section('entregas', 'Entregas e pós-venda', [
+    item('entregas-aguardando', 'Aguardando entrega', d.aguardandoEntrega, 'Vendas prontas para entregar', 'brand', '/negociacoes?status=AGUARDANDO_ENTREGA'),
+    item('entregas-atrasadas', 'Entregas atrasadas', d.entregasAtrasadas, 'Data prevista já passou', d.entregasAtrasadas > 0 ? 'red' : 'gray', '/negociacoes?status=AGUARDANDO_ENTREGA'),
+    item('entregas-hoje', 'Entregas de hoje', d.entregasHoje, 'Previstas para hoje', d.entregasHoje > 0 ? 'amber' : 'gray', '/negociacoes?status=AGUARDANDO_ENTREGA'),
+    item('entregues-mes', 'Entregues no mês', d.entreguesMes, 'Concluídas', 'green', '/negociacoes?status=ENTREGUE'),
+    item('pos-venda-ativos', 'Atendimentos de pós-venda abertos', d.posVendaAtivos, 'Na fila de atendimento', 'blue', '/vendedor-da-vez/atendimentos'),
+  ], 'Do fechamento até o cliente com o carro.', 'check', ['negociacoes'])
+}
+
+/** % de vendas recentes sem pendência documental travada — só com dado real. */
+function documentalHealth(o: RawDashboardMetrics['ops']): string {
+  if (o.vendas90d <= 0) return 'Sem dados'
+  const travadas = Math.min(o.vendas90d, o.transferenciasParadas + o.renaveProblemas + o.notasRejeitadas)
+  return fmtPercent(((o.vendas90d - travadas) / o.vendas90d) * 100)
 }
 
 function commonSection(raw: RawDashboardMetrics, profile: DashboardProfile): DashboardSection {
@@ -1035,7 +1194,6 @@ function buildManager(raw: RawDashboardMetrics): { highlights: DashboardMetric[]
     sections: [
       section('equipe', 'Equipe', [
         ...raw.ranking.unitTop,
-        item('sem-atividade', 'Vendedores sem atividade', '—', 'Dados ainda não disponíveis', 'gray'),
         item('leads-parados', 'Leads sem atendimento', raw.leads.semAtendimento, 'Unidade', raw.leads.semAtendimento > 0 ? 'amber' : 'gray', '/marketing/sdr/inbox'),
       ], undefined, 'users'),
       section('operacao-unidade', 'Operação da Unidade', [
@@ -1065,54 +1223,104 @@ function buildManager(raw: RawDashboardMetrics): { highlights: DashboardMetric[]
   }
 }
 
-function buildGeneralManager(raw: RawDashboardMetrics): { highlights: DashboardMetric[]; sections: DashboardSection[] } {
+/** Cockpit executivo (Administrador da loja e Gerente Geral): visão da loja inteira. */
+function buildExecutive(raw: RawDashboardMetrics): { highlights: DashboardMetric[]; sections: DashboardSection[] } {
+  const c = raw.commercial
+  const vendas = c.vendasTrocas
+  const ticket = vendas > 0 ? c.valorVendido / vendas : null
+  const conversao = raw.leads.total > 0 ? (raw.leads.convertidos / raw.leads.total) * 100 : null
   return {
     highlights: [
-      metric('vendas-tenant', 'Vendas totais', raw.commercial.vendasTrocas, 'Tenant no mês', 'brand', 'sales', '/negociacoes'),
-      metric('unidades', 'Unidades ativas', raw.system.unidades, 'Tenant', 'blue', 'users', '/cadastros/unidades'),
-      metric('pendencias-vencidas', 'Pendências vencidas', raw.pendencies.vencidas, 'Tenant', raw.pendencies.vencidas > 0 ? 'red' : 'gray', 'alert', '/relatorios/pendencias/sla'),
-      metric('valor-vendido', 'Valor vendido', fmtCurrency(raw.commercial.valorVendido), 'Mês atual', 'green', 'money', '/relatorios/financeiro/visao-geral'),
+      metric('vendas-tenant', 'Vendas e trocas no mês', vendas, 'Aprovadas — mesma regra do ranking', 'brand', 'sales', '/negociacoes'),
+      metric('valor-vendido', 'Faturamento de veículos', fmtCurrency(c.valorVendido), ticket != null ? `Ticket médio ${fmtCurrency(ticket)}` : 'Sem vendas no mês', 'green', 'money', '/relatorios/negociacoes/vendas'),
+      metric('conversao', 'Conversão de leads', conversao != null ? fmtPercent(conversao) : 'Sem dados', `${raw.leads.convertidos} de ${raw.leads.total} leads do mês`, 'blue', 'leads', '/crm/leads'),
+      metric('estoque-total', 'Veículos em estoque', raw.stock.total, raw.stock.aging.acima90 > 0 ? `${raw.stock.aging.acima90} há mais de 90 dias` : 'Nenhum acima de 90 dias', raw.stock.aging.acima90 > 0 ? 'amber' : 'gray', 'stock', '/estoque'),
     ],
     sections: [
-      section('unidades', 'Unidades', raw.units.length ? raw.units : [item('sem-unidade', 'Sem vendas por unidade', 0, 'No mês')], undefined, 'users'),
-      section('ranking-geral', 'Ranking Geral', raw.ranking.tenantTop, 'Vendedores do tenant.', 'ranking'),
-      section('gargalos', 'Gargalos Operacionais', [
-        item('financeiro', 'Aguardando financeiro', raw.commercial.aguardandoFinanceiro, 'Negociações', raw.commercial.aguardandoFinanceiro > 0 ? 'amber' : 'gray'),
-        item('documentacao', 'Aguardando documentação', raw.commercial.aguardandoDocumentacao + raw.documents.pendentes, 'Negociações + pendências', 'purple'),
-        item('fi', 'F&I pendente', raw.financing.pendentes, 'Fichas/simulações', 'cyan'),
-        item('leads', 'Leads sem atendimento', raw.leads.semAtendimento, 'Marketing/SDR', raw.leads.semAtendimento > 0 ? 'amber' : 'gray'),
-      ], undefined, 'alert'),
+      section('comercial', 'Comercial', [
+        item('propostas-abertas', 'Negociações em andamento', c.propostasAbertas, 'Abertas', 'slate', '/negociacoes'),
+        item('aguardando-aprovacao', 'Aguardando aprovação', c.aguardandoAprovacao, 'Precisam de decisão', c.aguardandoAprovacao > 0 ? 'amber' : 'gray', '/negociacoes/aprovacoes'),
+        item('compras', 'Compras no mês', c.compras, 'Aprovadas', 'teal', '/negociacoes?type=COMPRA'),
+        item('consignacoes', 'Consignações no mês', c.consignacoes, 'Aprovadas', 'purple', '/negociacoes?type=CONSIGNACAO'),
+        item('vendas-perdidas', 'Negociações perdidas', c.propostasPerdidas, 'No mês', c.propostasPerdidas > 0 ? 'red' : 'gray', '/negociacoes?status=CANCELADA,RECUSADA,DESAPROVADA'),
+        item('garantias', 'Garantias e produtos', c.garantias + raw.financing.produtos + c.servicos, 'Vendidos no mês', 'green', '/relatorios/comissoes/garantias'),
+      ], 'Negociações aprovadas contam no mês da aprovação.', 'sales'),
+      stockSection(raw),
+      prepSection(raw),
+      section('crm', 'CRM e atendimento', [
+        item('leads-mes', 'Leads no mês', raw.leads.total, `${raw.leads.novos} ainda novos`, 'brand', '/crm/leads'),
+        item('leads-sem-atendimento', 'Sem responsável', raw.leads.semAtendimento, 'Aguardando distribuição', raw.leads.semAtendimento > 0 ? 'amber' : 'gray', '/marketing/sdr/inbox'),
+        item('tempo-resposta', 'Tempo até o primeiro contato', raw.leads.tempoRespostaMin != null ? formatInsightValue(raw.leads.tempoRespostaMin, 'min') : 'Sem dados suficientes', 'Média dos últimos 30 dias', raw.leads.tempoRespostaMin != null && raw.leads.tempoRespostaMin > 15 ? 'amber' : 'gray', '/crm/leads'),
+        item('visitas-hoje', 'Visitas de hoje', raw.leads.visitasHoje, raw.leads.noShowMes > 0 ? `${raw.leads.noShowMes} não compareceram no mês` : 'Agenda da loja', 'blue', '/crm/atendimentos'),
+        ...raw.leads.porOrigem.slice(0, 3).map((row) => ({ ...row, href: '/crm/leads' })),
+      ], 'Origem, velocidade e agenda.', 'leads'),
+      section('financeiro', 'Financeiro', raw.finance ? [
+        item('receitas', 'Recebido no mês', fmtCurrency(raw.finance.receitas), `Pago no mês: ${fmtCurrency(raw.finance.despesas)}`, 'green', '/financeiro/extrato'),
+        item('a-receber', 'A receber', fmtCurrency(raw.finance.aReceber), `${raw.finance.recebimentosPendentes} lançamentos`, 'blue', '/financeiro/receber'),
+        item('a-pagar', 'A pagar', fmtCurrency(raw.finance.aPagar), `${raw.finance.pagamentosPendentes} lançamentos`, 'amber', '/financeiro/pagar'),
+        item('comissoes', 'Comissões previstas/aprovadas', fmtCurrency(raw.finance.comissoesPendentes), `Pagas no mês: ${fmtCurrency(raw.finance.comissoesPagas)}`, 'purple', '/comissoes/lancamentos'),
+      ] : [], 'Somente para quem tem o Centro Financeiro liberado.', 'money'),
+      opsSection(raw),
+      deliveriesSection(raw),
+      section('unidades', 'Vendas por unidade', raw.units.map((row) => ({ ...row, href: '/negociacoes' })), 'Vendas/trocas aprovadas no mês.', 'users', ['negociacoes', 'relatorios']),
+      section('ranking-geral', 'Ranking da loja', raw.ranking.tenantTop.map((row) => ({ ...row, href: '/ranking/geral' })), 'Pontuação do mês.', 'ranking'),
     ],
   }
 }
 
-function buildAdmin(raw: RawDashboardMetrics): { highlights: DashboardMetric[]; sections: DashboardSection[] } {
+function buildGeneralManager(raw: RawDashboardMetrics) {
+  return buildExecutive(raw)
+}
+
+function buildAdmin(raw: RawDashboardMetrics) {
+  return buildExecutive(raw)
+}
+
+function buildDocumentation(raw: RawDashboardMetrics): { highlights: DashboardMetric[]; sections: DashboardSection[] } {
+  const o = raw.ops
   return {
     highlights: [
-      metric('status-geral', 'Status geral', raw.system.pendenciasCriticas > 0 ? 'Atenção' : 'Operando', 'Tenant/plataforma', raw.system.pendenciasCriticas > 0 ? 'red' : 'green', 'system'),
-      metric('vendas', 'Vendas totais', raw.commercial.vendasTrocas, 'Mês atual', 'brand', 'sales'),
-      metric('usuarios', 'Usuários ativos', raw.system.usuariosAtivos, 'Com acesso ativo', 'blue', 'users'),
-      metric('alertas', 'Alertas do sistema', raw.system.alertasSistema, 'Não lidos', raw.system.alertasSistema > 0 ? 'red' : 'gray', 'alert'),
+      metric('doc-transferencias', 'Transferências em aberto', o.transferenciasAbertas, o.transferenciasParadas > 0 ? `${o.transferenciasParadas} paradas` : 'Nenhuma parada', o.transferenciasParadas > 0 ? 'amber' : 'brand', 'documents', '/operacoes/transferencias?aba=open'),
+      metric('doc-renave', 'RENAVE pendente', o.renaveSaidaPendente + o.renaveProblemas, o.renaveProblemas > 0 ? `${o.renaveProblemas} com problema` : 'Saídas a registrar', o.renaveProblemas > 0 ? 'red' : 'blue', 'documents', '/operacoes/renave?aba=pending'),
+      metric('doc-saude', 'Saúde documental', documentalHealth(o), 'Vendas dos últimos 90 dias', 'green', 'check', '/operacoes'),
+      metric('doc-entregas', 'Aguardando entrega', raw.deliveries.aguardandoEntrega, raw.deliveries.entregasAtrasadas > 0 ? `${raw.deliveries.entregasAtrasadas} atrasadas` : 'Em dia', raw.deliveries.entregasAtrasadas > 0 ? 'red' : 'gray', 'clock', '/negociacoes?status=AGUARDANDO_ENTREGA'),
     ],
     sections: [
-      section('financeiro', 'Financeiro e Gestão', [
-        item('receitas', 'Receitas recebidas', raw.finance ? fmtCurrency(raw.finance.receitas) : '—', 'Mês atual', 'green'),
-        item('a-receber', 'Valores a receber', raw.finance ? fmtCurrency(raw.finance.aReceber) : '—', 'Previstos', 'blue'),
-        item('comissoes', 'Comissões a validar', raw.finance ? fmtCurrency(raw.finance.comissoesPendentes) : '—', 'Previstas/aprovadas', 'amber'),
-        item('produtos', 'Produtos/garantias', raw.financing.produtos + raw.commercial.garantias, 'Vendidos no mês', 'purple'),
-      ], undefined, 'money'),
-      section('operacao', 'Operação', [
-        item('pendencias', 'Pendências críticas', raw.pendencies.criticas, 'Tenant', raw.pendencies.criticas > 0 ? 'red' : 'gray'),
-        item('travadas', 'Negociações travadas', raw.commercial.aguardandoAprovacao + raw.commercial.aguardandoFinanceiro + raw.commercial.aguardandoDocumentacao, 'Aprovação/financeiro/documentação', 'amber'),
-        item('usuarios', 'Usuários ativos', raw.system.usuariosAtivos, 'Operação ativa', 'blue'),
-        item('unidades', 'Status das unidades', raw.system.unidades, 'Unidades ativas', 'green'),
-      ], undefined, 'activity'),
-      section('sistema', 'Sistema', [
-        item('avisos', 'Alertas recentes', raw.system.alertasSistema, 'Sistema/integração/envio', raw.system.alertasSistema > 0 ? 'red' : 'gray'),
-        item('integracoes', 'Integrações', '—', 'Dados ainda não disponíveis', 'gray'),
-        item('push', 'Push/avisos', raw.pendencies.criticas + raw.system.alertasSistema, 'Atenções abertas', 'amber'),
-      ], undefined, 'system'),
+      opsSection(raw),
+      section('documentacao', 'Contratos e assinaturas', [
+        item('aguardando-doc', 'Negociações aguardando documentação', raw.commercial.aguardandoDocumentacao, 'Etapa de documentação', 'purple', '/negociacoes?status=AGUARDANDO_DOCUMENTACAO'),
+        item('contratos', 'Aguardando contrato', raw.documents.contratos, 'Gerar contrato', 'blue', '/negociacoes?status=AGUARDANDO_CONTRATO'),
+        item('assinaturas', 'Aguardando assinatura', raw.documents.assinaturas, 'Cliente precisa assinar', 'amber', '/negociacoes?status=AGUARDANDO_ASSINATURA'),
+        item('pendencias-doc', 'Pendências de documentação', raw.documents.pendentes, 'Abertas', raw.documents.pendentes > 0 ? 'amber' : 'gray', '/pendencias/central'),
+      ], 'Da venda aprovada ao contrato assinado.', 'documents'),
+      deliveriesSection(raw),
     ],
+  }
+}
+
+function buildPreparation(raw: RawDashboardMetrics): { highlights: DashboardMetric[]; sections: DashboardSection[] } {
+  const p = raw.prep
+  return {
+    highlights: [
+      metric('prep-veiculos', 'Veículos em preparação', raw.stock.emPreparacao, 'Ainda não estão prontos', 'brand', 'stock', '/relatorios/estoque/preparacao'),
+      metric('prep-atrasados', 'Serviços atrasados', p.atrasados, 'Previsão vencida', p.atrasados > 0 ? 'red' : 'gray', 'alert', '/relatorios/estoque/preparacao'),
+      metric('prep-hoje', 'Previstos para hoje', p.previstosHoje, 'Devem voltar hoje', p.previstosHoje > 0 ? 'amber' : 'gray', 'clock', '/relatorios/estoque/preparacao'),
+      metric('prep-concluidos', 'Concluídos no mês', p.concluidosMes, 'Serviços encerrados', 'green', 'check', '/relatorios/estoque/preparacao'),
+    ],
+    sections: [prepSection(raw), stockSection(raw)],
+  }
+}
+
+function buildPosVenda(raw: RawDashboardMetrics): { highlights: DashboardMetric[]; sections: DashboardSection[] } {
+  const d = raw.deliveries
+  return {
+    highlights: [
+      metric('pv-aguardando', 'Aguardando entrega', d.aguardandoEntrega, 'Vendas prontas para entregar', 'brand', 'clock', '/negociacoes?status=AGUARDANDO_ENTREGA'),
+      metric('pv-atrasadas', 'Entregas atrasadas', d.entregasAtrasadas, 'Data prevista passou', d.entregasAtrasadas > 0 ? 'red' : 'gray', 'alert', '/negociacoes?status=AGUARDANDO_ENTREGA'),
+      metric('pv-hoje', 'Entregas de hoje', d.entregasHoje, 'Previstas para hoje', d.entregasHoje > 0 ? 'amber' : 'gray', 'clock', '/negociacoes?status=AGUARDANDO_ENTREGA'),
+      metric('pv-entregues', 'Entregues no mês', d.entreguesMes, 'Concluídas', 'green', 'check', '/negociacoes?status=ENTREGUE'),
+    ],
+    sections: [deliveriesSection(raw), opsSection(raw)],
   }
 }
 
@@ -1160,7 +1368,7 @@ function buildMarketing(raw: RawDashboardMetrics): { highlights: DashboardMetric
       section('impacto', 'Impacto Comercial', [
         item('vendas', 'Vendas do mês', raw.commercial.vendasTrocas, 'Escopo permitido', 'brand'),
         item('ranking', 'Vendedor destaque', raw.ranking.tenantTop[0]?.label ?? '—', raw.ranking.tenantTop[0]?.helper, 'amber'),
-        item('veiculos-leads', 'Veículos com mais leads', '—', 'Dados ainda não disponíveis', 'gray'),
+        item('veiculos-leads', 'Veículo mais procurado', raw.leads.veiculoMaisProcurado ?? 'Sem dados suficientes', 'Leads com veículo de interesse no mês', 'slate', '/crm/leads'),
       ], undefined, 'sales'),
     ],
   }
@@ -1203,12 +1411,12 @@ function buildSdr(raw: RawDashboardMetrics): { highlights: DashboardMetric[]; se
       section('atendimento', 'Atendimento SDR', [
         item('em-atendimento', 'Leads em atendimento', raw.leads.emAtendimento, 'Ativos', 'blue'),
         item('perdidos', 'Leads perdidos', raw.leads.perdidos, 'No período', raw.leads.perdidos > 0 ? 'red' : 'gray'),
-        item('agendados', 'Agendamentos do dia', '—', 'Dados ainda não disponíveis', 'gray'),
+        item('agendados', 'Visitas de hoje', raw.leads.visitasHoje, raw.leads.noShowMes > 0 ? `${raw.leads.noShowMes} não compareceram no mês` : 'Agenda do dia', raw.leads.visitasHoje > 0 ? 'blue' : 'gray', '/crm/atendimentos'),
         item('retornos', 'Retornos pendentes', raw.pendencies.atribuidas + raw.pendencies.vencendoHoje, 'Pendências atribuídas', 'amber'),
       ], undefined, 'leads'),
       section('performance', 'Performance SDR', [
-        item('contatos', 'Contatos realizados', '—', 'Integração de telefonia em evolução', 'gray'),
-        item('tempo-resposta', 'Tempo médio de resposta', '—', 'Dados ainda não disponíveis', 'gray'),
+        item('contatos', 'Contatos realizados', raw.leads.contatosMes, 'Ligações, WhatsApp e e-mails no mês', 'blue', '/crm/leads'),
+        item('tempo-resposta', 'Tempo até o primeiro contato', raw.leads.tempoRespostaMin != null ? formatInsightValue(raw.leads.tempoRespostaMin, 'min') : 'Sem dados suficientes', 'Média dos últimos 30 dias', raw.leads.tempoRespostaMin != null && raw.leads.tempoRespostaMin > 15 ? 'amber' : 'gray', '/crm/leads'),
         item('ranking-sdr', 'Ranking SDR', raw.ranking.unitTop[0]?.label ?? '—', raw.ranking.unitTop[0]?.helper, 'amber'),
         item('conversao', 'Conversão para venda', raw.leads.total > 0 ? fmtPercent((raw.leads.convertidos / raw.leads.total) * 100) : '0%', 'Leads convertidos', 'green'),
       ], undefined, 'ranking'),
@@ -1234,9 +1442,9 @@ function buildPurchases(raw: RawDashboardMetrics): { highlights: DashboardMetric
       section('operacao-compras', 'Operação de Compras', [
         item('vistoria', 'Vistorias pendentes', raw.documents.vistorias, 'Pendências', 'amber'),
         item('documentos', 'Documentos pendentes', raw.purchases.aguardandoDocumentacao, 'Compras/avaliações', 'purple'),
-        item('origem', 'Origem das compras', '—', 'Dados ainda não disponíveis', 'gray'),
-        item('responsavel', 'Responsável pela compra', '—', 'Dados ainda não disponíveis', 'gray'),
       ], undefined, 'documents'),
+      stockSection(raw),
+      prepSection(raw),
     ],
   }
 }
@@ -1245,9 +1453,9 @@ function buildAuxiliary(raw: RawDashboardMetrics): { highlights: DashboardMetric
   return {
     highlights: [
       metric('atribuidas', 'Pendências atribuídas', raw.pendencies.atribuidas || raw.pendencies.minhas, 'Suas tarefas', 'brand', 'pendencies', '/pendencias/minhas'),
-      metric('vencidas', 'Pendências vencidas', raw.pendencies.vencidas, 'Atenção imediata', raw.pendencies.vencidas > 0 ? 'red' : 'gray', 'alert'),
-      metric('hoje', 'Vencendo hoje', raw.pendencies.vencendoHoje, 'Tarefas do dia', raw.pendencies.vencendoHoje > 0 ? 'amber' : 'gray', 'clock'),
-      metric('documentos', 'Documentos pendentes', raw.documents.pendentes, 'Conferência', 'purple', 'documents'),
+      metric('vencidas', 'Pendências vencidas', raw.pendencies.vencidas, 'Atenção imediata', raw.pendencies.vencidas > 0 ? 'red' : 'gray', 'alert', '/pendencias/minhas'),
+      metric('hoje', 'Vencendo hoje', raw.pendencies.vencendoHoje, 'Tarefas do dia', raw.pendencies.vencendoHoje > 0 ? 'amber' : 'gray', 'clock', '/pendencias/minhas'),
+      metric('documentos', 'Documentos pendentes', raw.documents.pendentes, 'Conferência', 'purple', 'documents', '/pendencias/minhas'),
     ],
     sections: [
       section('documentacao', 'Documentação', [
@@ -1262,6 +1470,8 @@ function buildAuxiliary(raw: RawDashboardMetrics): { highlights: DashboardMetric
         item('aguardando-doc', 'Negociações aguardando documentação', raw.commercial.aguardandoDocumentacao, 'Negociações', 'purple'),
         item('avisos', 'Avisos importantes', raw.system.alertasSistema, 'Sistema/comunicação', raw.system.alertasSistema > 0 ? 'red' : 'gray'),
       ], undefined, 'clock'),
+      opsSection(raw),
+      deliveriesSection(raw),
       section('comercial-simples', 'Resumo Simples de Vendas', [
         item('vendas', 'Vendas do mês', raw.commercial.vendasTrocas, 'Sem dados sensíveis', 'brand'),
         item('ranking', 'Ranking resumido', raw.ranking.unitTop[0]?.label ?? '—', raw.ranking.unitTop[0]?.helper, 'amber'),
@@ -1280,58 +1490,36 @@ function buildDashboard(raw: RawDashboardMetrics, profile: DashboardProfile): { 
   if (profile.kind === 'FI') return buildFi(raw)
   if (profile.kind === 'SDR') return buildSdr(raw)
   if (profile.kind === 'COMPRAS') return buildPurchases(raw)
+  if (profile.kind === 'DOCUMENTACAO') return buildDocumentation(raw)
+  if (profile.kind === 'PREPARACAO') return buildPreparation(raw)
+  if (profile.kind === 'POS_VENDA') return buildPosVenda(raw)
   if (profile.kind === 'AUXILIAR') return buildAuxiliary(raw)
   return buildAuxiliary(raw)
 }
 
 export async function getDashboardData(user: SessionUser): Promise<DashboardSummary> {
-  const tenantId = assertTenantId(user.tenantId, user.role)
-  const [actor, tenantServices] = await Promise.all([
-    loadActorContext(user),
-    getTenantServicesForUser(user),
-  ])
-  const effectiveUnitId = user.unitId ?? actor.dbUser?.seller?.unitId ?? actor.dbUser?.manager?.unitId ?? null
-  const baseProfile = resolveDashboardProfile({
-    role: user.role as UserRole,
-    positionName: actor.positionName,
-    positionSlug: actor.positionSlug,
-    sellerCargo: actor.dbUser?.seller?.cargo,
-    managerAccessProfile: actor.dbUser?.manager?.accessProfile,
-    unitName: actor.dbUser?.unit?.name ?? null,
-    isSdrMember: actor.isSdrMember,
-  })
-  const services = tenantServices.flags
-  const profile: DashboardProfile = {
-    ...baseProfile,
-    canSeeFinancial: baseProfile.canSeeFinancial && services.financeiro,
-    canSeeRanking: baseProfile.canSeeRanking && services.ranking,
-  }
-
-  const ctx: DashboardContext = {
-    user,
-    profile,
-    tenantId,
-    unitId: effectiveUnitId,
-    sellerId: actor.dbUser?.seller?.id ?? null,
-    managerId: actor.dbUser?.manager?.id ?? null,
-  }
-
-  const warnings: string[] = []
-  if (profile.scope === 'UNIT' && !effectiveUnitId) {
-    warnings.push('Usuário sem unidade vinculada. Alguns blocos foram limitados para evitar vazamento de dados.')
-  }
-  if (profile.scope === 'SELF' && !ctx.sellerId) {
-    warnings.push('Usuário sem cadastro de vendedor vinculado. Métricas individuais podem ficar zeradas.')
-  }
-  if (!Object.values(services).some(Boolean)) {
-    warnings.push('Nenhum serviço ativo foi encontrado para este usuário. O dashboard foi mantido sem blocos de módulos.')
-  }
+  const { ctx, warnings } = await resolveDashboardContext(user)
+  const { profile, services, access } = ctx
 
   const now = new Date()
   const { start, end } = monthRange(now)
   const today = todayRange(now)
   const empty = emptyRawDashboardMetrics()
-  const loadPlan = resolveDashboardDataLoadPlan(services)
+  // Plano de carga: serviço contratado pela loja E liberado para o colaborador.
+  // Não liberado = nem consulta (o dado nunca sai do servidor).
+  const loadPlan = applyAccessToLoadPlan(resolveDashboardDataLoadPlan(services), access)
+  // Blocos operacionais só para quem trabalha com eles (e tem acesso).
+  const kind = profile.kind
+  const isLeadership = kind === 'ADMIN' || kind === 'GERENTE_GERAL'
+  const canSeeCost = access.canAny(['ops.costs.view']) || await financeCan(user, 'finance.profit').catch(() => false)
+  const wants = {
+    stock: loadPlan.stock && (isLeadership || kind === 'COMPRAS' || kind === 'PREPARACAO'),
+    prep: loadPlan.stock && (isLeadership || kind === 'COMPRAS' || kind === 'PREPARACAO'),
+    ops: access.canAny(['ops.panel', 'ops.transfer.view', 'ops.renave.view']) &&
+      (isLeadership || kind === 'DOCUMENTACAO' || kind === 'AUXILIAR' || kind === 'FI'),
+    deliveries: access.can('negotiations') &&
+      (isLeadership || kind === 'POS_VENDA' || kind === 'DOCUMENTACAO' || kind === 'AUXILIAR'),
+  }
 
   const [
     commercial,
@@ -1345,18 +1533,26 @@ export async function getDashboardData(user: SessionUser): Promise<DashboardSumm
     documents,
     system,
     units,
+    stock,
+    prep,
+    ops,
+    deliveries,
   ] = await Promise.all([
     loadPlan.commercial ? loadCommercial(ctx, start, end) : Promise.resolve(empty.commercial),
     loadPlan.pendencies ? loadPendencies(ctx, now, today.start, today.end) : Promise.resolve(empty.pendencies),
     loadPlan.goals ? loadGoals(ctx) : Promise.resolve(empty.goals),
     loadPlan.ranking && profile.canSeeRanking ? loadRanking(ctx) : Promise.resolve(empty.ranking),
-    loadPlan.leads ? loadLeads(ctx, start, end) : Promise.resolve(empty.leads),
+    loadPlan.leads ? loadLeads(ctx, start, end, today.start, today.end) : Promise.resolve(empty.leads),
     loadPlan.financing ? loadFinancing(ctx, start, end) : Promise.resolve(empty.financing),
     loadPlan.finance && profile.canSeeFinancial ? loadFinance(ctx, start, end) : Promise.resolve(empty.finance),
     loadPlan.purchases ? loadPurchases(ctx, start, end) : Promise.resolve(empty.purchases),
     loadPlan.documents ? loadDocuments(ctx) : Promise.resolve(empty.documents),
     loadPlan.system ? loadSystem(ctx) : Promise.resolve(empty.system),
     loadPlan.units ? loadUnits(ctx, start, end) : Promise.resolve(empty.units),
+    wants.stock ? loadStock(ctx, canSeeCost, access.canAny(['marketing.publications', 'site'])) : Promise.resolve(empty.stock),
+    wants.prep ? loadPreparation(ctx, now, today.start, today.end, start, end, canSeeCost) : Promise.resolve(empty.prep),
+    wants.ops ? loadOperations(ctx) : Promise.resolve(empty.ops),
+    wants.deliveries ? loadDeliveries(ctx, today.start, today.end, start, end) : Promise.resolve(empty.deliveries),
   ])
 
   const raw: RawDashboardMetrics = {
@@ -1371,9 +1567,13 @@ export async function getDashboardData(user: SessionUser): Promise<DashboardSumm
     documents,
     system,
     units,
+    stock,
+    prep,
+    ops,
+    deliveries,
   }
   const roleDashboard = buildDashboard(raw, profile)
-  const common = filterDashboardSection(commonSection(raw, profile), services) ?? section(
+  const common = filterDashboardSection(commonSection(raw, profile), services, access) ?? section(
     'servicos-indisponiveis',
     'Serviços disponíveis',
     [],
@@ -1389,8 +1589,8 @@ export async function getDashboardData(user: SessionUser): Promise<DashboardSumm
       start: start.toISOString(),
       end: end.toISOString(),
     },
-    highlights: filterDashboardMetrics(roleDashboard.highlights, services),
-    sections: filterDashboardSections(roleDashboard.sections, services),
+    highlights: filterDashboardMetrics(roleDashboard.highlights, services, access),
+    sections: filterDashboardSections(roleDashboard.sections, services, access),
     commonSection: common,
     warnings,
   }
