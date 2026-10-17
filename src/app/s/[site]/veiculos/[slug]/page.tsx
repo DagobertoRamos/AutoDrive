@@ -64,7 +64,7 @@ export default async function SiteVehiclePage({ params }: Props) {
         <div className="detail-layout">
           <div className="detail-main">
             <div className="detail-header">
-              <div><h1 className="detail-title">{v.brand} <span>{v.model}</span></h1><p className="detail-version">{v.version}</p><p className={`vcard-origin ${v.origin.toLowerCase()}`}>{originPublicTag(v.origin, ctx.config.identity.name)}</p></div>
+              <div><h1 className="detail-title">{v.brand} <span>{v.model}</span></h1><p className="detail-version">{v.version}</p>{originPublicTag(v.origin) && <p className={`vcard-origin ${v.origin.toLowerCase()}`}>{originPublicTag(v.origin)}</p>}</div>
               <div className="detail-price-box">
                 {v.oldPrice != null && <span className="detail-old-price">de {money(v.oldPrice)}</span>}
                 <strong className="detail-price">{money(v.price)}</strong>

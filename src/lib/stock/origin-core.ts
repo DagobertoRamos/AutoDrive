@@ -38,12 +38,11 @@ export function stockTypeForOrigin(o: OriginType): 'PROPRIO' | 'CONSIGNADO' {
   return o === 'OWN' ? 'PROPRIO' : 'CONSIGNADO'
 }
 
-/** Tag pública no site. `storeName` = nome da loja (identidade do site). */
-export function originPublicTag(o: OriginType, storeName?: string | null): string {
+/** Tag pública no site. Estoque próprio não leva etiqueta (null). */
+export function originPublicTag(o: OriginType): string | null {
   if (o === 'PARTNER') return 'Lojista parceiro'
   if (o === 'PRIVATE') return 'Particular intermediado'
-  const name = String(storeName ?? '').trim()
-  return name ? `Estoque ${name}` : 'Estoque próprio'
+  return null
 }
 
 /** Valida o par origem/parceiro vindo de formulário. */

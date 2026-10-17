@@ -19,9 +19,8 @@ describe('origem do veículo', () => {
     expect(stockTypeForOrigin('PARTNER')).toBe('CONSIGNADO')
   })
   it('tag pública', () => {
-    expect(originPublicTag('OWN', 'AutoDrive')).toBe('Estoque AutoDrive')
-    expect(originPublicTag('OWN')).toBe('Estoque próprio')
-    expect(originPublicTag('PARTNER', 'AutoDrive')).toBe('Lojista parceiro')
+    expect(originPublicTag('OWN')).toBeNull()
+    expect(originPublicTag('PARTNER')).toBe('Lojista parceiro')
     expect(originPublicTag('PRIVATE')).toBe('Particular intermediado')
   })
   it('valida formulário: parceira exige loja; outras limpam o parceiro', () => {

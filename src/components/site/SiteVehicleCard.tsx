@@ -33,7 +33,7 @@ function badge(v: SiteVehicle) {
   return null
 }
 
-export function SiteVehicleCard({ vehicle, base, index = 0, storeName, placeholder }: { vehicle: SiteVehicle; base: string; index?: number; storeName?: string; placeholder?: string }) {
+export function SiteVehicleCard({ vehicle, base, index = 0, placeholder }: { vehicle: SiteVehicle; base: string; index?: number; storeName?: string; placeholder?: string }) {
   const href = `${base}/veiculos/${vehicle.slug}`
   const cb = canonicalBrand(vehicle.brand)
   const logo = cb ? brandLogo(cb.slug) : null
@@ -46,7 +46,7 @@ export function SiteVehicleCard({ vehicle, base, index = 0, storeName, placehold
         <SiteVehicleImage src={vehicle.cover} alt={vehicle.title} loading={index < 6 ? 'eager' : 'lazy'} placeholder={placeholder} />
         <span className="vcard-tags">
           {b && <span className={`vcard-badge ${b.tone}`}>{b.label}</span>}
-          <span className={`vcard-badge origin-${vehicle.origin.toLowerCase()}`}>{originPublicTag(vehicle.origin, storeName)}</span>
+          {originPublicTag(vehicle.origin) && <span className={`vcard-badge origin-${vehicle.origin.toLowerCase()}`}>{originPublicTag(vehicle.origin)}</span>}
         </span>
       </Link>
       <div className="vcard-body">
