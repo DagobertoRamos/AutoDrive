@@ -3,18 +3,6 @@
 .autodrive-site .footer-brand-text { display: block; margin-bottom: 8px; font-size: 1.2rem; color: #fff; }
 .autodrive-site .hero-grid-single { grid-template-columns: 1fr; }
 .autodrive-site .hero-grid-single .hero-content h1 { max-width: 760px; }
-/* Topo com banners: as artes são largas (3:1) e já trazem título e botão, então
-   o banner ocupa a largura toda em cima e o texto do topo vem logo abaixo. */
-.autodrive-site .hero-grid.hero-grid-banner { grid-template-columns: 1fr; gap: 26px; }
-.autodrive-site .hero-grid-banner .hero-banner-frame { order: -1; width: 100%; max-width: none; }
-@media (min-width: 901px) {
-.autodrive-site .hero-grid-banner .hero-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: clamp(32px, 5vw, 72px); align-items: end; }
-.autodrive-site .hero-grid-banner .hero-content > .eyebrow { grid-area: 1 / 1; }
-.autodrive-site .hero-grid-banner .hero-content > h1 { grid-area: 2 / 1; max-width: none; margin-bottom: 0; font-size: clamp(2.2rem, 3.4vw, 2.9rem); }
-.autodrive-site .hero-grid-banner .hero-content > p:not(.eyebrow) { grid-area: 1 / 2 / 3 / 3; max-width: none; margin: 0; }
-.autodrive-site .hero-grid-banner .hero-actions { grid-area: 3 / 1; margin-top: 20px; }
-.autodrive-site .hero-grid-banner .hero-trust { grid-area: 3 / 2; align-self: center; margin-top: 20px; }
-}
 .autodrive-site .footer-powered { opacity: .7; font-size: .8rem; }
 .autodrive-site .vcard-image img { width: 100%; height: 100%; object-fit: cover; }
 /* O tema original deixava o texto branco no hover do botão contornado (fundo claro). */
@@ -130,12 +118,20 @@
 .autodrive-site .vcard-origin { margin: 2px 0 0; font-size: .68rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--brand); }
 .autodrive-site .vcard-origin.partner { color: #4338ca; }
 .autodrive-site .vcard-origin.private { color: #b45309; }
-/* Banner com texto e botão sobre a arte (opção "Mostrar texto" do painel). */
-.autodrive-site .banner-slide-caption { position: relative; }
-.autodrive-site .banner-caption { position: absolute; inset: auto 0 0 0; display: grid; gap: 6px; justify-items: start; padding: clamp(16px, 3vw, 32px); color: #fff; background: linear-gradient(0deg, color-mix(in srgb, var(--dark) 88%, transparent) 0%, color-mix(in srgb, var(--dark) 55%, transparent) 60%, color-mix(in srgb, var(--dark) 0%, transparent) 100%); }
-.autodrive-site .banner-caption h2 { margin: 0; font-size: clamp(1.2rem, 2.4vw, 1.9rem); line-height: 1.15; color: #fff; }
-.autodrive-site .banner-caption p { margin: 0; max-width: 560px; font-size: .95rem; color: var(--footer-text); }
-.autodrive-site .banner-caption .button { margin-top: 6px; }
+/* Banner com texto e botão numa faixa abaixo da arte (opção "Mostrar texto" do painel). */
+.autodrive-site .banner-caption { display: flex; align-items: center; gap: 10px 18px; flex: 1 1 auto; min-width: 0; color: #fff; animation: banner-caption-in .6s ease; }
+.autodrive-site .banner-caption-text { display: grid; gap: 3px; justify-items: start; min-width: 0; }
+.autodrive-site .banner-caption h2 { max-width: 100%; margin: 0; overflow: hidden; font-size: clamp(.98rem, 1.4vw, 1.15rem); line-height: 1.25; color: #fff; white-space: nowrap; text-overflow: ellipsis; }
+.autodrive-site .banner-caption p { max-width: 100%; margin: 0; overflow: hidden; font-size: .84rem; color: var(--footer-text); white-space: nowrap; text-overflow: ellipsis; }
+.autodrive-site .banner-caption .button { flex: 0 0 auto; min-height: 38px; margin-left: auto; padding-inline: 18px; }
+.autodrive-site .banner-caption .banner-eyebrow { padding: 2px 8px; font-size: .64rem; }
+@keyframes banner-caption-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (max-width: 760px) {
+.autodrive-site .banner-controls.has-caption { flex-direction: column; align-items: stretch; gap: 10px; min-height: 0; }
+.autodrive-site .banner-controls.has-caption .banner-caption { min-height: 64px; }
+.autodrive-site .banner-controls.has-caption .banner-pager { justify-content: center; }
+.autodrive-site .banner-caption h2, .autodrive-site .banner-caption p { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+}
 .autodrive-site .banner-eyebrow { display: inline-block; padding: 3px 10px; border-radius: 999px; background: rgba(255, 255, 255, .18); font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 /* Links legais do rodapé. */
 .autodrive-site .footer-legal-links { display: flex; flex-wrap: wrap; gap: 6px 16px; }

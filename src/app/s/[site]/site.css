@@ -1081,12 +1081,11 @@
   overflow: hidden;
   background: var(--dark);
 }
-/* Todas as artes no mesmo lugar (grid) e troca com fade; a altura acompanha a
-   arte, sem tarja vazia em cima/embaixo. */
+/* Todas as artes no mesmo lugar (grid) e troca com fade. */
 .autodrive-site .banner-track { display: grid; }
 .autodrive-site .banner-slide {
   grid-area: 1 / 1;
-  align-self: center;
+  align-self: start;
   display: block;
   width: 100%;
   opacity: 0;
@@ -1094,11 +1093,20 @@
   transition: opacity .7s ease, visibility .7s;
 }
 .autodrive-site .banner-slide.is-active { opacity: 1; visibility: visible; }
-.autodrive-site .banner-slide img {
+/* Moldura de proporção fixa e altura contida: a arte aparece inteira (contain)
+   sobre a própria arte desfocada, sem corte nem tarja vazia. */
+.autodrive-site .banner-media {
+  position: relative;
   display: block;
   width: 100%;
-  height: auto;
+  aspect-ratio: 16 / 10;
+  max-height: min(460px, 62vh);
+  overflow: hidden;
+  background: var(--dark);
 }
+.autodrive-site .banner-media img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.autodrive-site .banner-media .banner-backdrop { object-fit: cover; filter: blur(22px) brightness(.55) saturate(1.1); transform: scale(1.15); }
+.autodrive-site .banner-media .banner-art { object-fit: contain; }
 .autodrive-site .mapa-acoes { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 18px; }
 .autodrive-site .mapa-embutido { border: 0; border-radius: 14px; display: block; }
 .autodrive-site .footer-mapas { display: flex; gap: 14px; font-size: .86rem; }
@@ -1113,6 +1121,9 @@
   border-top: 1px solid rgba(255,255,255,.08);
   background: color-mix(in srgb, var(--dark) 92%, #000);
 }
+.autodrive-site .banner-pager { display: flex; align-items: center; gap: 18px; }
+/* Com legenda: texto/botão do slide à esquerda e controles à direita, altura fixa. */
+.autodrive-site .banner-controls.has-caption { justify-content: space-between; min-height: 78px; }
 .autodrive-site .banner-nav {
   display: inline-flex;
   align-items: center;
@@ -1968,7 +1979,7 @@
 .autodrive-site input, .autodrive-site select, .autodrive-site textarea { border-radius: 6px; border-color: color-mix(in srgb, var(--brand) 16%, #b9bfc9); }
 .autodrive-site .eyebrow { color: var(--blue); font-size: .76rem; }
 .autodrive-site .home-hero { min-height: 0; padding-block: 28px 30px; color: white; background: #062936; }
-.autodrive-site .hero-grid { display: grid; grid-template-columns: minmax(0, .62fr) minmax(480px, 1.38fr); align-items: center; gap: clamp(28px, 5vw, 58px); }
+.autodrive-site .hero-grid { display: grid; grid-template-columns: minmax(0, .86fr) minmax(420px, 1.14fr); align-items: center; gap: clamp(28px, 5vw, 58px); }
 .autodrive-site .hero-content { padding-block: 0; }
 .autodrive-site .hero-content h1 { max-width: 520px; font-size: clamp(2.7rem, 5vw, 4.4rem); }
 .autodrive-site .hero-content > p:not(.eyebrow) { max-width: 510px; }
@@ -2113,7 +2124,7 @@
 @media (max-width: 1180px) {
 .autodrive-site .home-journeys { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .autodrive-site .vehicle-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.autodrive-site .hero-grid { grid-template-columns: minmax(0, .85fr) minmax(400px, 1.15fr); gap: 28px; }
+.autodrive-site .hero-grid { grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr); gap: 28px; }
 
 
 }
@@ -2124,7 +2135,7 @@
 .autodrive-site .footer-cta .button { margin-left: 0; }
 .autodrive-site .hero-grid { grid-template-columns: 1fr; }
 .autodrive-site .hero-content { padding-bottom: 4px; }
-.autodrive-site .hero-banner-frame { width: 100%; }
+.autodrive-site .hero-banner-frame { max-width: 680px; width: 100%; }
 .autodrive-site .home-partner-grid, .autodrive-site .home-faq-location { grid-template-columns: 1fr; }
 
 
