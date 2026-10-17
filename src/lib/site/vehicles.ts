@@ -99,7 +99,7 @@ async function loadCatalog(tenantId: string): Promise<CatalogEntry[]> {
 }
 
 function catalog(tenantId: string): Promise<CatalogEntry[]> {
-  return unstable_cache(() => loadCatalog(tenantId), ['site-catalog-v1', tenantId], { revalidate: SITE_REFRESH_S, tags: [siteVehiclesTag(tenantId)] })()
+  return unstable_cache(() => loadCatalog(tenantId), ['site-catalog-v2', tenantId], { revalidate: SITE_REFRESH_S, tags: [siteVehiclesTag(tenantId)] })()
 }
 
 /** Força o site da loja a reler o estoque na próxima visita. */

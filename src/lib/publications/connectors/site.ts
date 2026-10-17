@@ -5,6 +5,7 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
+import { refreshSiteVehicles } from '@/lib/site/vehicles'
 import { loadSiteConfig, publicSiteRoot } from '@/lib/site/config'
 import { siteVehicleState, SITE_VISIBLE_STOCK, vehicleSlug } from '@/lib/site/listing-core'
 import { realPhotoUrls } from '@/lib/vehicle-placeholder'
@@ -65,6 +66,7 @@ async function applyPhotoOrder(vehicleId: string, photos: string[]): Promise<voi
 
 async function setHidden(tenantId: string, vehicleId: string, hidden: boolean) {
   await prisma.siteListing.upsert({ where: { vehicleId }, create: { tenantId, vehicleId, hidden }, update: { hidden } })
+  refreshSiteVehicles(tenantId) // vitrine em cache (6 h): reflete a mudança na próxima visita
 }
 
 export const siteConnector: Connector = {

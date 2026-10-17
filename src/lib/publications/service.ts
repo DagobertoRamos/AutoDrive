@@ -352,7 +352,34 @@ export async function createPublications(tenantId: string, targets: TargetInput[
 
 export type Intent = 'PAUSAR' | 'RETOMAR' | 'RETIRAR' | 'VERIFICAR' | 'SINCRONIZAR' | 'CANCELAR_AGENDAMENTO' | 'REENVIAR'
 
-export async function applyIntent(tenantId: string, publicationId: string, intent: Intent, actor: Actor, opts: { reason?: SaleReason | 'MANUAL'; archive?: 'VENDIDO' | 'RETIRADO' | null; sold?: boolean } = {}): Promise<{ ok: boolean; message: string; status?: string }> {
+type IntentOpts = { reason?: SaleReason | 'MANUAL'; archive?: 'VENDIDO' | 'RETIRADO' | null; sold?: boolean }
+
+export async function applyIntent(tenantId: string, publicationId: string, intent: Intent, actor: Actor, opts: IntentOpts = {}): Promise<{ ok: boolean; message: string; status?: string }> {
+  const r = await applyIntentTx(tenantId, publicationId, intent, actor, opts)
+  if (r.ok && (intent === 'PAUSAR' || intent === 'RETIRAR' || intent === 'RETOMAR')) await syncSiteNow(tenantId, publicationId, intent)
+  return r
+}
+
+/**
+ * Canal SITE: o site é nosso, então esconder/mostrar vale NA HORA (sem esperar
+ * a fila) e o cache da vitrine (6 h) é invalidado aqui, dentro do pedido —
+ * senão o carro pausado continuava aparecendo no site por horas. A tarefa da
+ * fila roda depois e só confirma (idempotente).
+ */
+async function syncSiteNow(tenantId: string, publicationId: string, intent: Intent): Promise<void> {
+  try {
+    const pub = await prisma.publication.findFirst({ where: { id: publicationId, tenantId }, select: { channel: true, vehicleId: true, desiredState: true } })
+    if (!pub || pub.channel !== 'SITE') return
+    const hidden = intent !== 'RETOMAR'
+    if (!hidden && pub.desiredState !== 'PUBLICADO') return
+    await prisma.siteListing.upsert({ where: { vehicleId: pub.vehicleId }, create: { tenantId, vehicleId: pub.vehicleId, hidden }, update: { hidden } })
+    refreshSiteVehicles(tenantId)
+  } catch (e) {
+    console.error('[publications] site na hora', publicationId, e)
+  }
+}
+
+async function applyIntentTx(tenantId: string, publicationId: string, intent: Intent, actor: Actor, opts: IntentOpts): Promise<{ ok: boolean; message: string; status?: string }> {
   return prisma.$transaction(async (tx) => {
     const found = await tx.publication.findFirst({ where: { id: publicationId, tenantId } })
     if (!found) return { ok: false, message: 'Publicação não encontrada nesta loja.' }
