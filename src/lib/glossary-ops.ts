@@ -6,7 +6,7 @@
 
 export const OPS_GLOSSARY = {
   // ── Estoque / avaliação / preparação ──────────────────────────────────────
-  PRECO_SUGERIDO: { title: 'Preço sugerido', text: 'Valor de venda recomendado a partir da FIPE, do custo total do carro e da margem desejada. Serve de referência; o preço final é decidido pela gestão.' },
+  PRECO_SUGERIDO: { title: 'Preço sugerido', text: 'Valor de venda recomendado: custo total do carro (valor avaliado + gastos previstos) mais a margem desejada da loja, limitado pela FIPE. Serve de referência; o preço final é decidido pela gestão.' },
   MARGEM_ALVO: { title: 'Margem desejada', text: 'Quanto a loja quer ganhar sobre o custo total do carro, em %. Usada para calcular o preço sugerido.' },
   CUSTO_TOTAL_VEICULO: { title: 'Custo total do veículo', text: 'Compra + preparação (serviços, peças) + documentação. É a base para saber o lucro na venda.' },
   GIRO: { title: 'Giro de estoque', text: 'Quanto tempo, em média, o carro fica parado até ser vendido. Quanto menor, mais rápido o dinheiro volta para o caixa.' },

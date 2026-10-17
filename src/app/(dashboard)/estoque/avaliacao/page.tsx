@@ -29,101 +29,11 @@ import { isEmptyValue } from '@/lib/evaluation/rules'
 import { StepDocumentoVeiculo, type ExtractionSource } from './_components/StepDocumentoVeiculo'
 import type { ExtractedVehicle, ExtractionConfidence } from '@/lib/crlv/parser'
 import { compressImage } from '@/lib/images/compress-client'
+import { normalizeBrandName, bestFipeMatch, pickFipeYear, parseFipePrice, type FipeYearOption } from '@/lib/evaluation/fipe-match'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
 interface Unit { id: string; name: string }
-
-// ── Normalização de marca para casamento com catálogo FIPE ────────────────────
-// A API Placas pode trazer "VW", "VW - VolksWagen", "M.BENZ", etc. — o catálogo
-// FIPE usa o nome canônico ("Volkswagen", "Mercedes-Benz"). Esta tabela mapeia
-// os apelidos comuns para o canônico antes de comparar.
-const BRAND_ALIAS: Record<string, string> = {
-  'VW':        'VOLKSWAGEN',
-  'VOLKS':     'VOLKSWAGEN',
-  'GM':        'CHEVROLET',
-  'MBENZ':     'MERCEDESBENZ',
-  'M BENZ':    'MERCEDESBENZ',
-  'M.BENZ':    'MERCEDESBENZ',
-  'MERCEDES':  'MERCEDESBENZ',
-  'CITROEN':   'CITROEN',
-  'CITROËN':   'CITROEN',
-  'PEUGEOT':   'PEUGEOT',
-}
-function normalizeBrandName(s: string | undefined | null): string {
-  if (!s) return ''
-  const n = String(s).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-  // Remove sufixos depois de hífen ("VW - VOLKSWAGEN" → "VOLKSWAGEN" via alias da 1ª parte)
-  const parts = n.split(/\s*-\s*/)
-  for (const p of parts) {
-    const compact = p.replace(/[^A-Z0-9]/g, '')
-    if (BRAND_ALIAS[compact] || BRAND_ALIAS[p.trim()]) return BRAND_ALIAS[compact] || BRAND_ALIAS[p.trim()]
-  }
-  // Caso geral: pega a parte mais longa e remove pontuação
-  const best = parts.reduce((a, b) => (b.length > a.length ? b : a), '')
-  const compact = best.replace(/[^A-Z0-9]/g, '')
-  return BRAND_ALIAS[compact] ?? compact
-}
-function normalizeModelName(s: string | undefined | null): string {
-  if (!s) return ''
-  return String(s).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/g, '')
-}
-
-// Tokeniza um nome de veículo em palavras significativas para matching fuzzy.
-// "FIT LX 1.4 16V FLEX" → ['FIT', 'LX', '14', '16V', 'FLEX']
-// Filtra stop-words e pedaços muito curtos pra evitar match falso.
-const STOP_WORDS = new Set(['DE', 'DA', 'DO', 'COM', 'P', 'V', 'A', 'O', 'E'])
-function tokenizeVehicleName(s: string | undefined | null): string[] {
-  if (!s) return []
-  return String(s)
-    .toUpperCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .split(/[\s\-\/\.\,\(\)]+/)
-    .map((t) => t.replace(/[^A-Z0-9]/g, ''))
-    .filter((t) => t.length >= 2 && !STOP_WORDS.has(t))
-}
-
-/**
- * Faz o melhor match de um modelo da API contra a lista FIPE.
- * Estratégia: tokeniza ambos, conta quantos tokens do TARGET aparecem no
- * candidato. Maior score ganha. Empate é desempatado por menor diferença
- * no comprimento total (modelo mais "enxuto" tipicamente é o certo).
- *
- * Exemplo: target "FIT LX FLEX" (tokens FIT/LX/FLEX) vs candidatos:
- *   - "FIT LX 1.4 16V FLEX MEC."     → score 3, len 27
- *   - "FIT EX 1.5 16V FLEX AUT."     → score 2, len 27
- *   - "FIT TWIST 1.5 16V FLEX AUT."  → score 2, len 28
- * Vence o primeiro (FIT LX 1.4 16V FLEX MEC.).
- */
-function bestFipeMatch<T extends { name: string }>(
-  list: T[],
-  target: string | undefined | null,
-  modelYearHint?: number | null,
-): T | undefined {
-  if (!list.length || !target) return undefined
-  const tTokens = new Set(tokenizeVehicleName(target))
-  if (tTokens.size === 0) return undefined
-  let best: { item: T; score: number; len: number; yearMatch: number } | null = null
-  for (const item of list) {
-    const cTokens = tokenizeVehicleName(item.name)
-    let score = 0
-    for (const t of cTokens) if (tTokens.has(t)) score++
-    if (score === 0) continue
-    const len = item.name.length
-    // Bônus se o nome do candidato menciona o ano modelo (alguns retornos da
-    // FIPE incluem ano na descrição)
-    const yearMatch = modelYearHint && item.name.includes(String(modelYearHint)) ? 1 : 0
-    if (
-      !best ||
-      score > best.score ||
-      (score === best.score && yearMatch > best.yearMatch) ||
-      (score === best.score && yearMatch === best.yearMatch && len < best.len)
-    ) {
-      best = { item, score, len, yearMatch }
-    }
-  }
-  return best?.item
-}
 
 // Steps reformulados: Step 1 agora consolida placa + documentos + dados do veículo.
 // Step 2 (legado "Veículo") foi mergeado em Step 1 e não é mais navegado.
@@ -633,6 +543,53 @@ function AvaliacaoForm() {
   const [fipeMonth,      setFipeMonth]      = useState('')
   const [fipeWizardOpen, setFipeWizardOpen] = useState(false)
   const [fipeLastFetch,  setFipeLastFetch]  = useState<string>('')
+  // Ano-combustível FIPE do modelo escolhido. Com mais de uma opção para o ano
+  // (ex.: 2013 Gasolina × 2013 Flex) e sem combustível que desempate, o
+  // usuário escolhe a versão no seletor "Versão FIPE".
+  const [fipeYearOptions, setFipeYearOptions] = useState<FipeYearOption[]>([])
+  const [fipeYearCode,    setFipeYearCode]    = useState('')
+  const [fipeLoading,     setFipeLoading]     = useState(false)
+  const [fipeNoYear,      setFipeNoYear]      = useState(false)  // modelo escolhido não existe na FIPE nesse ano
+
+  // ── FIPE automática: marca + modelo + ano modelo → ano FIPE → preço ─────────
+  useEffect(() => {
+    const y = Number(yearModel || year)
+    let alive = true
+    const t = setTimeout(() => {
+      setFipeYearOptions([]); setFipeYearCode(''); setFipeNoYear(false)
+      if (!brandCode || !modelCode || !y) return
+      fetch(`/api/integrations/fipe/years?tipoVeiculo=${TIPO_VEICULO_API[tipoVeiculo]}&brandId=${encodeURIComponent(brandCode)}&modelId=${encodeURIComponent(modelCode)}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (!alive || !d.ok || !Array.isArray(d.data)) return
+          const { pick, options } = pickFipeYear(d.data, y, fuel)
+          setFipeYearOptions(options)
+          setFipeNoYear(options.length === 0)
+          if (pick) setFipeYearCode(pick.code)
+        })
+        .catch(() => {})
+    }, 0)
+    return () => { alive = false; clearTimeout(t) }
+  }, [brandCode, modelCode, yearModel, year, tipoVeiculo, fuel])
+
+  useEffect(() => {
+    if (!brandCode || !modelCode || !fipeYearCode) return
+    let alive = true
+    const t = setTimeout(() => setFipeLoading(true), 0)
+    fetch(`/api/integrations/fipe/price?tipoVeiculo=${TIPO_VEICULO_API[tipoVeiculo]}&brandId=${encodeURIComponent(brandCode)}&modelId=${encodeURIComponent(modelCode)}&yearId=${encodeURIComponent(fipeYearCode)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive || !d.ok || !d.data) return
+        const value = parseFipePrice(d.data.price)
+        if (!value) return
+        setFipeValue(numberToBRLMask(value))
+        if (d.data.codeFipe) setFipeCode(d.data.codeFipe)
+        if (d.data.referenceMonth) setFipeMonth(String(d.data.referenceMonth).trim())
+      })
+      .catch(() => {})
+      .finally(() => { if (alive) setFipeLoading(false) })
+    return () => { alive = false; clearTimeout(t) }
+  }, [brandCode, modelCode, fipeYearCode, tipoVeiculo])
   const [evaluatedValue, setEvaluatedValue] = useState('')
   const [desiredValue,   setDesiredValue]   = useState('')
   const [minimumValue,   setMinimumValue]   = useState('')
@@ -1502,7 +1459,20 @@ function AvaliacaoForm() {
                   {ANOS.map((y) => <option key={y} value={y}>{y}</option>)}
                 </select>
               </Field>
+              {fipeYearOptions.length > 1 && (
+                <Field label="Versão FIPE" hint={fipeLoading ? 'Buscando FIPE...' : (fipeYearCode ? undefined : 'Escolha para buscar a FIPE')}>
+                  <select className={selectCls} value={fipeYearCode} onChange={(e) => setFipeYearCode(e.target.value)}>
+                    <option value="">Selecione</option>
+                    {fipeYearOptions.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}
+                  </select>
+                </Field>
+              )}
             </Grid>
+            {fipeNoYear && (
+              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Este modelo não aparece na FIPE para {yearModel || year}. Confira a versão no campo Modelo — outra versão do mesmo carro deve ter FIPE para esse ano.
+              </p>
+            )}
           </Section>
 
           {/* ──────────────────────────────────────────────────────────────────

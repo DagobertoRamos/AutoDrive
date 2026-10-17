@@ -18,6 +18,7 @@ import Link from 'next/link'
 import { AwaitingReleaseBanner } from '../../_components/AwaitingReleaseBanner'
 import { EvaluationSections } from '../../_components/EvaluationSections'
 import { parseOpcionais } from '@/lib/evaluation/rules'
+import { suggestSalePrice, DEFAULT_MARGIN_PCT } from '@/lib/evaluation/suggested-price'
 import { needsManagerReview, SITE_PRE_EVAL_SOURCE } from '@/lib/evaluation/site-pre-evaluation'
 import { StockEntryPanel } from '../../_components/StockEntryPanel'
 import { VehicleHistoryPanel } from '@/components/estoque/VehicleHistoryPanel'
@@ -207,6 +208,46 @@ export default function InspecaoPage() {
   const isManagerPlus = role ? ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'].includes(role) : false
   const isAwaitingApproval = status === 'AGUARDANDO_APROVACAO'
   // Pré-avaliação do site: liberada pelo sistema; gerência confere antes de negociar.
+  // ── FIPE automática (avaliação que entrou sem FIPE) ────────────────────────
+  const [fipeChoice, setFipeChoice] = useState<FipeChoiceOption[] | null>(null)
+  const [fipeBusy,   setFipeBusy]   = useState(false)
+  const fipeTried = useRef(false)
+  useEffect(() => {
+    if (!data || fipeTried.current) return
+    if (data.fipeValue != null || data._pricingHidden) return
+    if (['CANCELED', 'CANCELADA'].includes(data.status ?? '')) return
+    fipeTried.current = true
+    ;(async () => {
+      const r = await fetch(`/api/evaluations/${evalId}/fipe`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+        .then((x) => x.json()).catch(() => null)
+      if (r?.status === 'found') load()
+      else if (r?.status === 'choose') setFipeChoice(r.options ?? [])
+    })()
+  }, [data, evalId, load])
+
+  async function pickFipe(o: FipeChoiceOption) {
+    setFipeBusy(true)
+    const r = await fetch(`/api/evaluations/${evalId}/fipe`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: o.tipo, brandId: o.brandId, modelId: o.modelId, yearId: o.yearId }),
+    }).then((x) => x.json()).catch(() => null)
+    setFipeBusy(false)
+    if (r?.status === 'found') { setFipeChoice(null); showToast('FIPE preenchida.', true); load() }
+    else showToast(r?.reason ?? r?.error ?? 'Não foi possível buscar a FIPE.', false)
+  }
+
+  // ── Margem do preço sugerido (config da loja) ─────────────────────────────
+  const [marginPct, setMarginPct] = useState(DEFAULT_MARGIN_PCT)
+  useEffect(() => {
+    fetch('/api/evaluations/pricing-settings', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((j) => { if (j?.success && typeof j.data?.marginPct === 'number') setMarginPct(j.data.marginPct) })
+      .catch(() => {})
+  }, [])
+  const autoSuggestion = data && !data._pricingHidden
+    ? suggestSalePrice({ evaluatedValue: data.evaluatedValue, totalExpenses: data.totalExpenses, fipeValue: data.fipeValue, marginPct })
+    : null
+
   const fromSite = data?.lookupSource === SITE_PRE_EVAL_SOURCE
   const siteReview = needsManagerReview(data) && status === 'LIBERADA'
 
@@ -393,9 +434,13 @@ export default function InspecaoPage() {
       <div className="sticky top-0 z-20 grid grid-cols-2 gap-2 rounded-xl border border-brand-200 bg-white/95 p-3 shadow-sm backdrop-blur sm:grid-cols-4">
         <Stat label="FIPE" term="FIPE" value={data.fipeValue != null ? fmtBRL(data.fipeValue) : '—'} />
         <Stat label="Avaliado" help={opsText('VALOR_AVALIACAO')} value={data.evaluatedValue != null ? fmtBRL(data.evaluatedValue) : '—'} />
-        <Stat label="Sugerido" help={opsText('PRECO_SUGERIDO')} value={data.suggestedSalePrice != null ? fmtBRL(data.suggestedSalePrice) : '—'} />
+        <Stat label="Sugerido" help={opsText('PRECO_SUGERIDO')} value={data.suggestedSalePrice != null ? fmtBRL(data.suggestedSalePrice) : (autoSuggestion ? `${fmtBRL(autoSuggestion.value)} (calc.)` : '—')} />
         <Stat label="Gastos previstos" help="Soma dos custos estimados dos serviços e reparos apontados na avaliação. Vira a preparação do carro quando ele entra no estoque." value={fmtBRL(total)} highlight />
       </div>
+
+      {fipeChoice && fipeChoice.length > 0 && (
+        <FipeChoicePanel options={fipeChoice} onPick={pickFipe} busy={fipeBusy} />
+      )}
 
       {/* Painel de precificação — gerente+ quando aguardando aprovação */}
       {isManagerPlus && (isAwaitingApproval || siteReview) && (
@@ -403,6 +448,7 @@ export default function InspecaoPage() {
           evalId={evalId}
           data={data}
           siteReview={siteReview}
+          marginPct={marginPct}
           onReleased={() => { showToast('Avaliação liberada para o vendedor.', true); load() }}
           showToast={showToast}
         />
@@ -893,14 +939,38 @@ function AttachmentCard({ a, evalId, onDeleted, canDelete }: { a: EvalAttachment
   )
 }
 
+// ── Componente: escolha da versão FIPE (busca automática ambígua) ─────────
+
+interface FipeChoiceOption { tipo: string; brandId: string; modelId: string; yearId: string; label: string }
+
+function FipeChoicePanel({ options, onPick, busy }: { options: FipeChoiceOption[]; onPick: (o: FipeChoiceOption) => void; busy: boolean }) {
+  const [sel, setSel] = useState('')
+  return (
+    <div className="flex flex-wrap items-end gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
+      <label className="flex min-w-[240px] flex-1 flex-col gap-1">
+        <span className="text-xs font-semibold text-sky-900">Mais de uma versão na FIPE — escolha a do carro</span>
+        <select className={inputCls} value={sel} onChange={(e) => setSel(e.target.value)}>
+          <option value="">Selecione a versão</option>
+          {options.map((o, i) => <option key={i} value={String(i)}>{o.label}</option>)}
+        </select>
+      </label>
+      <button type="button" disabled={sel === '' || busy} onClick={() => onPick(options[Number(sel)])}
+        className="flex items-center gap-2 rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-800 disabled:opacity-50">
+        {busy && <Loader2 size={14} className="animate-spin" />}Usar esta FIPE
+      </button>
+    </div>
+  )
+}
+
 // ── Componente: Painel Precificar (gerente+) ──────────────────────────────
 
 function PrecificarPanel({
-  evalId, data, siteReview, onReleased, showToast,
+  evalId, data, siteReview, marginPct, onReleased, showToast,
 }: {
   evalId: string
   data: Evaluation
   siteReview?: boolean
+  marginPct: number
   onReleased: () => void
   showToast: (msg: string, ok?: boolean) => void
 }) {
@@ -913,9 +983,17 @@ function PrecificarPanel({
   const [avaliado,  setAvaliado]  = useState(initial(data.evaluatedValue))
   const [desejado,  setDesejado]  = useState(initial(data.desiredValue))
   const [minimo,    setMinimo]    = useState('')
-  const [sugerido,  setSugerido]  = useState(initial(data.suggestedSalePrice))
+  const [sugeridoTyped, setSugerido] = useState(initial(data.suggestedSalePrice))
+  // Enquanto o gestor não mexe no campo, o sugerido acompanha o cálculo
+  // (avaliado + gastos + margem, limitado pela FIPE).
+  const [sugeridoTouched, setSugeridoTouched] = useState(data.suggestedSalePrice != null && Number(data.suggestedSalePrice) > 0)
   const [feedback,  setFeedback]  = useState(data.evaluatorFeedback ?? '')
   const [busy,      setBusy]      = useState(false)
+  const suggestion = suggestSalePrice({
+    evaluatedValue: parseBRL(avaliado), totalExpenses: data.totalExpenses, fipeValue: data.fipeValue, marginPct,
+  })
+  const suggestionText = suggestion ? initial(suggestion.value) : ''
+  const sugerido = sugeridoTouched ? sugeridoTyped : suggestionText
 
   async function release() {
     if (!parseBRL(avaliado)) {
@@ -971,7 +1049,18 @@ function PrecificarPanel({
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-gray-700">Preço de Venda Sugerido (R$)</span>
-          <input className={inputCls} placeholder="0,00" value={sugerido} onChange={(e) => setSugerido(maskBRLInput(e.target.value))} inputMode="numeric" />
+          <input className={inputCls} placeholder="0,00" value={sugerido} onChange={(e) => { setSugeridoTouched(true); setSugerido(maskBRLInput(e.target.value)) }} inputMode="numeric" />
+          {suggestion ? (
+            <span className="text-[11px] text-gray-600">
+              Cálculo: {fmtBRL(suggestion.cost)} (avaliado + gastos) + {suggestion.marginPct}%
+              {suggestion.cappedByFipe ? ' — limitado pela FIPE' : ''}
+              {sugeridoTouched && sugerido !== suggestionText && (
+                <> · <button type="button" className="font-semibold text-brand-700 hover:underline" onClick={() => setSugeridoTouched(false)}>usar {fmtBRL(suggestion.value)}</button></>
+              )}
+            </span>
+          ) : (
+            <span className="text-[11px] text-gray-500">Informe o valor avaliado para calcular a sugestão.</span>
+          )}
         </label>
         <label className="flex flex-col gap-1 sm:col-span-2">
           <span className="text-xs font-medium text-gray-700">Observações para o vendedor</span>

@@ -28,10 +28,14 @@ export default function EvaluationSettingsPage() {
   const [history, setHistory] = useState<HistoryRow[]>([])
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [margin, setMargin] = useState('')
+  const [savingMargin, setSavingMargin] = useState(false)
 
   const load = useCallback(async () => {
     const j = await fetch('/api/evaluations/repair-prices?all=1', { cache: 'no-store' }).then((r) => r.json()).catch(() => null)
     if (j?.success) { setRows(j.data.repairs); setHistory(j.data.history ?? []) } else setMsg({ ok: false, text: j?.error ?? 'Falha ao carregar.' })
+    const m = await fetch('/api/evaluations/pricing-settings', { cache: 'no-store' }).then((r) => r.json()).catch(() => null)
+    if (m?.success) setMargin(String(m.data.marginPct).replace('.', ','))
   }, [])
   useEffect(() => {
     if (!allowed) return undefined
@@ -56,6 +60,16 @@ export default function EvaluationSettingsPage() {
     setMsg({ ok: true, text: j.data.changes?.length ? 'Salvo.' : 'Nada mudou.' })
   }
 
+  async function saveMargin() {
+    setSavingMargin(true); setMsg(null)
+    const r = await fetch('/api/evaluations/pricing-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ marginPct: margin.replace(',', '.') }) })
+    const j = await r.json().catch(() => ({}))
+    setSavingMargin(false)
+    if (!r.ok) { setMsg({ ok: false, text: j.error ?? 'Falha ao salvar a margem.' }); return }
+    setMargin(String(j.data.marginPct).replace('.', ','))
+    setMsg({ ok: true, text: 'Margem salva.' })
+  }
+
   if (status === 'loading') return <Loader2 className="animate-spin text-gray-400" />
   if (!allowed) return <p className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">Acesso restrito à gerência.</p>
 
@@ -74,6 +88,17 @@ export default function EvaluationSettingsPage() {
           {msg.ok ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}{msg.text}
         </p>
       )}
+
+      <section className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+        <h2 className="inline-flex items-center gap-1 text-sm font-semibold text-gray-900">Preço de venda sugerido <HelpHint title="Preço sugerido" text="Na precificação da avaliação, o sistema sugere: (valor avaliado + gastos previstos) + esta margem, arredondado para a centena e limitado pela FIPE. O gestor pode alterar o valor antes de liberar." /></h2>
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-700">Margem desejada (%)</span>
+            <input className={cn(inputCls, 'w-28')} inputMode="decimal" value={margin} onChange={(e) => setMargin(e.target.value.replace(/[^\d,.]/g, ''))} placeholder="15" />
+          </label>
+          <button onClick={() => void saveMargin()} disabled={savingMargin || !margin} className="btn-secondary text-sm">{savingMargin ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}Salvar margem</button>
+        </div>
+      </section>
 
       <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
         <div className="border-b border-gray-100 px-4 py-3"><h2 className="inline-flex items-center gap-1 text-sm font-semibold text-gray-900">Tabela de reparos <HelpHint title="Tabela de reparos" text="Preço padrão de cada reparo, por seção da avaliação. Quando o avaliador marca um reparo, o valor daqui entra como custo previsto do carro." /></h2></div>
