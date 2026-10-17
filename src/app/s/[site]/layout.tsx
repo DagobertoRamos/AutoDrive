@@ -76,7 +76,7 @@ export default async function SiteLayout({ children, params }: { children: React
       {tagBoot && <script dangerouslySetInnerHTML={{ __html: tagBoot }} />}
       {googleTag && <script async src={`https://www.googletagmanager.com/gtag/js?id=${googleTag}`} />}
       {ctx.preview && <SitePreviewBar />}
-      <SiteHeader homeHref={ctx.href('/')} name={identity.name} logoUrl={identity.logoUrl} logoTone={identity.logoTone} nav={ctx.nav} whatsappHref={wa} phone={contact.phone} />
+      <SiteHeader homeHref={ctx.href('/')} stockHref={ctx.href('/veiculos')} name={identity.name} logoUrl={identity.logoUrl} logoTone={identity.logoTone} nav={ctx.nav} whatsappHref={wa} phone={contact.phone} />
       <main>{children}</main>
       <SiteFooter config={ctx.config} nav={ctx.nav} whatsappHref={wa} seoLinks={seoLinks}
         legalLinks={[{ label: 'Política de privacidade', href: ctx.href('/privacidade') }, { label: 'Termos de uso', href: ctx.href('/termos') }, { label: 'Política de cookies', href: ctx.href('/cookies') }]} />

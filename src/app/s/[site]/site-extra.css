@@ -39,12 +39,9 @@
   .autodrive-site textarea { font-size: 16px; }
 }
 
-/* Topo: todos os itens do menu do lojista visíveis no computador e no tablet.
-   O SiteHeader mede o próprio cabeçalho (a moldura tem largura máxima, então a
-   largura da janela não serve): se logo + menu + WhatsApp cabem, fica tudo numa
-   linha (data-layout=row); senão o menu desce para uma segunda linha inteira e
-   quebra em quantas linhas precisar (stack). Nenhum link some e o WhatsApp fica
-   sempre dentro da moldura. O menu ☰ só entra no celular. */
+/* Topo: logo | busca de veículos (centralizada) | WhatsApp; abaixo, todos os
+   itens do menu do lojista numa linha inteira, quebrando em quantas linhas
+   precisar — nenhum link some. O menu ☰ só entra no celular. */
 .autodrive-site .nav-dense .desktop-nav a { font-size: .86rem; }
 .autodrive-site .nav-dense .brand img { width: 150px; }
 .autodrive-site .nav-xdense .desktop-nav a { font-size: .8rem; }
@@ -53,10 +50,25 @@
   .autodrive-site .site-header .desktop-nav { display: flex; }
   .autodrive-site .site-header .header-actions { display: flex; margin-left: auto; flex-shrink: 0; }
   .autodrive-site .site-header .mobile-menu { display: none; }
-  .autodrive-site .header-inner[data-layout=row] { flex-wrap: nowrap; }
-  .autodrive-site .header-inner[data-layout=row] .desktop-nav { flex: 0 1 auto; min-width: 0; margin-left: auto; }
   .autodrive-site .header-inner[data-layout=stack] { flex-wrap: wrap; row-gap: 8px; }
+  /* Logo e WhatsApp com a mesma largura flexível: a busca fica no centro exato. */
+  .autodrive-site .site-header .brand { flex: 1 1 0; min-width: max-content; }
+  .autodrive-site .site-header .header-actions { flex: 1 1 0; justify-content: flex-end; margin-left: 0; }
+  .autodrive-site .header-search { order: 1; }
+  .autodrive-site .header-inner .brand { order: 0; }
+  .autodrive-site .header-inner .header-actions { order: 2; }
   .autodrive-site .header-inner[data-layout=stack] .desktop-nav { order: 3; flex: 1 0 100%; flex-wrap: wrap; justify-content: center; margin-left: 0; }
+}
+/* Busca de veículos no topo (vai para o estoque com ?q=). */
+.autodrive-site .header-search { flex: 2 1 0; max-width: 520px; min-width: 200px; display: flex; align-items: center; height: 44px; border: 1px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden; }
+.autodrive-site .header-search:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent); }
+.autodrive-site .header-search input { flex: 1; min-width: 0; height: 100%; padding: 0 14px; border: 0; outline: 0; background: transparent; color: #102a3a; font: inherit; font-size: .92rem; }
+.autodrive-site .header-search input::-webkit-search-cancel-button { cursor: pointer; }
+.autodrive-site .header-search button { display: grid; place-items: center; width: 46px; height: 100%; border: 0; background: var(--brand); color: #fff; cursor: pointer; }
+.autodrive-site .header-search button:hover { filter: brightness(.92); }
+@media (max-width: 760px) {
+  .autodrive-site .header-inner { flex-wrap: wrap; row-gap: 8px; }
+  .autodrive-site .header-search { order: 4; flex: 1 0 100%; max-width: none; height: 42px; }
 }
 /* Faixa de pré-visualização (rascunho aberto pelo painel). */
 .autodrive-site .preview-bar { position: sticky; top: 0; z-index: 80; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; padding: 8px 16px; background: #f59e0b; color: #1f1300; font-size: .88rem; font-weight: 700; }

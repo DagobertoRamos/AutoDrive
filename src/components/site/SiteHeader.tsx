@@ -3,49 +3,31 @@
 
 // Cabeçalho do site da loja (porta do Header do dagobertoeasycar, com dados da loja).
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Menu, MessageCircle, Phone } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useRef } from 'react'
+import { Menu, MessageCircle, Phone, Search } from 'lucide-react'
 
 export interface SiteNavItem { label: string; href: string }
 
-export function SiteHeader({ homeHref, name, logoUrl, logoTone = '', nav, whatsappHref, phone }: {
-  homeHref: string; name: string; logoUrl: string; logoTone?: '' | 'light' | 'dark'; nav: SiteNavItem[]; whatsappHref: string; phone: string
+export function SiteHeader({ homeHref, stockHref, name, logoUrl, logoTone = '', nav, whatsappHref, phone }: {
+  homeHref: string; stockHref: string; name: string; logoUrl: string; logoTone?: '' | 'light' | 'dark'; nav: SiteNavItem[]; whatsappHref: string; phone: string
 }) {
   const pathname = usePathname()
+  const router = useRouter()
   const mobileMenu = useRef<HTMLDetailsElement>(null)
-  const inner = useRef<HTMLDivElement>(null)
-  const navRef = useRef<HTMLElement>(null)
-  // Cabe tudo numa linha (logo + menu + WhatsApp)? Senão o menu desce para uma
-  // segunda linha inteira, quebrando em quantas linhas precisar — nunca some
-  // link nem empurra o WhatsApp para fora da moldura. A medida é do próprio
-  // cabeçalho (a moldura tem largura máxima), não da janela.
-  const [layout, setLayout] = useState<'row' | 'stack'>('row')
-  useLayoutEffect(() => {
-    const box = inner.current, nav = navRef.current
-    if (!box || !nav) return
-    const px = (v: string) => parseFloat(v) || 0
-    const fit = () => {
-      const ns = getComputedStyle(nav)
-      if (ns.display === 'none') return // celular: menu ☰
-      // Largura do menu numa linha só = soma dos links (não muda ao quebrar).
-      const links = Array.from(nav.children) as HTMLElement[]
-      const navW = links.reduce((sum, a) => sum + a.offsetWidth, 0) + px(ns.columnGap) * Math.max(0, links.length - 1)
-        + px(ns.paddingLeft) + px(ns.paddingRight) + px(ns.borderLeftWidth) + px(ns.borderRightWidth)
-      const gap = px(getComputedStyle(box).columnGap)
-      const others = (Array.from(box.children) as HTMLElement[]).filter((el) => el !== nav && getComputedStyle(el).display !== 'none')
-      const need = navW + others.reduce((sum, el) => sum + el.offsetWidth + gap, 0) + 4
-      setLayout(need <= box.clientWidth ? 'row' : 'stack')
-    }
-    fit()
-    const ro = new ResizeObserver(fit)
-    ro.observe(box)
-    document.fonts?.ready.then(fit)
-    return () => ro.disconnect()
-  }, [nav])
-  useEffect(() => { if (mobileMenu.current) mobileMenu.current.open = false }, [pathname])
+  // Busca do estoque no topo: no estoque, mostra o termo que está na URL.
+  const queryInput = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (mobileMenu.current) mobileMenu.current.open = false
+    if (queryInput.current) queryInput.current.value = pathname === stockHref ? new URLSearchParams(window.location.search).get('q') ?? '' : ''
+  }, [pathname, stockHref])
 
   const close = () => { if (mobileMenu.current) mobileMenu.current.open = false }
+  const search = (e: React.FormEvent) => {
+    e.preventDefault()
+    const q = (queryInput.current?.value ?? '').trim()
+    router.push(q ? `${stockHref}?q=${encodeURIComponent(q)}` : stockHref)
+  }
   const toLinks = (items: SiteNavItem[]) => items.map(({ label, href }) => (
     <Link key={href} href={href} onClick={close}
       aria-current={pathname === href || (href !== homeHref && pathname.startsWith(`${href}/`)) ? 'page' : undefined}>
@@ -56,21 +38,25 @@ export function SiteHeader({ homeHref, name, logoUrl, logoTone = '', nav, whatsa
 
   return (
     // Logo clara (some no branco) → cabeçalho na cor escura da marca.
+    // Topo: logo | busca (centralizada) | WhatsApp; o menu fica na linha de baixo.
     <header className={`site-header${logoTone === 'light' ? ' header-dark' : ''}${nav.length > 7 ? ' nav-dense' : ''}${nav.length > 9 ? ' nav-xdense' : ''}`}>
-      <div className="shell header-inner" ref={inner} data-layout={layout}>
+      <div className="shell header-inner" data-layout="stack">
         <Link href={homeHref} className="brand" aria-label={`${name} — início`}>
           {logoUrl
             ? <img src={logoUrl} alt={name} />
             : <strong className="brand-text">{name}</strong>}
         </Link>
+        <form className="header-search" role="search" onSubmit={search}>
+          <input type="search" ref={queryInput}
+            placeholder="Buscar veículo: marca, modelo, ano..." aria-label="Buscar veículo no estoque" />
+          <button type="submit" aria-label="Buscar"><Search size={18} aria-hidden="true" /></button>
+        </form>
         {/* Todos os itens do menu do lojista ficam visíveis; com muitos itens a letra
             diminui e o menu do celular entra mais cedo (classe nav-dense). */}
-        <nav className="desktop-nav" ref={navRef} aria-label="Navegação principal">{links}</nav>
-        {whatsappHref && (
-          <div className="header-actions">
-            <a className="button header-whatsapp" href={whatsappHref} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" /> WhatsApp</a>
-          </div>
-        )}
+        <nav className="desktop-nav" aria-label="Navegação principal">{links}</nav>
+        <div className="header-actions">
+          {whatsappHref && <a className="button header-whatsapp" href={whatsappHref} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" /> WhatsApp</a>}
+        </div>
         <details className="mobile-menu" ref={mobileMenu}>
           <summary aria-label="Abrir menu" title="Menu"><Menu size={22} aria-hidden="true" /></summary>
           <nav aria-label="Navegação móvel">
