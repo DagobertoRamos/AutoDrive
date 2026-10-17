@@ -24,7 +24,7 @@ function Hero({ ctx, wa, withBanners }: { ctx: SiteContext; wa: string; withBann
   const banners = withBanners ? activeBanners(ctx.config) : []
   return (
     <section className="hero home-hero">
-      <div className={`shell hero-grid${banners.length ? '' : ' hero-grid-single'}`}>
+      <div className={`shell hero-grid${banners.length ? ' hero-grid-banner' : ' hero-grid-single'}`}>
         <div className="hero-content">
           <p className="eyebrow">{home.heroEyebrow}</p>
           <h1>{home.heroTitle}</h1>
