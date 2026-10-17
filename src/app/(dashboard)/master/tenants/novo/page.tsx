@@ -21,7 +21,8 @@ import { normalizeCPF, formatCPF, isValidCPF, isCPFComplete } from '@/lib/br-doc
 import { normalizeCEP, formatCEP, isValidCEP } from '@/lib/br-docs/cep'
 import { formatPhone, normalizePhone, isValidPhone } from '@/lib/br-docs/phone'
 import { RequiredMark } from '@/components/ui/field'
-import { MODULE_CATALOG, ALL_FEATURE_KEYS, FEATURE_LABEL } from '@/lib/modules-catalog'
+import { ALL_FEATURE_KEYS, FEATURE_LABEL, applyModuleChanges } from '@/lib/modules-catalog'
+import { ModuleToggleBoard } from '@/components/modules/ModuleToggleBoard'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -494,20 +495,15 @@ function NovoTenantForm() {
 
   // ── Módulos ───────────────────────────────────────────────────────────────
 
-  // Liga/desliga TODAS as funcionalidades de uma área de uma vez.
-  function toggleArea(keys: string[], enable: boolean) {
-    setActiveModules(prev => {
-      const set = new Set(prev)
-      keys.forEach(k => (enable ? set.add(k) : set.delete(k)))
-      return ALL_FEATURE_KEYS.filter(k => set.has(k))
-    })
-  }
   const disabledModules = ALL_FEATURE_KEYS.filter(k => !activeModules.includes(k))
 
-  function toggleModule(key: string) {
-    setActiveModules(prev =>
-      prev.includes(key) ? prev.filter(m => m !== key) : [...prev, key]
-    )
+  // Mesma cascata do servidor: ligar ferramenta liga o módulo; desligar o
+  // módulo desliga tudo dentro (evita "liberado mas sem menu").
+  function changeModules(changes: Record<string, boolean>) {
+    setActiveModules(prev => {
+      const off = applyModuleChanges(ALL_FEATURE_KEYS.filter(k => !prev.includes(k)), changes)
+      return ALL_FEATURE_KEYS.filter(k => !off.has(k))
+    })
   }
 
   // ── Navegação de etapas ───────────────────────────────────────────────────
@@ -1224,44 +1220,7 @@ function NovoTenantForm() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Funcionalidades liberadas</p>
                 <span className="text-xs text-gray-500">{activeModules.length} de {ALL_FEATURE_KEYS.length} ligadas</span>
               </div>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {MODULE_CATALOG.map(group => {
-                  const keys = group.features.map(f => f.key)
-                  const allOn = keys.every(k => activeModules.includes(k))
-                  return (
-                    <div key={group.area} className="overflow-hidden rounded-xl border border-gray-200">
-                      <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-3 py-2">
-                        <p className="text-sm font-semibold text-gray-700">{group.area}</p>
-                        <button type="button" onClick={() => toggleArea(keys, !allOn)} className="text-xs font-medium text-brand-600 hover:underline">
-                          {allOn ? 'Desligar área' : 'Ligar área'}
-                        </button>
-                      </div>
-                      <ul className="divide-y divide-gray-100">
-                        {group.features.map(f => {
-                          const on = activeModules.includes(f.key)
-                          return (
-                            <li key={f.key} className="flex items-center justify-between gap-2 px-3 py-2">
-                              <span className="truncate text-sm text-gray-700">{f.label}</span>
-                              <button
-                                type="button"
-                                onClick={() => toggleModule(f.key)}
-                                role="switch" aria-checked={on}
-                                className={[
-                                  'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
-                                  on ? 'bg-brand-600' : 'bg-gray-300',
-                                ].join(' ')}
-                                title={on ? 'Ligado — clique p/ desligar' : 'Desligado — clique p/ ligar'}
-                              >
-                                <span className={['inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform', on ? 'translate-x-4' : 'translate-x-0.5'].join(' ')} />
-                              </button>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </div>
-                  )
-                })}
-              </div>
+              <ModuleToggleBoard enabled={new Set(activeModules)} onChange={changeModules} />
             </div>
           </Section>
 

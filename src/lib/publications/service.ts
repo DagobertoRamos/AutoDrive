@@ -511,6 +511,62 @@ export async function resumeAfterSaleCancelled(tenantId: string, vehicleId: stri
   return affected
 }
 
+// ── Pausa manual do carro em todos os canais ─────────────────────────────────
+
+export type NoPauseChoice = 'RETIRAR' | 'AVISAR'
+export interface VehicleChannelResult { publicationId: string; channel: string; ok: boolean; message: string; how: 'PAUSADO' | 'RETIRADO' | 'MANUAL' | 'REATIVADO' | 'IGNORADO' }
+
+/** Marca das publicações RETIRADAS no lugar de pausar (canal sem "pausar"),
+ *  para o "Reativar tudo" saber que deve publicar de novo. */
+export const MANUAL_PAUSE_REASONS = ['MANUAL', 'PAUSA_MANUAL'] as const
+
+/**
+ * Pausa o carro em TODOS os canais em que está no ar (site, portais, redes).
+ * Canal que pausa pela integração → pausa. Canal sem pausa (OLX, Webmotors,
+ * posts) → segue a escolha: RETIRAR (sai do ar e volta no "Reativar tudo") ou
+ * AVISAR (vira pendência manual). Padrão: a regra da loja (whenNoPause).
+ */
+export async function pauseVehicleEverywhere(tenantId: string, vehicleId: string, actor: Actor, opts: { whenNoPause?: NoPauseChoice; channels?: string[] } = {}): Promise<{ affected: number; results: VehicleChannelResult[] }> {
+  const settings = await loadPublicationSettings(tenantId)
+  const noPause: NoPauseChoice = opts.whenNoPause ?? settings.sale.whenNoPause
+  const pubs = await prisma.publication.findMany({ where: { tenantId, vehicleId, archivedAt: null, desiredState: 'PUBLICADO', ...(opts.channels?.length ? { channel: { in: opts.channels } } : {}) } })
+  const results: VehicleChannelResult[] = []
+  for (const p of pubs) {
+    const canPause = channelSpec(p.channel)?.capabilities.pause === 'SIM'
+    if (!canPause && noPause === 'RETIRAR') {
+      const r = await applyIntent(tenantId, p.id, 'RETIRAR', actor, { reason: 'MANUAL', archive: null })
+      if (r.ok) await prisma.publication.update({ where: { id: p.id }, data: { pausedReason: 'PAUSA_MANUAL' } })
+      results.push({ publicationId: p.id, channel: p.channel, ok: r.ok, message: r.ok ? 'Este canal não tem pausa: anúncio retirado (volta no "Reativar").' : r.message, how: 'RETIRADO' })
+    } else {
+      const r = await applyIntent(tenantId, p.id, 'PAUSAR', actor, { reason: 'MANUAL' })
+      results.push({ publicationId: p.id, channel: p.channel, ok: r.ok, message: canPause ? r.message : 'Este canal não tem pausa pela integração: pause ou retire no próprio canal.', how: canPause ? 'PAUSADO' : 'MANUAL' })
+    }
+  }
+  const affected = results.filter((r) => r.ok).length
+  if (affected) await logEvent(prisma, { tenantId, vehicleId, type: 'PAUSA_GERAL', message: `Anúncio pausado em todos os canais (${affected}).`, actor })
+  return { affected, results }
+}
+
+/** Desfaz a pausa manual: volta ao ar onde a loja pausou (ou retirou por falta de pausa). */
+export async function resumeVehicleEverywhere(tenantId: string, vehicleId: string, actor: Actor, opts: { channels?: string[] } = {}): Promise<{ affected: number; results: VehicleChannelResult[] }> {
+  const pubs = await prisma.publication.findMany({
+    where: { tenantId, vehicleId, archivedAt: null, desiredState: { not: 'PUBLICADO' }, pausedReason: { in: [...MANUAL_PAUSE_REASONS] }, ...(opts.channels?.length ? { channel: { in: opts.channels } } : {}) },
+    orderBy: { updatedAt: 'desc' },
+  })
+  const seen = new Set<string>()
+  const results: VehicleChannelResult[] = []
+  for (const p of pubs) {
+    const key = `${p.channel}:${p.connectionKey}:${p.campaignKey}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const r = await applyIntent(tenantId, p.id, 'RETOMAR', actor, { reason: 'MANUAL' })
+    results.push({ publicationId: p.id, channel: p.channel, ok: r.ok, message: r.message, how: 'REATIVADO' })
+  }
+  const affected = results.filter((r) => r.ok).length
+  if (affected) await logEvent(prisma, { tenantId, vehicleId, type: 'PAUSA_GERAL', message: `Anúncio reativado nos canais (${affected}).`, actor })
+  return { affected, results }
+}
+
 /**
  * Carro que saiu do estoque sozinho (ex.: sumiu do feed do site de origem) e
  * voltou: reativa os anúncios que o SISTEMA retirou por essa saída — os

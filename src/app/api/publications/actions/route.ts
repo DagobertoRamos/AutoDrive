@@ -6,13 +6,16 @@
 //   MANUAL_REMOVIDO  (loja confirma que removeu à mão)
 //   EXCLUIR (nunca publicado: apaga; já publicado: retira do canal)
 //   APAGAR_REGISTRO (só o registro na Central; a rede não é tocada)
+//   PAUSAR_VEICULO / REATIVAR_VEICULO — { vehicleIds:[...], whenNoPause? }:
+//     o carro em TODOS os canais de uma vez (site, portais, redes). Canal sem
+//     pausa: RETIRAR (volta no Reativar) ou AVISAR (pendência manual).
 // Gate: .publish
 // =============================================================================
 
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { applyIntent, logEvent, type Intent } from '@/lib/publications/service'
+import { applyIntent, logEvent, pauseVehicleEverywhere, resumeVehicleEverywhere, type Intent } from '@/lib/publications/service'
 import { audit, bad, kickWorker, pubAuth } from '@/lib/publications/api'
 import { socialOf } from '@/lib/publications/social/formats'
 
@@ -22,7 +25,28 @@ const INTENTS: Intent[] = ['PAUSAR', 'RETOMAR', 'RETIRAR', 'VERIFICAR', 'SINCRON
 export async function POST(req: Request) {
   const a = await pubAuth(req, 'marketing.publications.publish')
   if (a instanceof NextResponse) return a
-  const b = (await req.json().catch(() => ({}))) as { ids?: unknown; action?: string; url?: unknown }
+  const b = (await req.json().catch(() => ({}))) as { ids?: unknown; action?: string; url?: unknown; vehicleIds?: unknown; whenNoPause?: unknown }
+  if (b.action === 'PAUSAR_VEICULO' || b.action === 'REATIVAR_VEICULO') {
+    const vehicleIds = Array.isArray(b.vehicleIds) ? [...new Set(b.vehicleIds.filter((x): x is string => typeof x === 'string'))].slice(0, 100) : []
+    if (!vehicleIds.length) return bad('Selecione ao menos um veículo.')
+    const whenNoPause = b.whenNoPause === 'RETIRAR' || b.whenNoPause === 'AVISAR' ? b.whenNoPause : undefined
+    try {
+      const owned = await prisma.vehicle.findMany({ where: { id: { in: vehicleIds }, tenantId: a.tenantId }, select: { id: true } })
+      const results: Array<{ id: string; vehicleId: string; channel: string; ok: boolean; message: string; how: string }> = []
+      for (const { id: vehicleId } of owned) {
+        const r = b.action === 'PAUSAR_VEICULO'
+          ? await pauseVehicleEverywhere(a.tenantId, vehicleId, a.actor, { whenNoPause })
+          : await resumeVehicleEverywhere(a.tenantId, vehicleId, a.actor)
+        for (const x of r.results) results.push({ id: x.publicationId, vehicleId, channel: x.channel, ok: x.ok, message: x.message, how: x.how })
+      }
+      await audit(a, b.action, 'Vehicle', owned.length === 1 ? owned[0].id : null, { vehicleIds: owned.map((v) => v.id), whenNoPause: whenNoPause ?? null, affected: results.filter((r) => r.ok).length })
+      kickWorker()
+      const okN = results.filter((r) => r.ok).length
+      return NextResponse.json({ success: true, results, summary: results.length ? `${okN} de ${results.length} canal(is) ${b.action === 'PAUSAR_VEICULO' ? 'pausado(s)' : 'reativado(s)'}.` : (b.action === 'PAUSAR_VEICULO' ? 'Nenhum anúncio no ar para pausar.' : 'Nenhum anúncio pausado para reativar.') })
+    } catch (err) {
+      return handlePrismaError(err)
+    }
+  }
   const ids = Array.isArray(b.ids) ? [...new Set(b.ids.filter((x): x is string => typeof x === 'string'))].slice(0, 200) : []
   if (!ids.length) return bad('Selecione ao menos uma publicação.')
   const action = String(b.action ?? '')

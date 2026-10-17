@@ -9,12 +9,29 @@ import { prisma } from '@/lib/prisma'
 import { forbiddenResponse, type SessionUser } from '@/lib/auth-guards'
 import { canAccessModule, type Module } from '@/lib/permissions'
 import { effectiveRolePermission, isCrmPermission, sanitizeRolePermissions, type RolePermissionOverrides } from '@/lib/crm/permissions-core'
+import { effectiveDisabled } from '@/lib/modules-catalog'
 
-/** Lista as chaves desabilitadas (active=false) do tenant. */
+// Cache curto por processo (o menu, o dashboard e vários gates leem a mesma loja).
+const DISABLED_TTL_MS = 15_000
+const disabledCache = new Map<string, { at: number; value: string[] }>()
+
+/** Chamar após o MASTER mudar as funcionalidades da loja. */
+export function invalidateTenantModulesCache(tenantId: string): void {
+  disabledCache.delete(tenantId)
+}
+
+/**
+ * Chaves DESLIGADAS da loja — já EFETIVAS pela hierarquia do catálogo: pai
+ * desligado desliga todos os filhos (ver modules-catalog.effectiveDisabled).
+ */
 export async function getDisabledModules(tenantId: string): Promise<string[]> {
+  const hit = disabledCache.get(tenantId)
+  if (hit && Date.now() - hit.at < DISABLED_TTL_MS) return hit.value
   try {
     const rows = await prisma.tenantModule.findMany({ where: { tenantId, active: false }, select: { module: true } })
-    return rows.map((r) => r.module)
+    const value = effectiveDisabled(rows.map((r) => r.module))
+    disabledCache.set(tenantId, { at: Date.now(), value })
+    return value
   } catch (err) {
     // Fail-open: se a consulta de entitlement falhar, não escondemos nada.
     console.error('[tenant-modules] getDisabledModules falhou:', err)
@@ -135,13 +152,8 @@ export async function isModuleDeniedForUser(userId: string, module: string): Pro
  * Fail-open: erro na consulta => habilitado (não trava a loja por falha do gate).
  */
 export async function isModuleEnabled(tenantId: string, module: string): Promise<boolean> {
-  try {
-    const row = await prisma.tenantModule.findUnique({ where: { tenantId_module: { tenantId, module } }, select: { active: true } })
-    return row ? row.active : true
-  } catch (err) {
-    console.error('[tenant-modules] isModuleEnabled falhou:', err)
-    return true
-  }
+  // getDisabledModules já é fail-open e considera os pais desligados.
+  return !(await getDisabledModules(tenantId)).includes(module)
 }
 
 /**

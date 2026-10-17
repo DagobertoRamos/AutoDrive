@@ -12,7 +12,7 @@ import { getSessionUser, unauthorizedResponse, forbiddenResponse, hasRole, MANAG
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule, getRoleLevel, type Module } from '@/lib/permissions'
-import { MODULE_CATALOG } from '@/lib/modules-catalog'
+import { MODULE_CATALOG, descendantsOf } from '@/lib/modules-catalog'
 import { canAccessModuleForUser, getDisabledModules } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -127,18 +127,25 @@ export async function PUT(req: Request, { params }: Ctx) {
     }
 
     const maxLevel = maxGrantLevel(actor.role)
-    const cleanAllowed = [...new Set(allowedRaw)].filter((k) => catalogKeys.has(k) && !canAccessModule(target.role, k as Module) && !(financeLocked && isFinanceKey(k)))
-    const cleanDenied = [...new Set(deniedRaw)].filter((k) => catalogKeys.has(k) && canAccessModule(target.role, k as Module) && !(financeLocked && isFinanceKey(k)))
-    const changedKeys = [...new Set([...cleanAllowed, ...cleanDenied])]
-    const sensitive = changedKeys.map(featureMeta).filter((f) => f && f.sensitive) as Array<NonNullable<ReturnType<typeof featureMeta>>>
+    // Hierarquia: bloquear o módulo bloqueia o que está dentro dele.
+    const deniedSet = new Set(deniedRaw)
+    for (const k of [...deniedSet]) for (const d of descendantsOf(k)) deniedSet.add(d)
+    const allowedIn = [...new Set(allowedRaw)].filter((k) => !deniedSet.has(k))
+    const cleanAllowedAll = allowedIn.filter((k) => catalogKeys.has(k) && !canAccessModule(target.role, k as Module) && !(financeLocked && isFinanceKey(k)))
+    const cleanDenied = [...deniedSet].filter((k) => catalogKeys.has(k) && canAccessModule(target.role, k as Module) && !(financeLocked && isFinanceKey(k)))
 
-    for (const key of cleanAllowed) {
+    // "Liberar tudo": o que o seu cargo não pode conceder é PULADO (avisado na
+    // resposta) em vez de recusar a gravação inteira.
+    const cleanAllowed: string[] = []
+    const skipped: string[] = []
+    for (const key of cleanAllowedAll) {
       const meta = featureMeta(key)
       if (!meta) continue
-      if (meta.level > maxLevel) return forbiddenResponse(`Seu cargo não pode conceder a permissão "${meta.label}".`)
-      const actorCan = await canAccessModuleForUser(actor, key)
-      if (!actorCan) return forbiddenResponse(`Você não possui a permissão "${meta.label}" para concedê-la.`)
+      if (meta.level > maxLevel || !(await canAccessModuleForUser(actor, key))) { skipped.push(meta.label); continue }
+      cleanAllowed.push(key)
     }
+    const changedKeys = [...new Set([...cleanAllowed, ...cleanDenied])]
+    const sensitive = changedKeys.map(featureMeta).filter((f) => f && f.sensitive) as Array<NonNullable<ReturnType<typeof featureMeta>>>
     if (sensitive.length > 0 && !reason) {
       return NextResponse.json({ success: false, error: 'Informe o motivo para alterar permissões sensíveis.' }, { status: 400 })
     }
@@ -163,7 +170,7 @@ export async function PUT(req: Request, { params }: Ctx) {
       beforeData: { overrides: before },
       afterData: { allowed: cleanAllowed, denied: cleanDenied, targetUserId: id, targetRole: target.role, reason: reason || null },
     })
-    return NextResponse.json({ success: true, data: { allowed: cleanAllowed, denied: cleanDenied } })
+    return NextResponse.json({ success: true, data: { allowed: cleanAllowed, denied: cleanDenied, skipped } })
   } catch (err) {
     return handlePrismaError(err)
   }

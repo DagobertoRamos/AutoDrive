@@ -1,18 +1,21 @@
 'use client'
 
 // =============================================================================
-// /master/modules — Liberação de funcionalidades por tenant (MASTER).
-// Item por item: escolhe a loja e liga/desliga cada funcionalidade do AutoDrive.
-// Desligar esconde do menu E bloqueia a API (requireModule). Default = ligado.
+// /master/modules — Módulos e ferramentas por loja (MASTER).
+// Escolhe a loja e liga/desliga módulo inteiro, parte ou ferramenta, com
+// "Ligar tudo / Desligar tudo". Cascata (modules-catalog): desligar o módulo
+// desliga tudo dentro; ligar uma ferramenta liga o módulo. Desligar esconde do
+// menu E bloqueia a API (requireModule). Sem registro = ligado.
 // =============================================================================
 
 import { HelpHint } from '@/components/ui/help-hint'
 import { opsHint } from '@/lib/glossary-ops'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { Package, RefreshCw, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { MODULE_CATALOG } from '@/lib/modules-catalog'
+import { ALL_FEATURE_KEYS, applyModuleChanges, effectiveDisabled } from '@/lib/modules-catalog'
+import { ModuleToggleBoard } from '@/components/modules/ModuleToggleBoard'
 
 interface TenantModuleEntry { module: string; active: boolean }
 interface TenantWithModules { id: string; name: string; plan: string; status: string; modules: TenantModuleEntry[] }
@@ -24,7 +27,8 @@ export default function MasterModulesPage() {
   const [tenants, setTenants] = useState<TenantWithModules[]>([])
   const [sel, setSel] = useState('')
   const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -38,24 +42,26 @@ export default function MasterModulesPage() {
   useEffect(() => { load() }, [load])
 
   const tenant = tenants.find((t) => t.id === sel)
-  // Mapa de active por módulo (default = true quando não há registro).
-  const stateOf = (key: string): boolean => {
-    const row = tenant?.modules?.find((m) => m.module === key)
-    return row ? row.active : true
-  }
+  const explicitOff = useMemo(() => (tenant?.modules ?? []).filter((m) => !m.active).map((m) => m.module), [tenant])
+  const enabled = useMemo(() => {
+    const off = new Set(effectiveDisabled(explicitOff))
+    return new Set(ALL_FEATURE_KEYS.filter((k) => !off.has(k)))
+  }, [explicitOff])
 
-  const toggle = async (key: string, current: boolean) => {
+  const change = async (changes: Record<string, boolean>) => {
     if (!tenant) return
-    const id = `${tenant.id}:${key}`
-    setBusy(id)
-    // otimista
-    setTenants((ts) => ts.map((t) => t.id !== tenant.id ? t : {
-      ...t, modules: [...t.modules.filter((m) => m.module !== key), { module: key, active: !current }],
-    }))
+    setBusy(true); setMsg(null)
+    // otimista: aplica a mesma cascata do servidor
+    const nextOff = applyModuleChanges(explicitOff, changes)
+    setTenants((ts) => ts.map((t) => t.id !== tenant.id ? t : { ...t, modules: ALL_FEATURE_KEYS.map((k) => ({ module: k, active: !nextOff.has(k) })) }))
     try {
-      const res = await fetch('/api/master/modules', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ tenantId: tenant.id, module: key, active: !current }) })
-      if (!res.ok) await load()
-    } catch { await load() } finally { setBusy(null) }
+      const res = await fetch('/api/master/modules', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ tenantId: tenant.id, changes }) })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { setMsg({ ok: false, text: j?.error ?? 'Não foi possível salvar.' }); await load(); return }
+      setTenants((ts) => ts.map((t) => t.id !== tenant.id ? t : { ...t, modules: j.data.modules }))
+      const on = j.data.turnedOn?.length ?? 0, off = j.data.turnedOff?.length ?? 0
+      setMsg({ ok: true, text: on || off ? `Salvo: ${on} ligada(s), ${off} desligada(s).` : 'Nada a mudar.' })
+    } catch { await load() } finally { setBusy(false) }
   }
 
   if (session && !isMaster) {
@@ -71,51 +77,25 @@ export default function MasterModulesPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Package size={20} className="text-brand-600" />Funcionalidades por Loja<HelpHint className="ml-1" {...opsHint('MODULO')} /></h1>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Package size={20} className="text-brand-600" />Módulos por Loja<HelpHint className="ml-1" {...opsHint('MODULO')} /></h1>
+          <p className="mt-0.5 text-xs text-gray-500">Desligar o módulo desliga tudo dentro dele; ligar uma ferramenta liga o módulo.</p>
         </div>
         <div className="flex items-center gap-2">
-          <select value={sel} onChange={(e) => setSel(e.target.value)} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">
+          <select value={sel} onChange={(e) => { setSel(e.target.value); setMsg(null) }} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">
             {tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
           <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
         </div>
       </div>
 
+      {msg && <div className={cn('rounded-lg border px-4 py-2 text-sm', msg.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700')}>{msg.text}</div>}
+
       {loading ? (
         <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-28 animate-pulse rounded-xl bg-gray-100" />)}</div>
       ) : !tenant ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Nenhuma loja encontrada.</div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {MODULE_CATALOG.map((group) => (
-            <div key={group.area} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
-              <div className="border-b border-gray-100 px-4 py-2.5"><p className="text-sm font-semibold text-gray-700">{group.area}</p></div>
-              <ul className="divide-y divide-gray-100">
-                {group.features.map((f) => {
-                  const active = stateOf(f.key)
-                  const id = `${tenant.id}:${f.key}`
-                  return (
-                    <li key={f.key} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm text-gray-800">{f.label}</p>
-                        <p className="font-mono text-[10px] text-gray-400">{f.key}</p>
-                      </div>
-                      <button
-                        onClick={() => toggle(f.key, active)}
-                        disabled={busy === id}
-                        role="switch" aria-checked={active}
-                        className={cn('relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors', active ? 'bg-brand-600' : 'bg-gray-300', busy === id && 'opacity-50')}
-                        title={active ? 'Ativo — clique p/ desativar' : 'Inativo — clique p/ ativar'}
-                      >
-                        <span className={cn('inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform', active ? 'translate-x-5' : 'translate-x-0.5')} />
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          ))}
-        </div>
+        <ModuleToggleBoard enabled={enabled} onChange={change} disabled={busy} showKeys />
       )}
     </div>
   )

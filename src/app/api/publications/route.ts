@@ -61,7 +61,7 @@ export async function GET(req: Request) {
           unit: { select: { name: true } },
           publications: {
             where: pubWhere, orderBy: { createdAt: 'asc' },
-            select: { id: true, channel: true, campaignKey: true, status: true, remoteUrl: true, lastSyncAt: true, lastVerifiedAt: true, lastError: true, lastErrorHint: true, manualAction: true, scheduledAt: true, archiveReason: true, desiredState: true, manual: true, connection: { select: { label: true, status: true } } },
+            select: { id: true, channel: true, campaignKey: true, status: true, remoteUrl: true, lastSyncAt: true, lastVerifiedAt: true, lastError: true, lastErrorHint: true, manualAction: true, scheduledAt: true, archiveReason: true, desiredState: true, pausedReason: true, manual: true, connection: { select: { label: true, status: true } } },
           },
         },
       }),
@@ -76,7 +76,7 @@ export async function GET(req: Request) {
           id: p.id, channel: p.channel, channelName: spec?.name ?? p.channel, account: p.connection?.label ?? null, connectionStatus: p.connection?.status ?? null,
           campaign: spec?.campaigns ? p.campaignKey : null, status: p.status, statusLabel: STATUS_LABEL[p.status as PubStatus] ?? p.status, tone: STATUS_TONE[p.status as PubStatus] ?? 'neutral',
           remoteUrl: p.remoteUrl, lastSyncAt: p.lastSyncAt, lastVerifiedAt: p.lastVerifiedAt, lastError: p.lastError, hint: p.lastErrorHint,
-          manualAction: p.manualAction, scheduledAt: p.scheduledAt, archiveReason: p.archiveReason, desiredState: p.desiredState, manual: p.manual,
+          manualAction: p.manualAction, scheduledAt: p.scheduledAt, archiveReason: p.archiveReason, desiredState: p.desiredState, pausedReason: p.pausedReason, manual: p.manual,
         }
       })
       const lastSync = pubs.map((p) => p.lastVerifiedAt ?? p.lastSyncAt).filter(Boolean).sort().at(-1) ?? null

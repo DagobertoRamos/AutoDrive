@@ -14,7 +14,7 @@ import { normalizeCPF, isValidCPF } from '@/lib/br-docs/cpf'
 import { normalizeCEP } from '@/lib/br-docs/cep'
 import { normalizePhone } from '@/lib/br-docs/phone'
 import bcrypt from 'bcryptjs'
-import { ALL_FEATURE_KEYS } from '@/lib/modules-catalog'
+import { ALL_FEATURE_KEYS, normalizeFullState } from '@/lib/modules-catalog'
 import { parseDateOnly } from '@/lib/negotiation/date-only'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -427,8 +427,13 @@ export async function POST(req: NextRequest) {
       // para o que o MASTER DESLIGOU na criação (active=false). As chaves usam o
       // mesmo vocabulário de permissão (modules-catalog), então refletem no menu
       // e no gate de API (requireModule).
-      const disabledKeys: string[] = Array.isArray(planConfig?.disabledModules)
+      // Normaliza pela hierarquia: ferramenta ligada liga o pai (ex.: Publicações
+      // ligada com "Marketing" desligado = Marketing ligado; senão o menu some).
+      const requestedOff = Array.isArray(planConfig?.disabledModules)
         ? planConfig.disabledModules.filter((m) => ALL_FEATURE_KEYS.includes(m))
+        : []
+      const disabledKeys: string[] = requestedOff.length
+        ? normalizeFullState(ALL_FEATURE_KEYS.filter((k) => !requestedOff.includes(k))).disabled
         : []
       if (disabledKeys.length) {
         await tx.tenantModule.createMany({

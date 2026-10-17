@@ -15,6 +15,7 @@ import { isValidPhone } from '@/lib/br-docs/phone'
 import { RequiredMark } from '@/components/ui/field'
 import { useSession } from 'next-auth/react'
 import { identityLocked } from '@/lib/identity-lock'
+import { ancestorsOf, descendantsOf } from '@/lib/modules-catalog'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -137,13 +138,23 @@ function ModulesPicker({ positionId, userId, onChange }: { positionId: string | 
     })
   }, [groups, onChange, reason, restoreDefault])
 
-  const toggle = (key: string) => {
+  // Liga/desliga várias de uma vez com a hierarquia: liberar uma ferramenta
+  // libera o módulo-pai; bloquear o módulo bloqueia o que está dentro.
+  const setMany = (keys: string[], on: boolean) => {
     setRestoreDefault(false)
+    const target = new Set<string>()
+    for (const k of keys) {
+      target.add(k)
+      for (const r of on ? ancestorsOf(k) : descendantsOf(k)) target.add(r)
+    }
     setGroups((gs) => gs.map((g) => ({ ...g, features: g.features.map((f) => {
-      if (f.key !== key) return f
-      const enabled = !f.enabled
-      return { ...f, enabled, extraAllowed: enabled && !f.baseAllowed, blocked: !enabled && f.baseAllowed }
+      if (!target.has(f.key) || f.tenantDisabled) return f
+      return { ...f, enabled: on, extraAllowed: on && !f.baseAllowed, blocked: !on && f.baseAllowed }
     }) })))
+  }
+  const toggle = (key: string) => {
+    const f = groups.flatMap((g) => g.features).find((x) => x.key === key)
+    if (f) setMany([key], !f.enabled)
   }
 
   const restore = () => {
@@ -177,6 +188,8 @@ function ModulesPicker({ positionId, userId, onChange }: { positionId: string | 
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         <span className="rounded-full bg-blue-50 px-2 py-1 font-medium text-blue-700">{extraCount} extra(s)</span>
         <span className="rounded-full bg-red-50 px-2 py-1 font-medium text-red-700">{blockedCount} bloqueio(s)</span>
+        <button type="button" onClick={() => setMany(all.map((f) => f.key), true)} className="rounded-lg border border-gray-200 px-2 py-1 font-semibold text-brand-700 hover:bg-gray-50">Liberar tudo</button>
+        <button type="button" onClick={() => setMany(all.map((f) => f.key), false)} className="rounded-lg border border-gray-200 px-2 py-1 font-semibold text-gray-600 hover:bg-gray-50">Bloquear tudo</button>
         {userId && <button type="button" onClick={restore} className="rounded-lg border border-gray-200 px-2 py-1 font-semibold text-gray-600 hover:bg-gray-50">Restaurar padrão do cargo</button>}
       </div>
       {needsReason && (
@@ -187,7 +200,13 @@ function ModulesPicker({ positionId, userId, onChange }: { positionId: string | 
       )}
       {filtered.map((g) => (
         <div key={g.area} className="overflow-hidden rounded-lg border border-gray-200">
-          <p className="border-b border-gray-100 bg-gray-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{g.area}</p>
+          <div className="flex items-center justify-between gap-2 border-b border-gray-100 bg-gray-50 px-3 py-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{g.area}</p>
+            <span className="flex shrink-0 gap-2 text-[11px]">
+              <button type="button" onClick={() => setMany(g.features.map((f) => f.key), true)} className="font-medium text-brand-600 hover:underline">tudo</button>
+              <button type="button" onClick={() => setMany(g.features.map((f) => f.key), false)} className="font-medium text-gray-500 hover:underline">nada</button>
+            </span>
+          </div>
           <div className="divide-y divide-gray-100">
             {g.features.map((f) => (
               <button type="button" key={f.key} disabled={f.tenantDisabled} onClick={() => toggle(f.key)} className={cn('flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50')}>
@@ -480,9 +499,12 @@ export default function VendedoresPage() {
           credentials: 'include',
           body: JSON.stringify(moduleSelection),
         }).catch(() => null)
+        const modulesJson = modulesRes ? await modulesRes.json().catch(() => ({})) : {}
         if (modulesRes && !modulesRes.ok) {
-          const modulesJson = await modulesRes.json().catch(() => ({}))
           throw new Error(modulesJson?.error ?? 'Colaborador salvo, mas falhou ao salvar permissões.')
+        }
+        if (Array.isArray(modulesJson?.data?.skipped) && modulesJson.data.skipped.length) {
+          window.alert('Salvo. Algumas permissões não foram liberadas porque o seu cargo não pode concedê-las:\n• ' + modulesJson.data.skipped.join('\n• '))
         }
         // Participação no ranking (default: participa) — salva junto.
         await fetch('/api/ranking/participation', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ userId: targetUserId, participates: rankingParticipates }) }).catch(() => {})
