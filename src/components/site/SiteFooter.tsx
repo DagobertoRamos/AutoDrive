@@ -2,11 +2,11 @@
 // Rodapé do site da loja — padrão único (o mesmo do site modelo dagobertoeasycar):
 // faixa de chamada com WhatsApp, até 4 colunas (marca, navegação, atendimento,
 // "procure por" em etiquetas — só as que a loja tem), aviso legal e barra final.
-// Fundo na cor escura da marca. Logo do rodapé (footerLogoUrl) = a que o
-// analisador aprovou para o escuro; sem ela, a logo vai num selo branco.
+// Fundo na cor escura da marca; a logo vem na versão própria para esse fundo.
 import Link from 'next/link'
 import { Clock, Mail, MapPin, MessageCircle, Phone } from 'lucide-react'
 import type { SiteConfig } from '@/lib/site/config-core'
+import { buildSiteTheme } from '@/lib/site/theme-core'
 import type { SiteNavItem } from './SiteHeader'
 
 /** E-mail que quebra só depois do "@" (nunca "....co / m"). */
@@ -21,7 +21,12 @@ export function SiteFooter({ config, nav, whatsappHref, seoLinks = [], legalLink
   const phoneDigits = contact.phone.replace(/\D/g, '')
   // Telefone legível: 11934718276 → (11) 93471-8276 (o lojista às vezes grava só os dígitos).
   const phoneLabel = /^\d{10,11}$/.test(phoneDigits) ? `(${phoneDigits.slice(0, 2)}) ${phoneDigits.slice(2, -4)}-${phoneDigits.slice(-4)}` : contact.phone
-  const logo = identity.footerLogoUrl || identity.logoUrl
+  // Logo do rodapé: arquivo da loja → o servidor entrega a versão certa para
+  // este fundo (original, branca ou em cartão — decidido pelos pixels); logo
+  // de fora (URL externa) → selo branco.
+  const baseLogo = identity.footerLogoUrl || identity.logoUrl
+  const ownAsset = /^\/api\/site\/assets\/[a-z0-9]+$/i.test(baseLogo)
+  const logo = ownAsset ? `${baseLogo}?on=${buildSiteTheme(identity.primaryColor, identity.darkColor).dark.slice(1)}` : baseLogo
   const hasContact = !!(whatsappHref || phoneDigits || contact.email || address.length || contact.hours || contact.mapsUrl || contact.wazeUrl)
   const cols = 1 + (nav.length > 0 ? 1 : 0) + (hasContact ? 1 : 0) + (seoLinks.length > 0 ? 1 : 0)
   return (
@@ -35,7 +40,7 @@ export function SiteFooter({ config, nav, whatsappHref, seoLinks = [], legalLink
       <div className={`shell footer-grid fcols-${cols}`}>
         <div className="footer-brand">
           {logo
-            ? <span className={identity.footerLogoUrl ? 'footer-logo-plain' : 'footer-logo-badge'}><img src={logo} alt={identity.name} className="footer-logo" /></span>
+            ? <span className={ownAsset ? 'footer-logo-plain' : 'footer-logo-badge'}><img src={logo} alt={identity.name} className="footer-logo" /></span>
             : <strong className="footer-brand-text">{identity.name}</strong>}
           {identity.tagline && <p>{identity.tagline}</p>}
         </div>

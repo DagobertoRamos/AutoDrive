@@ -12,7 +12,7 @@
 // escuro.
 // =============================================================================
 
-import { contrastRatio, darkenRgb, hex, parseHex, rgbToHsl, type RGB } from './brand-core'
+import { contrastRatio, darkenRgb, hex, luminance, parseHex, rgbToHsl, type RGB } from './brand-core'
 
 export function mixRgb(a: RGB, b: RGB, t: number): RGB {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
@@ -208,4 +208,44 @@ export function removeStrayElements(px: Uint8ClampedArray, w: number, h: number)
   }
   for (const c of drop) for (const p of c.pixels) px[p * 4 + 3] = 0
   return drop.size
+}
+
+// ── Logo do rodapé escuro — decidida pelos pixels (vale p/ toda loja) ────────
+//   original  a logo já tem contraste no escuro (até os traços finos)
+//   mono      logo de uma cor só com pouco contraste → versão branca (nítida)
+//   card      logo colorida com pouco contraste → vai num cartão branco
+//   asis      imagem sem transparência (tem fundo próprio) → como está
+export type FooterLogoPlan = 'original' | 'mono' | 'card' | 'asis'
+
+export function footerLogoPlan(px: ArrayLike<number>, bg: RGB): FooterLogoPlan {
+  let total = 0, clear = 0
+  const contrasts: number[] = []
+  const buckets = new Map<string, number>()
+  for (let i = 0; i < px.length; i += 4) {
+    total++
+    if (px[i + 3] < 200) { clear++; continue }
+    const rgb: RGB = [px[i], px[i + 1], px[i + 2]]
+    contrasts.push(contrastRatio(rgb, bg))
+    const chroma = Math.max(...rgb) - Math.min(...rgb)
+    const key = chroma < 30 ? `n${Math.round(luminance(rgb) * 3)}` : `h${Math.floor(rgbToHsl(rgb)[0] / 30) % 12}`
+    buckets.set(key, (buckets.get(key) ?? 0) + 1)
+  }
+  if (!contrasts.length) return 'original'
+  if (clear / total < 0.02) return 'asis'
+  contrasts.sort((a, b) => a - b)
+  // percentil 20: os traços finos/claros-escuros também têm de aparecer
+  if (contrasts[Math.floor(contrasts.length * 0.2)] >= 4.5) return 'original'
+  // matizes vizinhos contam juntos (rosa/magenta, vermelho/laranja…)
+  let top = 0
+  for (const [k, n] of buckets) {
+    let sum = n
+    if (k[0] === 'h') { const h = Number(k.slice(1)); sum += (buckets.get(`h${(h + 1) % 12}`) ?? 0) + (buckets.get(`h${(h + 11) % 12}`) ?? 0) }
+    top = Math.max(top, sum)
+  }
+  return top / contrasts.length >= 0.85 ? 'mono' : 'card'
+}
+
+/** Versão monocromática branca (mantém o alfa → contornos suaves). */
+export function toWhiteMono(px: Uint8ClampedArray): void {
+  for (let i = 0; i < px.length; i += 4) { px[i] = 255; px[i + 1] = 255; px[i + 2] = 255 }
 }

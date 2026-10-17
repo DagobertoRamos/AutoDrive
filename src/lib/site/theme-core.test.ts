@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { contrastRatio, parseHex, rgbToHsl, type RGB } from './brand-core'
-import { buildSiteTheme, logoTone, removeStrayElements, siteThemeVars, whitenNeutralDarks } from './theme-core'
+import { buildSiteTheme, footerLogoPlan, logoTone, removeStrayElements, siteThemeVars, toWhiteMono, whitenNeutralDarks } from './theme-core'
 import { defaultSiteConfig, seedSiteFromTenant } from './config-core'
 
 const W: RGB = [255, 255, 255]
@@ -120,5 +120,28 @@ describe('site novo herda o cadastro da loja', () => {
   })
   it('cor padrão do cadastro (verde do schema) não conta como marca', () => {
     expect(seedSiteFromTenant(defaultSiteConfig('X'), { primaryColor: '#166534' }).identity.primaryColor).toBe('#079ca6')
+  })
+})
+
+describe('logo do rodapé escuro (decidida pelos pixels)', () => {
+  const PLUM: RGB = [82, 14, 50]
+  const withClear = (parts: RGB[]) => { const out: number[] = []; for (const c of parts) out.push(...c, 255); for (let i = 0; i < parts.length; i++) out.push(0, 0, 0, 0); return new Uint8ClampedArray(out) }
+  it('rosa fino sobre vinho (pouco contraste, uma cor) → versão branca', () => {
+    expect(footerLogoPlan(withClear(Array(50).fill(PINK)), PLUM)).toBe('mono')
+  })
+  it('logo branca/clara já legível → original', () => {
+    expect(footerLogoPlan(withClear(Array(50).fill([250, 250, 250] as RGB)), PLUM)).toBe('original')
+  })
+  it('logo colorida com pouco contraste → cartão branco', () => {
+    const parts: RGB[] = [...Array(25).fill([20, 40, 160] as RGB), ...Array(25).fill([200, 30, 30] as RGB)]
+    expect(footerLogoPlan(withClear(parts), PLUM)).toBe('card')
+  })
+  it('imagem sem transparência → como está', () => {
+    expect(footerLogoPlan(new Uint8ClampedArray([...PINK, 255, ...PINK, 255]), PLUM)).toBe('asis')
+  })
+  it('branca mantém o alfa (contorno suave)', () => {
+    const px = new Uint8ClampedArray([...PINK, 120])
+    toWhiteMono(px)
+    expect([...px]).toEqual([255, 255, 255, 120])
   })
 })

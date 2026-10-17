@@ -2,8 +2,11 @@
 // Imutável (trocar a logo gera outro id) → cache longo. Cabeçalhos impedem que
 // o navegador interprete o arquivo como outra coisa que não imagem.
 // ?format=jpg entrega JPEG (o catálogo da Meta não aceita WebP).
+// ?on=RRGGBB entrega a versão da logo para aquele fundo escuro (rodapé):
+// original, branca ou em cartão branco — decidido pelos pixels.
 import { NextResponse } from 'next/server'
 import { readSiteAsset } from '@/lib/site/assets'
+import { renderFooterLogo } from '@/lib/site/footer-logo'
 
 export const runtime = 'nodejs'
 
@@ -24,17 +27,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!asset || asset.kind === 'LEAD_PHOTO' || asset.kind === 'SOCIAL_VPART' || asset.kind === 'SOCIAL_VIDEO') return new NextResponse('Não encontrado', { status: 404 })
   let body = new Uint8Array(asset.data)
   let type = asset.mimeType
-  const wantJpeg = new URL(req.url).searchParams.get('format') === 'jpg'
-  if (wantJpeg && type !== 'image/jpeg' && type !== 'image/png') {
+  const sp = new URL(req.url).searchParams
+  let variant = ''
+  const on = sp.get('on') ?? ''
+  if (/^[0-9a-f]{6}$/i.test(on) && (asset.kind === 'LOGO' || asset.kind === 'LOGO_LIGHT')) {
+    const r = await renderFooterLogo(body, on)
+    if (r && r.plan !== 'original' && r.plan !== 'asis') { body = r.body; type = 'image/png'; variant = `-${r.plan}-${on.toLowerCase()}` }
+  } else if (sp.get('format') === 'jpg' && type !== 'image/jpeg' && type !== 'image/png') {
     const jpg = await toJpeg(body)
-    if (jpg) { body = jpg; type = 'image/jpeg' }
+    if (jpg) { body = jpg; type = 'image/jpeg'; variant = '-jpg' }
   }
   return new NextResponse(body, {
     headers: {
       'Content-Type': type,
       'Content-Length': String(body.length),
       'Cache-Control': 'public, max-age=31536000, immutable',
-      ETag: `"${asset.sha256}${type !== asset.mimeType ? '-jpg' : ''}"`,
+      ETag: `"${asset.sha256}${variant}"`,
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "default-src 'none'",
     },
