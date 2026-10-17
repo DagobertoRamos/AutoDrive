@@ -120,11 +120,9 @@ describe('cenários 2 a 4 — o que bloqueia o avanço', () => {
     expect(p.answeredItems).toBeLessThan(p.totalItems)
   })
 
-  it('test-drive não tem item obrigatório: só a foto geral bloqueia', () => {
+  it('test-drive não tem item obrigatório nem foto: nada bloqueia', () => {
     const c = ctx({ items: itemsFor('TEST_DRIVE') })
-    const pending = getSectionPending('TEST_DRIVE', c)
-    expect(pending).toHaveLength(1)
-    expect(pending[0].type).toBe('SECTION_PHOTO')
+    expect(getSectionPending('TEST_DRIVE', c)).toHaveLength(0)
   })
 })
 

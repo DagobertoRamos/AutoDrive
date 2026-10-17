@@ -21,7 +21,7 @@ import { Loader2, ChevronRight, ChevronLeft, Camera, Upload, Trash2, ImageIcon, 
 import { ITEMS, SECTIONS, ITEM_STATUS, type CatalogItem, type SectionKey } from '@/lib/evaluation/catalog'
 import {
   getSectionProgress, findCatalogItem,
-  isAnswerRequired, isPhotoRequiredFor, getItemPhotos, getSectionPhotos, REQUIRED_SHOTS, shotCategory,
+  isAnswerRequired, isPhotoRequiredFor, getItemPhotos, getSectionPhotos, REQUIRED_SHOTS, shotCategory, sectionHasPhoto,
   type EvaluationAttachmentLike, type EvaluationItemLike, type EvaluationRuleContext,
   type PendingRequirement, type SectionProgress,
 } from '@/lib/evaluation/rules'
@@ -565,8 +565,8 @@ export function EvaluationSections({
             )}
           </div>
 
-          {/* Foto geral da seção (obrigatória) */}
-          <SectionPhotoWidget
+          {/* Foto geral da seção (obrigatória; test-drive não tem) */}
+          {sectionHasPhoto(tab) && <SectionPhotoWidget
             key={tab}
             invalid={triedToAdvance && sectionPhotos.length === 0}
             evaluationId={evaluationId}
@@ -574,7 +574,7 @@ export function EvaluationSections({
             photos={sectionPhotos}
             readOnly={readOnly}
             onChanged={() => load({ silent: true })}
-          />
+          />}
 
           <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {(currentItems.length > 0 ? currentItems : catalog.map((c) => ({

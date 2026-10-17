@@ -26,8 +26,13 @@ export const CHECKLIST_SECTIONS: SectionKey[] = [
   'INTERIOR', 'FRENTE', 'DIREITA', 'TRASEIRA', 'ESQUERDA', 'TEST_DRIVE',
 ]
 
-/** Seções que exigem, no mínimo, 1 foto geral (sem vínculo a item). */
-export const SECTIONS_REQUIRING_PHOTO: SectionKey[] = [...CHECKLIST_SECTIONS]
+/** Seções que exigem, no mínimo, 1 foto geral (sem vínculo a item). Test-drive não tem foto. */
+export const SECTIONS_REQUIRING_PHOTO: SectionKey[] = CHECKLIST_SECTIONS.filter((s) => s !== 'TEST_DRIVE')
+
+/** Seções que exibem o bloco de foto geral (as que exigem foto). */
+export function sectionHasPhoto(section: SectionKey): boolean {
+  return SECTIONS_REQUIRING_PHOTO.includes(section) || !!REQUIRED_SHOTS[section]
+}
 
 /**
  * Fotos obrigatórias nomeadas por seção (substituem a "foto geral" nela).
