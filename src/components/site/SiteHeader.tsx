@@ -9,8 +9,8 @@ import { Menu, MessageCircle, Phone } from 'lucide-react'
 
 export interface SiteNavItem { label: string; href: string }
 
-export function SiteHeader({ homeHref, name, logoUrl, nav, whatsappHref, phone }: {
-  homeHref: string; name: string; logoUrl: string; nav: SiteNavItem[]; whatsappHref: string; phone: string
+export function SiteHeader({ homeHref, name, logoUrl, logoTone = '', nav, whatsappHref, phone }: {
+  homeHref: string; name: string; logoUrl: string; logoTone?: '' | 'light' | 'dark'; nav: SiteNavItem[]; whatsappHref: string; phone: string
 }) {
   const pathname = usePathname()
   const mobileMenu = useRef<HTMLDetailsElement>(null)
@@ -55,11 +55,12 @@ export function SiteHeader({ homeHref, name, logoUrl, nav, whatsappHref, phone }
   const links = toLinks(nav)
 
   return (
-    <header className={`site-header${nav.length > 7 ? ' nav-dense' : ''}${nav.length > 9 ? ' nav-xdense' : ''}`}>
+    // Logo clara (some no branco) → cabeçalho na cor escura da marca.
+    <header className={`site-header${logoTone === 'light' ? ' header-dark' : ''}${nav.length > 7 ? ' nav-dense' : ''}${nav.length > 9 ? ' nav-xdense' : ''}`}>
       <div className="shell header-inner" ref={inner} data-layout={layout}>
         <Link href={homeHref} className="brand" aria-label={`${name} — início`}>
           {logoUrl
-            ? <img src={logoUrl} alt={name} width={202} height={32} />
+            ? <img src={logoUrl} alt={name} />
             : <strong className="brand-text">{name}</strong>}
         </Link>
         {/* Todos os itens do menu do lojista ficam visíveis; com muitos itens a letra

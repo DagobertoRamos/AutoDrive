@@ -7,7 +7,7 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
-import { defaultSiteConfig, isValidSiteSlug, sanitizeSiteConfig, type SiteConfig } from './config-core'
+import { defaultSiteConfig, isValidSiteSlug, sanitizeSiteConfig, seedSiteFromTenant, type SiteConfig } from './config-core'
 import { normalizeHost } from './host'
 import { isTenantAccessBlocked } from '@/lib/tenant-lifecycle/access'
 
@@ -18,7 +18,15 @@ const slugKey = (slug: string) => `site_slug:${slug}`
 const hostKey = (host: string) => `site_host:${host}`
 
 async function tenantBasics(tenantId: string) {
-  return prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true, name: true, nomeFantasia: true, slug: true } })
+  return prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: {
+      id: true, name: true, nomeFantasia: true, slug: true,
+      // cadastro da loja: semente do site (cor, logo, contato)
+      primaryColor: true, secondaryColor: true, logoUrl: true, faviconUrl: true, slogan: true, phone: true, email: true,
+      address: true, logradouro: true, numero: true, complemento: true, bairro: true, city: true, state: true,
+    },
+  })
 }
 
 export async function loadSiteConfig(tenantId: string): Promise<SiteConfig> {
@@ -26,12 +34,12 @@ export async function loadSiteConfig(tenantId: string): Promise<SiteConfig> {
   const name = t?.nomeFantasia || t?.name || ''
   const row = await prisma.systemSetting.findFirst({ where: { key: cfgKey(tenantId) }, select: { value: true } }).catch(() => null)
   if (row) {
-    try { return sanitizeSiteConfig(JSON.parse(row.value), name) } catch { /* cai no padrão */ }
+    try { return seedSiteFromTenant(sanitizeSiteConfig(JSON.parse(row.value), name), t) } catch { /* cai no padrão */ }
   }
   const d = defaultSiteConfig(name)
   // Subdomínio padrão = slug da loja no SaaS (já é único).
   if (t?.slug && isValidSiteSlug(t.slug)) d.slug = t.slug
-  return d
+  return seedSiteFromTenant(d, t)
 }
 
 export class SiteConfigError extends Error {}

@@ -10,6 +10,7 @@ import { primaryDomain, sanitizeDomains, type SiteDomain } from './domains-core'
 import { sanitizeTracking, type SiteTracking } from './tracking-core'
 import { sanitizeEmailSettings, type SiteEmailSettings } from './lead-email-core'
 import { sanitizeSeoCities, type SeoCity } from './seo-core'
+import { buildSiteTheme } from './theme-core'
 
 export type { SiteDomain }
 
@@ -41,7 +42,7 @@ export interface SiteConfig {
   enabled: boolean
   slug: string
   domains: SiteDomain[]
-  identity: { name: string; tagline: string; logoUrl: string; footerLogoUrl: string; faviconUrl: string; primaryColor: string; darkColor: string; comingSoonImage: string }
+  identity: { name: string; tagline: string; logoUrl: string; footerLogoUrl: string; faviconUrl: string; primaryColor: string; darkColor: string; comingSoonImage: string; /** 'light' = logo clara → cabeçalho escuro */ logoTone: '' | 'light' | 'dark' }
   contact: {
     whatsapp: string; phone: string; email: string
     addressLine1: string; addressLine2: string; mapsUrl: string; wazeUrl: string; mapsEmbedUrl: string; hours: string
@@ -87,7 +88,7 @@ export function defaultSiteConfig(storeName: string): SiteConfig {
     enabled: false,
     slug: slugify(name),
     domains: [],
-    identity: { name, tagline: 'Seminovos com procedência e atendimento de verdade.', logoUrl: '', footerLogoUrl: '', faviconUrl: '', primaryColor: '#079ca6', darkColor: '#061b29', comingSoonImage: '' },
+    identity: { name, tagline: 'Seminovos com procedência e atendimento de verdade.', logoUrl: '', footerLogoUrl: '', faviconUrl: '', primaryColor: '#079ca6', darkColor: '#061b29', comingSoonImage: '', logoTone: '' },
     contact: { whatsapp: '', phone: '', email: '', addressLine1: '', addressLine2: '', mapsUrl: '', wazeUrl: '', mapsEmbedUrl: '', hours: '' },
     home: {
       heroEyebrow: 'Seu próximo carro está aqui',
@@ -159,6 +160,7 @@ export function sanitizeSiteConfig(input: unknown, storeName: string): SiteConfi
       logoUrl: url(id.logoUrl), footerLogoUrl: url(id.footerLogoUrl), faviconUrl: url(id.faviconUrl), comingSoonImage: url(id.comingSoonImage),
       primaryColor: HEX.test(str(id.primaryColor)) ? str(id.primaryColor) : d.identity.primaryColor,
       darkColor: HEX.test(str(id.darkColor)) ? str(id.darkColor) : d.identity.darkColor,
+      logoTone: id.logoTone === 'light' || id.logoTone === 'dark' ? id.logoTone : '',
     },
     contact: {
       whatsapp: str(ct.whatsapp, 20).replace(/\D/g, ''),
@@ -231,4 +233,47 @@ export function publicSiteRoot(cfg: SiteConfig, baseDomain: string | null | unde
   if (p && (p.status === 'CONNECTED' || p.status === 'DNS_OK')) return `https://${p.host}`
   if (baseDomain) return `https://${cfg.slug}.${baseDomain}`
   return `${fallbackOrigin.replace(/\/+$/, '')}/s/${cfg.slug}`
+}
+
+// ── Site novo nasce com a cara da loja ───────────────────────────────────────
+// Campos do site ainda no padrão/vazios herdam o CADASTRO DA LOJA (cor, logo,
+// favicon, slogan, telefone, e-mail, endereço). Assim nenhuma loja nova abre
+// com o turquesa padrão nem com contato em branco. O que o lojista já ajustou
+// no site nunca é sobrescrito.
+export interface TenantSiteSeed {
+  primaryColor?: string | null; secondaryColor?: string | null; logoUrl?: string | null; faviconUrl?: string | null; slogan?: string | null
+  phone?: string | null; email?: string | null; address?: string | null
+  logradouro?: string | null; numero?: string | null; complemento?: string | null; bairro?: string | null; city?: string | null; state?: string | null
+}
+
+/** Cor padrão do cadastro (schema) — não é escolha da loja. */
+const TENANT_DEFAULT_COLOR = '#166534'
+
+export function seedSiteFromTenant(cfg: SiteConfig, t: TenantSiteSeed | null | undefined): SiteConfig {
+  if (!t) return cfg
+  const d = defaultSiteConfig(cfg.identity.name)
+  const id = { ...cfg.identity }, ct = { ...cfg.contact }
+  const color = (t.primaryColor ?? '').trim()
+  if (id.primaryColor.toLowerCase() === d.identity.primaryColor && HEX.test(color) && color.toLowerCase() !== TENANT_DEFAULT_COLOR) {
+    id.primaryColor = color
+    // a escura padrão (azul-petróleo) não combina com outra marca: usa a
+    // secundária do cadastro se for da família, senão um tom escuro da marca
+    const sec = (t.secondaryColor ?? '').trim()
+    if (id.darkColor.toLowerCase() === d.identity.darkColor) id.darkColor = buildSiteTheme(color, HEX.test(sec) ? sec : undefined).dark
+  }
+  if (!id.logoUrl) id.logoUrl = url(t.logoUrl)
+  if (!id.faviconUrl) id.faviconUrl = url(t.faviconUrl)
+  if (id.tagline === d.identity.tagline && str(t.slogan, 160)) id.tagline = str(t.slogan, 160)
+  const digits = (t.phone ?? '').replace(/\D/g, '')
+  if (!ct.phone && digits) ct.phone = str(t.phone, 30)
+  if (!ct.whatsapp && digits.length >= 10) ct.whatsapp = digits
+  if (!ct.email) ct.email = str(t.email, 160)
+  if (!ct.addressLine1 && !ct.addressLine2) {
+    const street = [t.logradouro, t.numero].map((x) => (x ?? '').trim()).filter(Boolean).join(', ')
+    const l1 = [street, (t.complemento ?? '').trim()].filter(Boolean).join(' - ') || str(t.address, 160)
+    const city = [(t.city ?? '').trim(), (t.state ?? '').trim()].filter(Boolean).join(' - ')
+    ct.addressLine1 = str(l1, 160)
+    ct.addressLine2 = str([(t.bairro ?? '').trim(), city].filter(Boolean).join(' - '), 160)
+  }
+  return { ...cfg, identity: id, contact: ct }
 }

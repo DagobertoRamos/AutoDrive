@@ -18,7 +18,8 @@ import { CONSENT_COOKIE } from '@/lib/site/tracking-cookie'
 import { SiteAnalytics } from '@/components/site/SiteAnalytics'
 import { siteBrandLandings } from '@/lib/site/vehicles'
 import { Suspense } from 'react'
-import { darken, getSiteContext } from '@/lib/site/context'
+import { getSiteContext } from '@/lib/site/context'
+import { buildSiteTheme, siteThemeVars } from '@/lib/site/theme-core'
 import { primaryDomain } from '@/lib/site/domains-core'
 import { normalizeHost, SITE_HOST_HEADER, SITE_PATH_HEADER } from '@/lib/site/host'
 import './site.css'
@@ -60,10 +61,8 @@ export default async function SiteLayout({ children, params }: { children: React
         ...ctx.config.seoCities.map((c) => ({ label: `Carros em ${c.name}`, href: ctx.href(`/carros-em/${c.slug}`) })),
       ]
     : []
-  const vars = {
-    '--brand': identity.primaryColor, '--brand-hover': darken(identity.primaryColor), '--brand-bright': identity.primaryColor,
-    '--blue': darken(identity.primaryColor, 0.2), '--blue-dark': identity.darkColor,
-  } as React.CSSProperties
+  // Paleta inteira derivada da marca (contraste AA garantido) — o CSS não tem cor fixa de marca.
+  const vars = siteThemeVars(buildSiteTheme(identity.primaryColor, identity.darkColor)) as React.CSSProperties
 
   const tagBoot = tagBootstrapScript(ctx.config.tracking.metaPixelId, ctx.config.tracking.googleTagId, CONSENT_COOKIE)
   const googleTag = cleanGoogleTagId(ctx.config.tracking.googleTagId)
@@ -77,7 +76,7 @@ export default async function SiteLayout({ children, params }: { children: React
       {tagBoot && <script dangerouslySetInnerHTML={{ __html: tagBoot }} />}
       {googleTag && <script async src={`https://www.googletagmanager.com/gtag/js?id=${googleTag}`} />}
       {ctx.preview && <SitePreviewBar />}
-      <SiteHeader homeHref={ctx.href('/')} name={identity.name} logoUrl={identity.logoUrl} nav={ctx.nav} whatsappHref={wa} phone={contact.phone} />
+      <SiteHeader homeHref={ctx.href('/')} name={identity.name} logoUrl={identity.logoUrl} logoTone={identity.logoTone} nav={ctx.nav} whatsappHref={wa} phone={contact.phone} />
       <main>{children}</main>
       <SiteFooter config={ctx.config} nav={ctx.nav} whatsappHref={wa} seoLinks={seoLinks}
         legalLinks={[{ label: 'Política de privacidade', href: ctx.href('/privacidade') }, { label: 'Termos de uso', href: ctx.href('/termos') }, { label: 'Política de cookies', href: ctx.href('/cookies') }]} />

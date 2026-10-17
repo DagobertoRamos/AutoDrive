@@ -12,6 +12,7 @@ import { AlertTriangle, CheckCircle2, ImagePlus, Loader2, Sparkles, Trash2, Wand
 import { cn } from '@/lib/utils'
 import { analyzeLogo, type AnalyzedBrand } from '@/lib/site/brand-analyzer'
 import { contrastRatio, parseHex } from '@/lib/site/brand-core'
+import { buildSiteTheme } from '@/lib/site/theme-core'
 import type { SiteConfig } from '@/lib/site/config-core'
 
 type Identity = SiteConfig['identity']
@@ -26,21 +27,25 @@ async function upload(blob: Blob, kind: string): Promise<string> {
   return j.data.url as string
 }
 
-function Preview({ identity, logo, footerLogo, favicon, primary, dark }: { identity: Identity; logo: string; footerLogo: string; favicon: string; primary: string; dark: string }) {
+function Preview({ identity, logo, footerLogo, footerBadge, headerDark, favicon, primary, dark }: { identity: Identity; logo: string; footerLogo: string; footerBadge: boolean; headerDark: boolean; favicon: string; primary: string; dark: string }) {
+  // Mesma paleta que o site vai usar (derivada e com contraste garantido).
+  const t = buildSiteTheme(primary, dark)
   return (
     <div className="grid gap-3 md:grid-cols-2">
       <div className="overflow-hidden rounded-lg border border-gray-200">
         <p className="bg-gray-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Cabeçalho do site</p>
-        <div className="flex items-center justify-between gap-3 bg-white px-3 py-3">
-          {logo ? <img src={logo} alt="" className="max-h-9 max-w-[180px] object-contain" /> : <b className="text-sm">{identity.name}</b>}
-          <span className="rounded-lg px-3 py-1.5 text-xs font-bold text-white" style={{ background: primary }}>WhatsApp</span>
+        <div className="flex items-center justify-between gap-3 px-3 py-3" style={{ background: headerDark ? t.dark : '#fff' }}>
+          {logo ? <img src={logo} alt="" className="max-h-12 max-w-[180px] object-contain" /> : <b className="text-sm" style={{ color: headerDark ? '#fff' : t.ink }}>{identity.name}</b>}
+          <span className="rounded-lg px-3 py-1.5 text-xs font-bold text-white" style={{ background: t.brand }}>WhatsApp</span>
         </div>
       </div>
       <div className="overflow-hidden rounded-lg border border-gray-200">
         <p className="bg-gray-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Rodapé</p>
-        <div className="flex items-center gap-3 px-3 py-3" style={{ background: dark }}>
-          {footerLogo ? <img src={footerLogo} alt="" className="max-h-9 max-w-[180px] object-contain" /> : <b className="text-sm text-white">{identity.name}</b>}
-          <span className="text-[11px] text-white/70">© {new Date().getFullYear()} {identity.name}</span>
+        <div className="flex items-center gap-3 px-3 py-3" style={{ background: t.dark }}>
+          {footerLogo
+            ? <span className={footerBadge ? 'inline-flex rounded-lg bg-white px-2 py-1.5' : 'inline-flex'}><img src={footerLogo} alt="" className="max-h-12 max-w-[160px] object-contain" /></span>
+            : <b className="text-sm text-white">{identity.name}</b>}
+          <span className="text-[11px]" style={{ color: t.footerMuted }}>© {new Date().getFullYear()} {identity.name}</span>
         </div>
       </div>
       <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
@@ -51,8 +56,14 @@ function Preview({ identity, logo, footerLogo, favicon, primary, dark }: { ident
       </div>
       <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Botões</span>
-        <span className="rounded-lg px-3 py-1.5 text-xs font-bold text-white" style={{ background: primary }}>Ver carros</span>
-        <span className="rounded-lg px-3 py-1.5 text-xs font-bold text-white" style={{ background: dark }}>Ver estoque</span>
+        <span className="rounded-lg px-3 py-1.5 text-xs font-bold text-white" style={{ background: t.brand }}>Ver carros</span>
+        <span className="rounded-lg px-3 py-1.5 text-xs font-bold text-white" style={{ background: t.dark }}>Ver estoque</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 md:col-span-2" style={{ background: t.tint }}>
+        <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: t.brand }}>Faixas e cartões</span>
+        <span className="text-xs font-semibold" style={{ color: t.ink }}>Vamos conversar?</span>
+        <span className="text-[11px]" style={{ color: t.muted }}>Texto de apoio</span>
+        <span className="ml-auto flex gap-1">{[t.brand, t.brandSoft, t.dark, t.tint2, t.line].map((c) => <span key={c} title={c} className="h-4 w-4 rounded-full border border-white shadow" style={{ background: c }} />)}</span>
       </div>
     </div>
   )
@@ -81,12 +92,14 @@ export function BrandingSection({ identity, canManage, onApply }: { identity: Id
     if (!result) return
     setBusy('apply'); setErr(null)
     try {
-      const [logoUrl, footerLogoUrl, faviconUrl] = await Promise.all([
+      const [logoUrl, lightUrl, faviconUrl] = await Promise.all([
         upload(result.logo, 'LOGO'),
-        result.light ? upload(result.light, 'LOGO_LIGHT') : Promise.resolve(''),
+        result.footer === 'light' && result.light ? upload(result.light, 'LOGO_LIGHT') : Promise.resolve(''),
         upload(result.favicon, 'FAVICON'),
       ])
-      onApply({ logoUrl, footerLogoUrl, faviconUrl, primaryColor: primary, darkColor: dark })
+      // Rodapé: versão clara, a própria logo (já legível no escuro) ou selo branco ('').
+      const footerLogoUrl = result.footer === 'light' ? lightUrl : result.footer === 'logo' ? logoUrl : ''
+      onApply({ logoUrl, footerLogoUrl, faviconUrl, primaryColor: primary, darkColor: buildSiteTheme(primary, dark).dark, logoTone: result.tone })
       setResult(null)
       setDone('Marca aplicada. Salve o site para publicar.')
     } catch (e) { setErr(e instanceof Error ? e.message : 'Falha ao aplicar.') } finally { setBusy(null) }
@@ -94,7 +107,9 @@ export function BrandingSection({ identity, canManage, onApply }: { identity: Id
 
   const contrast = Math.round(contrastRatio([255, 255, 255], parseHex(primary)) * 10) / 10
   const logoShown = result?.logoPreview ?? identity.logoUrl
-  const footerShown = result ? (result.lightPreview ?? result.logoPreview) : (identity.footerLogoUrl || identity.logoUrl)
+  const footerShown = result ? (result.footer === 'light' ? result.lightPreview ?? result.logoPreview : result.logoPreview) : (identity.footerLogoUrl || identity.logoUrl)
+  const footerBadge = result ? result.footer === 'badge' : !identity.footerLogoUrl
+  const headerDark = result ? result.tone === 'light' : identity.logoTone === 'light'
   const faviconShown = result?.faviconPreview ?? identity.faviconUrl
 
   return (
@@ -120,6 +135,7 @@ export function BrandingSection({ identity, canManage, onApply }: { identity: Id
       {result && (
         <div className="mt-4 space-y-3 rounded-xl border border-brand-200 bg-brand-50/40 p-3">
           <p className="flex items-center gap-1.5 text-xs font-semibold text-brand-800"><Wand2 size={14} />Logo processada ({result.width}×{result.height}px). Confira a prévia e aplique.</p>
+          {result.removedStrays > 0 && <p className="flex items-start gap-1.5 text-[11px] text-brand-800"><CheckCircle2 size={12} className="mt-0.5 shrink-0" />Tiramos {result.removedStrays === 1 ? 'uma sobra' : `${result.removedStrays} sobras`} da imagem (ícones ou recortes na borda) que não fazem parte da logo.</p>}
           {result.suggestion.warnings.map((w) => <p key={w} className="flex items-start gap-1.5 text-[11px] text-amber-800"><AlertTriangle size={12} className="mt-0.5 shrink-0" />{w}</p>)}
         </div>
       )}
@@ -158,10 +174,10 @@ export function BrandingSection({ identity, canManage, onApply }: { identity: Id
             </div>
           )}
           {canManage && !result && identity.logoUrl && (
-            <button type="button" onClick={() => onApply({ logoUrl: '', footerLogoUrl: '', faviconUrl: '' })} className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-600"><Trash2 size={12} />Remover logo</button>
+            <button type="button" onClick={() => onApply({ logoUrl: '', footerLogoUrl: '', faviconUrl: '', logoTone: '' })} className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-600"><Trash2 size={12} />Remover logo</button>
           )}
         </div>
-        <Preview identity={identity} logo={logoShown} footerLogo={footerShown} favicon={faviconShown} primary={primary} dark={dark} />
+        <Preview identity={identity} logo={logoShown} footerLogo={footerShown} footerBadge={footerBadge} headerDark={headerDark} favicon={faviconShown} primary={primary} dark={dark} />
       </div>
     </section>
   )

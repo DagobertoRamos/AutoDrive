@@ -1,13 +1,19 @@
 /* eslint-disable @next/next/no-img-element -- fotos/logos da loja vêm de URLs arbitrárias */
 // Rodapé do site da loja — padrão único (o mesmo do site modelo dagobertoeasycar):
-// faixa de chamada com WhatsApp, 4 colunas (marca, navegação, atendimento,
-// "procure por" em etiquetas), aviso legal e barra final. Fundo sempre escuro,
-// tingido pela cor escura da loja. Sem logo clara, a logo vai num selo branco
-// (qualquer logo fica legível, sem sobrar só o contorno no fundo escuro).
+// faixa de chamada com WhatsApp, até 4 colunas (marca, navegação, atendimento,
+// "procure por" em etiquetas — só as que a loja tem), aviso legal e barra final.
+// Fundo na cor escura da marca. Logo do rodapé (footerLogoUrl) = a que o
+// analisador aprovou para o escuro; sem ela, a logo vai num selo branco.
 import Link from 'next/link'
 import { Clock, Mail, MapPin, MessageCircle, Phone } from 'lucide-react'
 import type { SiteConfig } from '@/lib/site/config-core'
 import type { SiteNavItem } from './SiteHeader'
+
+/** E-mail que quebra só depois do "@" (nunca "....co / m"). */
+export function EmailText({ email }: { email: string }) {
+  const at = email.indexOf('@')
+  return at > 0 ? <>{email.slice(0, at)}<wbr />{email.slice(at)}</> : <>{email}</>
+}
 
 export function SiteFooter({ config, nav, whatsappHref, seoLinks = [], legalLinks = [] }: { config: SiteConfig; nav: SiteNavItem[]; whatsappHref: string; seoLinks?: SiteNavItem[]; legalLinks?: SiteNavItem[] }) {
   const { identity, contact } = config
@@ -17,6 +23,7 @@ export function SiteFooter({ config, nav, whatsappHref, seoLinks = [], legalLink
   const phoneLabel = /^\d{10,11}$/.test(phoneDigits) ? `(${phoneDigits.slice(0, 2)}) ${phoneDigits.slice(2, -4)}-${phoneDigits.slice(-4)}` : contact.phone
   const logo = identity.footerLogoUrl || identity.logoUrl
   const hasContact = !!(whatsappHref || phoneDigits || contact.email || address.length || contact.hours || contact.mapsUrl || contact.wazeUrl)
+  const cols = 1 + (nav.length > 0 ? 1 : 0) + (hasContact ? 1 : 0) + (seoLinks.length > 0 ? 1 : 0)
   return (
     <footer className="site-footer">
       {whatsappHref && (
@@ -25,7 +32,7 @@ export function SiteFooter({ config, nav, whatsappHref, seoLinks = [], legalLink
           <a className="button" href={whatsappHref} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" />Falar pelo WhatsApp</a>
         </div>
       )}
-      <div className="shell footer-grid">
+      <div className={`shell footer-grid fcols-${cols}`}>
         <div className="footer-brand">
           {logo
             ? <span className={identity.footerLogoUrl ? 'footer-logo-plain' : 'footer-logo-badge'}><img src={logo} alt={identity.name} className="footer-logo" /></span>
@@ -43,7 +50,7 @@ export function SiteFooter({ config, nav, whatsappHref, seoLinks = [], legalLink
           <ul className="footer-contact">
             {whatsappHref && <li><MessageCircle size={16} aria-hidden="true" /><a href={whatsappHref} target="_blank" rel="noreferrer">{phoneLabel || 'WhatsApp'}</a></li>}
             {!whatsappHref && phoneDigits && <li><Phone size={16} aria-hidden="true" /><a href={`tel:${phoneDigits}`}>{phoneLabel}</a></li>}
-            {contact.email && <li><Mail size={16} aria-hidden="true" /><a href={`mailto:${contact.email}`}>{contact.email}</a></li>}
+            {contact.email && <li><Mail size={16} aria-hidden="true" /><a href={`mailto:${contact.email}`}><EmailText email={contact.email} /></a></li>}
             {address.length > 0 && <li><MapPin size={16} aria-hidden="true" /><span>{address.map((l, i) => <span key={i}>{l}<br /></span>)}</span></li>}
             {contact.hours && <li><Clock size={16} aria-hidden="true" /><span>{contact.hours}</span></li>}
           </ul>

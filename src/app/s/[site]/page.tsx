@@ -10,6 +10,7 @@ import type { BrandCount } from '@/lib/site/brands-core'
 import { SiteBrandStrip } from '@/components/site/SiteBrandStrip'
 import { SiteVehicleCard } from '@/components/site/SiteVehicleCard'
 import { SiteBannerCarousel } from '@/components/site/SiteBannerCarousel'
+import { EmailText } from '@/components/site/SiteFooter'
 import { activeBanners } from '@/lib/site/config-core'
 import { ACTION_DEFS, type ActionKind, type HomeBlock } from '@/lib/site/layout-core'
 
@@ -197,13 +198,16 @@ function renderBlock(b: HomeBlock, i: number, blocks: HomeBlock[], p: Parts) {
     case 'contactBand': {
       const cards = [
         wa && <a key="wa" className="contact-card contact-card-primary" href={wa} target="_blank" rel="noreferrer"><span className="contact-icon"><MessageCircle size={22} aria-hidden="true" /></span><span>WhatsApp<strong>{contact.phone || 'Falar agora'}</strong><small>Atendimento rápido e personalizado</small></span></a>,
-        contact.email && <a key="mail" className="contact-card" href={`mailto:${contact.email}`}><span className="contact-icon"><Mail size={22} aria-hidden="true" /></span><span>E-mail<strong>{contact.email}</strong><small>Propostas e parcerias comerciais</small></span></a>,
-        address.length > 0 && <a key="map" className="contact-card" href={contact.mapsUrl || '#'} target="_blank" rel="noreferrer"><span className="contact-icon"><MapPin size={22} aria-hidden="true" /></span><span>{identity.name}<strong>{address[0]}</strong>{address[1] && <small>{address[1]}</small>}</span></a>,
+        contact.email && <a key="mail" className="contact-card" href={`mailto:${contact.email}`}><span className="contact-icon"><Mail size={22} aria-hidden="true" /></span><span>E-mail<strong><EmailText email={contact.email} /></strong><small>Propostas e parcerias comerciais</small></span></a>,
+        address.length > 0 && <a key="map" className="contact-card" href={contact.mapsUrl || '#'} target="_blank" rel="noreferrer"><span className="contact-icon"><MapPin size={22} aria-hidden="true" /></span><span>Endereço<strong>{address[0]}</strong>{address[1] && <small>{address[1]}</small>}</span></a>,
       ].filter(Boolean)
       if (!cards.length) return null
+      // O padrão "Atendimento <loja>" segue o nome do cadastro (o texto salvo
+      // pode ter o nome antigo); um texto próprio do lojista fica como está.
+      const kicker = /^Atendimento [^,.!?:;]{2,80}$/.test(b.eyebrow) ? `Atendimento ${identity.name}` : b.eyebrow
       return (
         <section key="contactBand" className="section"><div className="shell"><div className={`cband ccols-${cards.length}`}>
-          <div className="contact-band-intro">{b.eyebrow && <span className="contact-kicker">{b.eyebrow}</span>}<h2>{b.title}</h2><p>Escolha o melhor canal para falar com a nossa equipe.</p></div>
+          <div className="contact-band-intro">{kicker && <span className="contact-kicker">{kicker}</span>}<h2>{b.title}</h2><p>Escolha o melhor canal para falar com a nossa equipe.</p></div>
           {cards}
         </div></div></section>
       )
