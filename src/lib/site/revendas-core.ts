@@ -154,6 +154,16 @@ export function revendasItem(card: RevendasCard, detail: RevendasDetail | null):
   }
 }
 
+/**
+ * A plataforma publica a placa mascarada ("Q*****3": 1ª e última letra).
+ * Placa informada pela loja só é aceita se bater com a máscara do anúncio.
+ */
+export function plateMatchesMask(plate: string, mask: string | null | undefined): boolean {
+  const m = String(mask ?? '').toUpperCase().replace(/[^A-Z0-9*]/g, '')
+  if (!/^[A-Z0-9]\*+[A-Z0-9]$/.test(m)) return true // sem máscara: nada a conferir
+  return plate.length === 7 && plate[0] === m[0] && plate[6] === m[m.length - 1]
+}
+
 /** URL pública do anúncio no site de origem. */
 export const revendasDetailUrl = (base: string, extId: string) => `${base.replace(/\/+$/, '')}/Anuncio/Details/${extId}`
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeHtml, normalizeRevendasFuel, parseBrl, parseRevendasDetail, parseRevendasListing, revendasItem } from './revendas-core'
+import { decodeHtml, normalizeRevendasFuel, parseBrl, plateMatchesMask, parseRevendasDetail, parseRevendasListing, revendasItem } from './revendas-core'
 import { parseFeedSourceConfig } from './feed-import-core'
 
 // Trechos reais (encurtados) de donnamultimarcas.com.br.
@@ -70,6 +70,13 @@ describe('revendas-core', () => {
       fuel: 'FLEX', transmission: 'AUTOMATICO', color: 'Preto', vehicleType: 'CAR', description: '', legacySlug: null,
     })
     expect(item.extras).toMatchObject({ plate: null, year: 2018, doors: 4, options: ['Ar Condicionado', 'Freio ABS'], origin: null, reserved: false })
+  })
+
+  it('placa da loja confere com a máscara do site', () => {
+    expect(plateMatchesMask('QAB1C23', 'Q*****3')).toBe(true)
+    expect(plateMatchesMask('PAB1C23', 'Q*****3')).toBe(false)
+    expect(plateMatchesMask('QAB1C24', 'Q*****3')).toBe(false)
+    expect(plateMatchesMask('QAB1C23', '')).toBe(true)
   })
 
   it('config da fonte por loja', () => {
