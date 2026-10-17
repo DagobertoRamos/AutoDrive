@@ -463,7 +463,10 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social: soc
         const start = mode === 'AGENDAR' && when ? when : nowLocal
         if (plain.length) calls.push({ targets: plain, mode, scheduledLocal: mode === 'AGENDAR' ? when : undefined })
         const reqs = vehicleIds.flatMap((v) => connectionIds.filter(isSocial).flatMap((c) => social.formats.filter((f) => formatsFor(conns.find((x) => x.id === c)?.channel ?? '').includes(f)).map((f) => ({ key: `${v}|${c}|${f}`, connectionId: c, format: f }))))
-        const { slots } = await api<{ slots: Record<string, string> }>('/api/publications/social/slots', { method: 'POST', json: { requests: reqs, startLocal: start } })
+        // Sem post de rede social (ex.: só o site): nada a distribuir na agenda.
+        const { slots } = reqs.length
+          ? await api<{ slots: Record<string, string> }>('/api/publications/social/slots', { method: 'POST', json: { requests: reqs, startLocal: start } })
+          : { slots: {} as Record<string, string> }
         const byTime = new Map<string, unknown[]>()
         for (const r of reqs) {
           const local = slots[r.key]
