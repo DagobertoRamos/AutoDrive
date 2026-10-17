@@ -98,8 +98,13 @@ export function canCancelEvaluation(user: SessionUser): boolean {
 }
 
 /** O usuário pode submeter a avaliação para aprovação? (qualquer com edit) */
+// Só se envia para aprovação o que ainda não passou por ela. Liberada/aprovada
+// em diante precisa ser reaberta antes — senão um clique numa tela desatualizada
+// derruba a liberação (status volta a AGUARDANDO_APROVACAO).
+const SUBMITTABLE_STATUS = new Set(['DRAFT', 'IN_PROGRESS', 'REOPENED', 'AGUARDANDO_APROVACAO', 'PENDING_REVIEW'])
+
 export function canSubmitForApproval(user: SessionUser, e: EvaluationContext): boolean {
-  return canEditEvaluation(user, e)
+  return SUBMITTABLE_STATUS.has(String(e.status ?? '').toUpperCase()) && canEditEvaluation(user, e)
 }
 
 /** Pode editar campos de precificação (FIPE/desejado/mínimo/avaliado/sugerido)? */

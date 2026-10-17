@@ -186,7 +186,7 @@ export function SummarySection({ evaluationId, opcionais = [], onBack, onFinaliz
   }
 
   const status = eval_?.status ?? 'DRAFT'
-  const isFinalized = status === 'AGUARDANDO_APROVACAO' || status === 'APROVADO' || status === 'CONCLUIDA'
+  const isFinalized = !['DRAFT', 'IN_PROGRESS', 'REOPENED'].includes(String(status).toUpperCase())
 
   return (
     <div className="flex flex-col gap-4">

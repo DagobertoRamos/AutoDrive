@@ -50,7 +50,10 @@ export async function POST(
 
     const user = { id: session.user.id, role: session.user.role, tenantId: session.user.tenantId }
     if (!canSubmitForApproval(user, ctx)) {
-      return NextResponse.json({ error: 'Sem permissão para enviar para aprovação.' }, { status: 403 })
+      const locked = ['LIBERADA', 'APPROVED', 'AGUARDANDO_ENTRADA', 'NO_ESTOQUE', 'FINALIZED'].includes(String(ctx.status ?? '').toUpperCase())
+      return NextResponse.json({
+        error: locked ? 'Esta avaliação já foi liberada. Atualize a tela; para alterar, use "Reabrir".' : 'Sem permissão para enviar para aprovação.',
+      }, { status: locked ? 409 : 403 })
     }
 
     // ── Validação OBRIGATÓRIA no servidor ────────────────────────────────
