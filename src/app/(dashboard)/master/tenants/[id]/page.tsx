@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { useImpersonationStore } from '@/store/impersonationStore'
 import DeleteTenantModal from '@/components/master/DeleteTenantModal'
+import SiteOriginTagsToggle from '@/components/master/SiteOriginTagsToggle'
 import { maskCNPJ, maskPhone } from '@/lib/masks'
 import { isValidCNPJ } from '@/lib/br-docs/cnpj'
 import { isValidPhone } from '@/lib/br-docs/phone'
@@ -777,6 +778,8 @@ export default function TenantDetailPage() {
               ))}
             </div>
           </div>
+
+          <SiteOriginTagsToggle tenantId={id} />
 
           {/* Responsável */}
           <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3">

@@ -9,6 +9,7 @@ import { serviceOn, whatsappLink, type SiteConfig, type SiteServiceKey } from '.
 import { visibleMenu, type HomeBlockType } from './layout-core'
 import { loadPreview, PREVIEW_COOKIE } from './preview'
 import { siteBase, siteHref } from './base'
+import { siteOriginTagsOn } from './origin-tags'
 
 export interface SiteContext {
   key: string
@@ -25,6 +26,8 @@ export interface SiteContext {
   blockOn: (t: HomeBlockType) => boolean
   /** Mostrando o rascunho (pré-visualização), não o site salvo. */
   preview: boolean
+  /** Etiquetas de origem nos carros (liberadas pelo MASTER). */
+  originTags: boolean
 }
 
 export const getSiteContext = cache(async (key: string): Promise<SiteContext> => {
@@ -47,6 +50,7 @@ export const getSiteContext = cache(async (key: string): Promise<SiteContext> =>
     on,
     blockOn,
     preview: !!draft,
+    originTags: await siteOriginTagsOn(site.tenantId),
   }
 })
 
