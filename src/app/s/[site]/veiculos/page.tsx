@@ -6,6 +6,8 @@ import { listSiteVehicles, siteBrandCounts, siteFilterOptions, SITE_PAGE_SIZE, t
 import { canonicalBrand } from '@/lib/site/brands-core'
 import { SiteBrandStrip } from '@/components/site/SiteBrandStrip'
 import { SiteVehicleCard } from '@/components/site/SiteVehicleCard'
+import { SiteDropdownAutoClose } from '@/components/site/SiteDropdownAutoClose'
+import { Suspense } from 'react'
 import { fuelLabel, transmissionLabel } from '@/lib/site/listing-core'
 
 export const metadata: Metadata = { title: 'Estoque' }
@@ -85,6 +87,7 @@ export default async function SiteStock({ params, searchParams }: { params: Prom
               </form>
             </div>
           </details>
+          <Suspense fallback={null}><SiteDropdownAutoClose /></Suspense>
           <details className="filter-dropdown sort-dropdown">
             <summary className="filter-btn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 5h10M11 9h7M11 13h4M3 17l3 3 3-3M6 18V4" /></svg>
