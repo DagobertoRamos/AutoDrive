@@ -1107,6 +1107,7 @@
 .autodrive-site .banner-media img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 .autodrive-site .banner-media .banner-backdrop { object-fit: cover; filter: blur(22px) brightness(.55) saturate(1.1); transform: scale(1.15); }
 .autodrive-site .banner-media .banner-art { object-fit: contain; }
+.autodrive-site .banner-media-link { display: block; }
 .autodrive-site .mapa-acoes { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 18px; }
 .autodrive-site .mapa-embutido { border: 0; border-radius: 14px; display: block; }
 .autodrive-site .footer-mapas { display: flex; gap: 14px; font-size: .86rem; }
@@ -1121,9 +1122,6 @@
   border-top: 1px solid rgba(255,255,255,.08);
   background: color-mix(in srgb, var(--dark) 92%, #000);
 }
-.autodrive-site .banner-pager { display: flex; align-items: center; gap: 18px; }
-/* Com legenda: texto/botão do slide à esquerda e controles à direita, altura fixa. */
-.autodrive-site .banner-controls.has-caption { justify-content: space-between; min-height: 78px; }
 .autodrive-site .banner-nav {
   display: inline-flex;
   align-items: center;

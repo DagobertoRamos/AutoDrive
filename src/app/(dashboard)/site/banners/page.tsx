@@ -140,7 +140,7 @@ export default function SiteBannersPage() {
                 <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
                   <label className="block"><span className={label}>Título <RequiredMark /></span><input disabled={dis} className={input} value={b.title} maxLength={120} onChange={(e) => setBanner(i, { title: e.target.value })} /></label>
                   <label className="block"><span className={label}>Link ao clicar</span><input disabled={dis} className={input} value={b.linkUrl} placeholder="/veiculos ou https://wa.me/..." onChange={(e) => setBanner(i, { linkUrl: e.target.value })} /></label>
-                  <label className="flex items-center gap-1.5 text-xs font-medium text-gray-700 sm:col-span-2"><input type="checkbox" disabled={dis} checked={b.showText} onChange={(e) => setBanner(i, { showText: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Mostrar texto e botão sobre a imagem</label>
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-gray-700 sm:col-span-2"><input type="checkbox" disabled={dis} checked={b.showText} onChange={(e) => setBanner(i, { showText: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Mostrar botão sobre a imagem <span className="font-normal text-gray-400">(etiqueta e texto ficam como descrição da arte, para Google e leitores de tela)</span></label>
                   {b.showText && (
                     <>
                       <label className="block"><span className={label}>Etiqueta</span><input disabled={dis} className={input} value={b.eyebrow} maxLength={60} placeholder="Estoque atualizado" onChange={(e) => setBanner(i, { eyebrow: e.target.value })} /></label>
