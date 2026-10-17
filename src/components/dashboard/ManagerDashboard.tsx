@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { AttentionPanel } from './AttentionPanel'
 import Link from 'next/link'
 import { RequiredMark } from '@/components/ui/field'
 import { HelpHint } from '@/components/ui/help-hint'
@@ -401,6 +402,9 @@ export function ManagerDashboard({ firstName, greeting }: ManagerDashboardProps)
           <DollarSign size={14} className="text-emerald-500" /> Negociações
         </Link>
       </div>
+
+      {/* ── PRECISA DA SUA ATENÇÃO (aprovações, leads, prazos) ── */}
+      <AttentionPanel />
 
       {/* ── LINHA 1: CARDS DE VISÃO GERAL (KPIs) ── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

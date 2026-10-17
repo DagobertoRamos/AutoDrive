@@ -37,6 +37,7 @@ import { GoalsPanel } from '@/components/goals/GoalsPanel'
 import { RankingPositionCard } from '@/components/ranking/RankingPositionCard'
 import { MasterDashboard } from './MasterDashboard'
 import { ManagerDashboard } from './ManagerDashboard'
+import { AttentionPanel } from './AttentionPanel'
 import type {
   DashboardIcon,
   DashboardMetric,
@@ -139,7 +140,8 @@ function MetricCard({ metric }: { metric: DashboardMetric }) {
 
 function SectionCard({ section }: { section: DashboardSection }) {
   return (
-    <div className="card">
+    // min-w-0: item de grid encolhe no celular (sem estourar a largura da tela).
+    <div className="card min-w-0">
       <div className="section-header">
         <DashboardIconView name={section.icon} size={16} className="text-brand-700" />
         <div className="min-w-0">
@@ -223,6 +225,8 @@ function RoleDashboardView({
         </div>
       )}
 
+      {summary.profile.kind !== 'MASTER' && <AttentionPanel />}
+
       {!hasContent && (
         <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-card">
           <h2 className="text-sm font-semibold text-gray-800">Nenhum bloco ativo para este perfil.</h2>
@@ -249,7 +253,7 @@ function RoleDashboardView({
       {showRankingPanel && showCommonSection && <SectionCard section={summary.commonSection} />}
 
       {summary.sections.length > 0 && (
-        <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
           {summary.sections.map((dashboardSection) => (
             <SectionCard key={dashboardSection.id} section={dashboardSection} />
           ))}
@@ -469,6 +473,9 @@ function VendedorDashboard(props: DashboardRouterProps) {
           </div>
         </div>
       </div>
+
+      {/* PRECISA DA SUA ATENÇÃO — leads, retornos, correções, entregas */}
+      <AttentionPanel />
 
       {/* 2. PRIMEIRO BLOCO: CARDS DE METAS */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -924,6 +931,9 @@ const roleComponents: Record<DashboardRoleKind, (props: DashboardRouterProps) =>
   FI: FiDashboard,
   SDR: SdrDashboard,
   COMPRAS: ComprasDashboard,
+  DOCUMENTACAO: AuxiliarDashboard,
+  PREPARACAO: AuxiliarDashboard,
+  POS_VENDA: AuxiliarDashboard,
   AUXILIAR: AuxiliarDashboard,
   DEFAULT: AuxiliarDashboard,
 }
