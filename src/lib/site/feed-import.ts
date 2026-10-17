@@ -1,7 +1,11 @@
 // =============================================================================
 // Site da loja — importação de estoque por feed (lado do banco).
-// Configuração por env, de propósito restrita (hoje só a AutoDrive):
+// Fontes:
 //   SITE_FEED_IMPORT="<tenantId>|<url do feed CSV>"   (várias: separadas por ;)
+//     → a AutoDrive, a partir do site antigo (CSV da Meta + banco legado);
+//   SystemSetting `t:<tenantId>:site:feedsource:v1` = { kind, url, enabled }
+//     → qualquer loja, sem env: 'meta-csv' (CSV da Meta) ou 'revendas'
+//       (site da plataforma revendas, ex.: Donna Multimarcas — revendas-core.ts).
 //   SITE_FEED_LEGACY_DB="<postgres url do site de origem>" (opcional, SÓ LEITURA)
 //     → completa cada carro com o que o painel do site antigo mostra: placa,
 //       código interno, fabricação, km, portas, cor, opcionais, vídeo, SEO,
@@ -16,9 +20,10 @@ import { Pool, neonConfig } from '@neondatabase/serverless'
 import ws from 'ws'
 import { prisma } from '@/lib/prisma'
 import {
-  mergeLegacy, parseFeed, planFeedSync, relinkByPlate, samePhotos,
-  type FeedExtras, type FeedOrigin, type FeedVehicle, type LegacyVehicle,
+  mergeLegacy, parseFeed, parseFeedSourceConfig, planFeedSync, relinkByPlate, samePhotos,
+  type FeedExtras, type FeedOrigin, type FeedSourceKind, type FeedVehicle, type LegacyVehicle,
 } from './feed-import-core'
+import { parseRevendasDetail, parseRevendasListing, revendasDetailUrl, revendasItem, revendasListingBody, type RevendasCard } from './revendas-core'
 import { normalizeOrigin, partnerRefFromName } from '@/lib/stock/origin-core'
 import { ensurePartnerStoreByName } from '@/lib/stock/partner-stores'
 import { realPhotoUrls } from '@/lib/vehicle-placeholder'
@@ -29,7 +34,14 @@ const KEEP_STOCK = ['VENDIDO', 'EM_NEGOCIACAO', 'RESERVADO']
 
 type Item = FeedVehicle & { extras: FeedExtras }
 
-export interface FeedImportSource { tenantId: string; url: string }
+export interface FeedImportSource {
+  tenantId: string
+  url: string
+  /** Padrão 'meta-csv'. */
+  kind?: FeedSourceKind
+  /** Completa pelo banco do site antigo (SITE_FEED_LEGACY_DB) — só as fontes do env. */
+  legacyDb?: boolean
+}
 
 export interface FeedImportResult {
   tenantId: string
@@ -54,8 +66,31 @@ interface ImportState { map: Record<string, string>; slugs: Record<string, strin
 export function feedImportSources(env = process.env.SITE_FEED_IMPORT): FeedImportSource[] {
   return String(env ?? '').split(';').map((s) => s.trim()).filter(Boolean).flatMap((s) => {
     const [tenantId, url] = s.split('|').map((x) => x?.trim())
-    return tenantId && /^https:\/\//i.test(url ?? '') ? [{ tenantId, url: url! }] : []
+    return tenantId && /^https:\/\//i.test(url ?? '') ? [{ tenantId, url: url!, kind: 'meta-csv' as const, legacyDb: true }] : []
   })
+}
+
+const SOURCE_SUFFIX = ':site:feedsource:v1'
+const sourceKey = (tenantId: string) => `t:${tenantId}${SOURCE_SUFFIX}`
+
+/** Fontes do env + as configuradas por loja (SystemSetting). O env vence se a loja estiver nos dois. */
+export async function allFeedImportSources(): Promise<FeedImportSource[]> {
+  const env = feedImportSources()
+  const rows = await prisma.systemSetting.findMany({ where: { key: { startsWith: 't:', endsWith: SOURCE_SUFFIX } }, select: { key: true, value: true } })
+  const extra = rows.flatMap((r) => {
+    const tenantId = r.key.slice(2, -SOURCE_SUFFIX.length)
+    const cfg = parseFeedSourceConfig(r.value)
+    return cfg?.enabled && tenantId && !env.some((e) => e.tenantId === tenantId) ? [{ tenantId, url: cfg.url, kind: cfg.kind }] : []
+  })
+  return [...env, ...extra]
+}
+
+/** Grava a fonte de estoque da loja (script/MASTER). */
+export async function setFeedImportSource(tenantId: string, cfg: { kind: FeedSourceKind; url: string; enabled?: boolean }) {
+  const parsed = parseFeedSourceConfig(JSON.stringify(cfg))
+  if (!parsed) throw new Error('Fonte inválida (kind meta-csv|revendas e url https).')
+  await saveSetting(tenantId, sourceKey(tenantId), parsed, 'Fonte de estoque do site (importação)')
+  return parsed
 }
 
 const stateKey = (tenantId: string) => `t:${tenantId}:site:feedimport:v1`
@@ -264,23 +299,58 @@ async function upsertListing(tenantId: string, vehicleId: string, item: Item) {
   })
 }
 
+async function fetchText(url: string, init?: { method?: string; body?: string; headers?: Record<string, string> }): Promise<string> {
+  const res = await fetch(url, { cache: 'no-store', ...init, headers: { 'user-agent': 'AutoDrive-SiteImport/1.0', ...init?.headers }, signal: AbortSignal.timeout(30_000) })
+  if (!res.ok) throw new Error(`Feed respondeu HTTP ${res.status} (${new URL(url).pathname})`)
+  return res.text()
+}
+
+/**
+ * Site "revendas": listagem paginada (POST /Anuncio/_Busca até vir vazia) e a
+ * ficha de cada anúncio. Ficha que falhar derruba a execução inteira (nada
+ * muda): entrar sem fotos tiraria o carro do ar.
+ */
+async function loadRevendas(base: string): Promise<Item[]> {
+  const origin = new URL(base).origin
+  const cards = new Map<string, RevendasCard>()
+  for (let page = 1; page <= 60; page++) {
+    const found = parseRevendasListing(await fetchText(`${origin}/Anuncio/_Busca`, {
+      method: 'POST', body: revendasListingBody(page),
+      headers: { 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8', 'x-requested-with': 'XMLHttpRequest' },
+    }))
+    if (!found.length) break
+    for (const c of found) if (!cards.has(c.extId)) cards.set(c.extId, c)
+  }
+  const list = [...cards.values()]
+  const out: Item[] = []
+  for (let i = 0; i < list.length; i += 4) {
+    out.push(...await Promise.all(list.slice(i, i + 4).map(async (c) => revendasItem(c, parseRevendasDetail(await fetchText(revendasDetailUrl(origin, c.extId)))))))
+  }
+  return out
+}
+
+function loadSourceItems(src: FeedImportSource): Promise<Array<FeedVehicle | Item>> {
+  if (src.kind === 'revendas') return loadRevendas(src.url)
+  return fetchText(src.url).then(parseFeed)
+}
+
 export async function runFeedImport(src: FeedImportSource): Promise<FeedImportResult> {
   const at = new Date().toISOString()
   const base = { tenantId: src.tenantId, feed: 0, created: 0, updated: 0, removed: 0, at }
   const state = await loadState(src.tenantId)
   let result: FeedImportResult
   try {
-    const res = await fetch(src.url, { cache: 'no-store', headers: { 'user-agent': 'AutoDrive-SiteImport/1.0' }, signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) throw new Error(`Feed respondeu HTTP ${res.status}`)
-    const parsed = parseFeed(await res.text())
+    const parsed = await loadSourceItems(src)
     let legacy = new Map<string, LegacyVehicle>()
     let legacyError: string | undefined
-    try { legacy = await fetchLegacy(parsed.map((i) => i.extId)) } catch (e) { legacyError = e instanceof Error ? e.message : String(e) }
-    await syncLegacyPartners(src.tenantId).catch((e) => console.error('[feed-import] parceiros do site antigo', e instanceof Error ? e.message : e))
+    if (src.legacyDb) {
+      try { legacy = await fetchLegacy(parsed.map((i) => i.extId)) } catch (e) { legacyError = e instanceof Error ? e.message : String(e) }
+      await syncLegacyPartners(src.tenantId).catch((e) => console.error('[feed-import] parceiros do site antigo', e instanceof Error ? e.message : e))
+    }
     const blocks = await loadPartnerBlocks(src.tenantId)
     // Sem o banco do site antigo o item vem sem parceiro: usa a origem já gravada do carro.
     const isBlocked = (i: Item) => { const ref = originRef(i.extras.origin ?? state.origins[state.map[i.extId] ?? '']); return !!ref && !!blocks.blocked[ref] }
-    const merged: Item[] = parsed.map((i) => mergeLegacy(i, legacy.get(i.extId)))
+    const merged: Item[] = parsed.map((i) => ('extras' in i ? i : mergeLegacy(i, legacy.get(i.extId))))
     // Parceiro pausado: os carros dele ficam fora (não criam, não atualizam, saem do site).
     const items = merged.filter((i) => !isBlocked(i))
     const blockedExt = merged.filter(isBlocked).map((i) => i.extId)
@@ -312,7 +382,7 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
           data: {
             tenantId: src.tenantId, unitId: unit?.id ?? null, ...vehicleData(item),
             conditionType: 'USADO', stockStatus: item.extras.reserved ? 'RESERVADO' : 'DISPONIVEL', active: true, isAvailableForSale: true,
-            entryDate: new Date(), notes: `Importado do site antigo (${item.extId})`,
+            entryDate: new Date(), notes: src.kind === 'revendas' ? `Importado do site da loja (anúncio ${item.extId})` : `Importado do site antigo (${item.extId})`,
           },
           select: { id: true },
         })
@@ -422,6 +492,12 @@ export async function feedOrigins(tenantId: string | null | undefined, vehicleId
       WHERE s.key = ${stateKey(tenantId)} AND o.key = ANY(${vehicleIds}::text[])`
     return Object.fromEntries(rows.map((r) => [r.id, JSON.parse(r.origin) as FeedOrigin]))
   } catch { return {} }
+}
+
+/** Id do veículo no SaaS para o id do item no feed/site de origem (null se não importado). */
+export async function feedVehicleId(tenantId: string, extId: string): Promise<string | null> {
+  const id = await statePart(tenantId, ['map', extId])
+  return typeof id === 'string' ? id : null
 }
 
 /** Resumo da última importação (sem trazer o estado inteiro). */

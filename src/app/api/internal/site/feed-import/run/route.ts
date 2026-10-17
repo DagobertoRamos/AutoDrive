@@ -1,12 +1,13 @@
 // =============================================================================
 // GET|POST /api/internal/site/feed-import/run
 // Cron (Vercel, a cada 6 h): importa o estoque das lojas configuradas em
-// SITE_FEED_IMPORT (hoje só a AutoDrive, a partir do site antigo).
+// SITE_FEED_IMPORT (AutoDrive, site antigo) e nas que têm fonte própria
+// (SystemSetting t:<id>:site:feedsource:v1 — ex.: Donna, site revendas).
 // Header: Authorization: Bearer <CRON_SECRET>  ou  x-cron-secret: <CRON_SECRET>
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server'
-import { feedImportSources, runFeedImport } from '@/lib/site/feed-import'
+import { allFeedImportSources, runFeedImport } from '@/lib/site/feed-import'
 import { refreshSiteVehicles } from '@/lib/site/vehicles'
 
 export const dynamic = 'force-dynamic'
@@ -21,7 +22,7 @@ function authorized(req: NextRequest): boolean {
 
 async function handle(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-  const sources = feedImportSources()
+  const sources = await allFeedImportSources()
   const results = []
   for (const src of sources) {
     results.push(await runFeedImport(src))

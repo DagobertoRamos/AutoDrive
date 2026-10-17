@@ -1,6 +1,6 @@
 // =============================================================================
 // Site da loja — importação de estoque por feed (CSV no formato do catálogo
-// da Meta). PURO (testado). Usado hoje só pela AutoDrive, que puxa o estoque
+// da Meta). PURO (testado). A AutoDrive puxa por aqui o estoque
 // do site antigo (sitedagobertoeasycar) até ele ser desligado.
 //   • Cada linha vira um veículo normalizado (códigos do estoque do SaaS).
 //   • A foto "em-breve" do site antigo não é foto: o carro entra sem fotos
@@ -336,4 +336,22 @@ export function mergeLegacy(item: FeedVehicle, lg: LegacyVehicle | undefined): F
       },
     },
   }
+}
+
+// ── Fonte configurada por loja (sem env) ─────────────────────────────────────
+// SystemSetting `t:<tenantId>:site:feedsource:v1` = { kind, url, enabled }.
+//   kind 'meta-csv' → CSV no formato do catálogo da Meta (como o site antigo)
+//   kind 'revendas' → site da plataforma "revendas" (lido por revendas-core)
+
+export type FeedSourceKind = 'meta-csv' | 'revendas'
+export interface FeedSourceConfig { kind: FeedSourceKind; url: string; enabled: boolean }
+
+export function parseFeedSourceConfig(raw: string | null | undefined): FeedSourceConfig | null {
+  try {
+    const s = JSON.parse(raw ?? '')
+    const kind = s?.kind === 'revendas' ? 'revendas' : s?.kind === 'meta-csv' ? 'meta-csv' : null
+    const url = typeof s?.url === 'string' ? s.url.trim() : ''
+    if (!kind || !/^https:\/\//i.test(url)) return null
+    return { kind, url, enabled: s.enabled !== false }
+  } catch { return null }
 }
